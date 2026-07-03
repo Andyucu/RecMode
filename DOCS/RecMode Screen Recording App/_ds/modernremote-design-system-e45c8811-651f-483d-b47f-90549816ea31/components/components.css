@@ -1,0 +1,456 @@
+/* ============================================================
+   ModernRemote — Component styles
+   Plain CSS for the React primitives in /components. Consumers
+   get these by linking styles.css. Everything is token-driven.
+   ============================================================ */
+
+/* ---------------------------------------------------------------
+   BUTTON
+--------------------------------------------------------------- */
+.mr-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 96px;
+  height: var(--size-control-height);
+  padding: 0 12px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-control);
+  background: var(--fill-control-default);
+  color: var(--fill-text-primary);
+  font: var(--text-body);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+.mr-btn:hover { background: var(--fill-control-secondary); }
+.mr-btn:active { background: var(--fill-control-tertiary); color: var(--fill-text-secondary); }
+.mr-btn:focus-visible { outline: 2px solid var(--stroke-focus); outline-offset: 2px; }
+
+.mr-btn--accent {
+  background: var(--fill-accent-default);
+  border-color: transparent;
+  color: var(--fill-text-on-accent);
+  box-shadow: inset 0 1px 0 0 rgba(255,255,255,.10), inset 0 -1px 0 0 rgba(0,0,0,.18);
+}
+.mr-btn--accent:hover { background: var(--fill-accent-secondary); color: var(--fill-text-on-accent); }
+.mr-btn--accent:active { background: var(--fill-accent-tertiary); color: var(--fill-text-on-accent); }
+
+.mr-btn--subtle {
+  background: var(--fill-subtle-default);
+  border-color: transparent;
+}
+.mr-btn--subtle:hover { background: var(--fill-subtle-secondary); }
+.mr-btn--subtle:active { background: var(--fill-subtle-tertiary); color: var(--fill-text-secondary); }
+
+.mr-btn--hyperlink {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fill-accent-text);
+  min-width: 0;
+  padding: 0 6px;
+}
+.mr-btn--hyperlink:hover { background: var(--fill-subtle-secondary); text-decoration: underline; }
+
+.mr-btn--sm { height: var(--size-control-height-sm); padding: 0 10px; font: var(--text-caption); min-width: 0; }
+
+.mr-btn[disabled], .mr-btn--disabled {
+  pointer-events: none;
+  background: var(--fill-control-disabled);
+  border-color: var(--stroke-control);
+  color: var(--fill-text-disabled);
+  box-shadow: none;
+}
+.mr-btn--accent[disabled], .mr-btn--accent.mr-btn--disabled {
+  background: var(--fill-accent-disabled);
+  color: var(--fill-text-on-accent-disabled);
+}
+
+/* ---------------------------------------------------------------
+   ICON BUTTON
+--------------------------------------------------------------- */
+.mr-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon-button);
+  height: var(--size-icon-button);
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--fill-subtle-default);
+  color: var(--fill-text-secondary);
+  cursor: pointer;
+  transition: var(--transition-control);
+}
+.mr-icon-btn:hover { background: var(--fill-subtle-secondary); color: var(--fill-text-primary); }
+.mr-icon-btn:active { background: var(--fill-subtle-tertiary); color: var(--fill-text-tertiary); }
+.mr-icon-btn:focus-visible { outline: 2px solid var(--stroke-focus); outline-offset: 2px; }
+.mr-icon-btn[disabled] { pointer-events: none; color: var(--fill-text-disabled); }
+.mr-icon-btn--accent { color: var(--fill-accent-default); }
+.mr-icon-btn--danger:hover { background: var(--fill-system-critical); color: #fff; }
+
+/* ---------------------------------------------------------------
+   TEXTBOX
+--------------------------------------------------------------- */
+.mr-field { display: inline-flex; flex-direction: column; gap: 4px; }
+.mr-field__label { font: var(--text-body); color: var(--fill-text-primary); }
+.mr-textbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-control-height);
+  padding: 0 10px;
+  background: var(--fill-control-default);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-secondary);
+  border-radius: var(--radius-control);
+  color: var(--fill-text-primary);
+  transition: var(--transition-control);
+}
+.mr-textbox:hover { background: var(--fill-control-secondary); }
+.mr-textbox:focus-within {
+  background: var(--fill-control-input-active);
+  border-color: var(--stroke-control);
+  box-shadow: inset 0 -2px 0 0 var(--fill-accent-default);
+}
+.mr-textbox input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: var(--text-body);
+  color: inherit;
+}
+.mr-textbox input::placeholder { color: var(--fill-text-tertiary); }
+.mr-textbox .mr-icon { color: var(--fill-text-secondary); font-size: 16px; }
+.mr-textbox--disabled { pointer-events: none; background: var(--fill-control-disabled); color: var(--fill-text-disabled); }
+
+/* ---------------------------------------------------------------
+   COMBOBOX  (textbox + chevron)
+--------------------------------------------------------------- */
+.mr-combobox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--size-control-height);
+  min-width: 140px;
+  padding: 0 8px 0 10px;
+  background: var(--fill-control-default);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-secondary);
+  border-radius: var(--radius-control);
+  color: var(--fill-text-primary);
+  font: var(--text-body);
+  cursor: pointer;
+  transition: var(--transition-control);
+}
+.mr-combobox:hover { background: var(--fill-control-secondary); }
+.mr-combobox:focus-visible { outline: 2px solid var(--stroke-focus); outline-offset: 2px; }
+.mr-combobox .mr-icon { color: var(--fill-text-secondary); font-size: 16px; }
+
+/* ---------------------------------------------------------------
+   CHECKBOX
+--------------------------------------------------------------- */
+.mr-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: var(--text-body); color: var(--fill-text-primary); user-select: none; }
+.mr-checkbox__box {
+  width: 20px; height: 20px; flex: none;
+  border: 1px solid var(--stroke-control-strong);
+  border-radius: var(--radius-control-sm);
+  background: var(--fill-control-default);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: var(--transition-control);
+}
+.mr-checkbox__box .mr-icon { font-size: 14px; color: var(--fill-text-on-accent); opacity: 0; }
+.mr-checkbox:hover .mr-checkbox__box { background: var(--fill-control-secondary); }
+.mr-checkbox--checked .mr-checkbox__box { background: var(--fill-accent-default); border-color: transparent; }
+.mr-checkbox--checked .mr-checkbox__box .mr-icon { opacity: 1; }
+.mr-checkbox--disabled { color: var(--fill-text-disabled); pointer-events: none; }
+
+/* ---------------------------------------------------------------
+   TOGGLE SWITCH
+--------------------------------------------------------------- */
+.mr-switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font: var(--text-body); color: var(--fill-text-primary); user-select: none; }
+.mr-switch__track {
+  position: relative;
+  width: 40px; height: 20px; flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--fill-control-default);
+  border: 1px solid var(--stroke-control-strong);
+  transition: var(--transition-control);
+}
+.mr-switch__thumb {
+  position: absolute; top: 50%; left: 3px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--fill-text-secondary);
+  transform: translateY(-50%);
+  transition: left var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard), width var(--motion-fast) var(--ease-standard);
+}
+.mr-switch:hover .mr-switch__thumb { width: 14px; }
+.mr-switch--on .mr-switch__track { background: var(--fill-accent-default); border-color: transparent; }
+.mr-switch--on .mr-switch__thumb { left: 23px; background: var(--fill-text-on-accent); }
+.mr-switch--on:hover .mr-switch__thumb { left: 21px; }
+.mr-switch--disabled { color: var(--fill-text-disabled); pointer-events: none; opacity: .55; }
+
+/* ---------------------------------------------------------------
+   CARD
+--------------------------------------------------------------- */
+.mr-card {
+  background: var(--fill-surface-card);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  color: var(--fill-text-primary);
+}
+.mr-card--flat { box-shadow: none; }
+.mr-card__title { font: var(--text-body-strong); margin-bottom: 4px; }
+.mr-card__desc { font: var(--text-body); color: var(--fill-text-secondary); }
+
+/* Settings card — the iconic Fluent row: icon · title/desc · action */
+.mr-settings-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--fill-surface-card);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-control);
+  padding: 12px 16px;
+  color: var(--fill-text-primary);
+}
+.mr-settings-card__icon { font-size: 20px; color: var(--fill-text-primary); flex: none; }
+.mr-settings-card__body { flex: 1; min-width: 0; }
+.mr-settings-card__title { font: var(--text-body); }
+.mr-settings-card__desc { font: var(--text-caption); color: var(--fill-text-secondary); }
+
+/* ---------------------------------------------------------------
+   INFO BADGE
+--------------------------------------------------------------- */
+.mr-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 4px;
+  min-width: 16px; height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font: var(--weight-semibold) 11px/1 var(--font-ui);
+  background: var(--fill-system-neutral); color: #fff;
+}
+.mr-badge--dot { min-width: 8px; width: 8px; height: 8px; padding: 0; }
+.mr-badge--attention { background: var(--fill-accent-default); color: var(--fill-text-on-accent); }
+.mr-badge--success { background: var(--fill-system-success); color: #fff; }
+.mr-badge--caution { background: var(--fill-system-caution); color: #fff; }
+.mr-badge--critical { background: var(--fill-system-critical); color: #fff; }
+
+/* ---------------------------------------------------------------
+   TABS  (Windows 11 TabView)
+--------------------------------------------------------------- */
+.mr-tabs { display: flex; align-items: flex-end; gap: 4px; padding: 0 6px; }
+.mr-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: var(--size-tab-height);
+  max-width: 220px;
+  padding: 0 8px 0 12px;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+  background: transparent;
+  color: var(--fill-text-secondary);
+  font: var(--text-body);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  transition: var(--transition-control);
+}
+.mr-tab:hover { background: var(--fill-subtle-secondary); color: var(--fill-text-primary); }
+.mr-tab__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-tab .mr-icon { font-size: 16px; flex: none; }
+.mr-tab__close { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-control-sm); color: var(--fill-text-secondary); }
+.mr-tab__close:hover { background: var(--fill-subtle-tertiary); color: var(--fill-text-primary); }
+.mr-tab--active {
+  background: var(--fill-surface-layer-alt);
+  color: var(--fill-text-primary);
+  border-color: var(--stroke-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* ---------------------------------------------------------------
+   TREE ITEM  (connection tree row)
+--------------------------------------------------------------- */
+.mr-tree-item {
+  position: relative;
+  display: flex; align-items: center; gap: 6px;
+  height: var(--size-list-item-height);
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-control);
+  color: var(--fill-text-primary);
+  font: var(--text-body);
+  cursor: pointer;
+  transition: var(--transition-control);
+}
+.mr-tree-item:hover { background: var(--fill-subtle-secondary); }
+.mr-tree-item--selected { background: var(--fill-subtle-secondary); }
+.mr-tree-item--selected::before {
+  content: ""; position: absolute; left: 0; top: 50%;
+  width: 3px; height: 16px; transform: translateY(-50%);
+  background: var(--fill-accent-default); border-radius: var(--radius-pill);
+}
+.mr-tree-item__chevron {
+  width: 20px; height: 20px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fill-text-secondary); font-size: 12px;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.mr-tree-item--open .mr-tree-item__chevron { transform: rotate(90deg); }
+.mr-tree-item__icon { font-size: 16px; color: var(--fill-text-secondary); flex: none; }
+.mr-tree-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-tree-item__status { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+/* ---------------------------------------------------------------
+   EXPANDER  (Fluent disclosure)
+--------------------------------------------------------------- */
+.mr-expander {
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-control);
+  background: var(--fill-surface-card);
+  overflow: hidden;
+}
+.mr-expander__header {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 48px; padding: 8px 16px;
+  cursor: pointer; color: var(--fill-text-primary);
+  transition: var(--transition-control);
+}
+.mr-expander__header:hover { background: var(--fill-subtle-secondary); }
+.mr-expander__icon { font-size: 20px; color: var(--fill-text-primary); flex: none; }
+.mr-expander__text { flex: 1; min-width: 0; }
+.mr-expander__title { font: var(--text-body); }
+.mr-expander__desc { font: var(--text-caption); color: var(--fill-text-secondary); }
+.mr-expander__chevron { color: var(--fill-text-secondary); flex: none; transition: transform var(--motion-gentle) var(--ease-standard); }
+.mr-expander--open .mr-expander__chevron { transform: rotate(180deg); }
+.mr-expander__content { padding: 14px 16px 16px; border-top: 1px solid var(--stroke-divider); }
+
+/* ---------------------------------------------------------------
+   MENU FLYOUT
+--------------------------------------------------------------- */
+.mr-menu {
+  min-width: 180px;
+  background: var(--fill-surface-acrylic);
+  backdrop-filter: blur(30px) saturate(140%);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-flyout);
+  padding: 4px;
+}
+.mr-menu__item {
+  display: flex; align-items: center; gap: 12px;
+  height: 32px; padding: 0 10px;
+  border-radius: var(--radius-control);
+  font: var(--text-body); color: var(--fill-text-primary);
+  cursor: pointer;
+}
+.mr-menu__item:hover { background: var(--fill-subtle-secondary); }
+.mr-menu__item .mr-icon { font-size: 16px; color: var(--fill-text-secondary); flex: none; }
+.mr-menu__item--danger { color: var(--fill-system-critical); }
+.mr-menu__item--danger .mr-icon { color: var(--fill-system-critical); }
+.mr-menu__item__shortcut { margin-left: auto; font: var(--text-caption); color: var(--fill-text-tertiary); }
+.mr-menu__sep { height: 1px; background: var(--stroke-divider); margin: 4px 6px; }
+
+/* ---------------------------------------------------------------
+   TOOLTIP
+--------------------------------------------------------------- */
+.mr-tooltip {
+  position: absolute; z-index: 70;
+  max-width: 280px; padding: 5px 9px;
+  background: var(--fill-surface-acrylic);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-tooltip);
+  font: var(--text-caption); color: var(--fill-text-primary);
+  pointer-events: none;
+  animation: mr-tt-in var(--motion-fast) var(--ease-decelerate);
+}
+@keyframes mr-tt-in { from { opacity: 0; transform: translateY(2px); } }
+
+/* ---------------------------------------------------------------
+   INFO BAR
+--------------------------------------------------------------- */
+.mr-infobar {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 12px 11px 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-card);
+  background: var(--fill-system-info-bg);
+  color: var(--fill-text-primary);
+}
+.mr-infobar__icon { font-size: 20px; flex: none; margin-top: 1px; color: var(--fill-system-info); }
+.mr-infobar__body { flex: 1; min-width: 0; }
+.mr-infobar__title { font: var(--text-body-strong); }
+.mr-infobar__msg { font: var(--text-body); color: var(--fill-text-secondary); }
+.mr-infobar__actions { display: flex; gap: 8px; margin-top: 10px; }
+.mr-infobar--success { background: var(--fill-system-success-bg); }
+.mr-infobar--success .mr-infobar__icon { color: var(--fill-system-success); }
+.mr-infobar--caution { background: var(--fill-system-caution-bg); }
+.mr-infobar--caution .mr-infobar__icon { color: var(--fill-system-caution); }
+.mr-infobar--critical { background: var(--fill-system-critical-bg); }
+.mr-infobar--critical .mr-infobar__icon { color: var(--fill-system-critical); }
+
+/* ---------------------------------------------------------------
+   PROGRESS
+--------------------------------------------------------------- */
+.mr-ring { display: inline-block; border-radius: 50%; flex: none;
+  background: conic-gradient(var(--fill-accent-default) var(--p, 25%), var(--fill-control-secondary) 0); }
+.mr-ring__hole { width: 100%; height: 100%; border-radius: 50%;
+  background: var(--fill-surface-base); transform: scale(0.74); }
+.mr-ring--indeterminate {
+  background: none;
+  border: 3px solid var(--fill-control-secondary);
+  border-top-color: var(--fill-accent-default);
+  animation: mr-spin .9s linear infinite;
+}
+@keyframes mr-spin { to { transform: rotate(360deg); } }
+
+.mr-pbar { height: 3px; border-radius: var(--radius-pill); background: var(--fill-control-secondary); overflow: hidden; }
+.mr-pbar__fill { height: 100%; border-radius: inherit; background: var(--fill-accent-default); transition: width var(--motion-gentle) var(--ease-standard); }
+.mr-pbar--indeterminate .mr-pbar__fill { width: 35%; animation: mr-pbar-slide 1.6s var(--ease-standard) infinite; }
+@keyframes mr-pbar-slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+@media (prefers-reduced-motion: reduce) {
+  .mr-ring--indeterminate { animation-duration: 2s; }
+  .mr-pbar--indeterminate .mr-pbar__fill { animation: none; width: 60%; }
+}
+
+/* ---------------------------------------------------------------
+   RADIO
+--------------------------------------------------------------- */
+.mr-radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: var(--text-body); color: var(--fill-text-primary); user-select: none; }
+.mr-radio__dot {
+  width: 20px; height: 20px; flex: none; border-radius: 50%;
+  border: 1px solid var(--stroke-control-strong);
+  background: var(--fill-control-default);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: var(--transition-control);
+}
+.mr-radio__dot::after { content: ""; width: 0; height: 0; border-radius: 50%; background: var(--fill-text-on-accent); transition: width var(--motion-fast) var(--ease-standard), height var(--motion-fast) var(--ease-standard); }
+.mr-radio:hover .mr-radio__dot { background: var(--fill-control-secondary); }
+.mr-radio--checked .mr-radio__dot { background: var(--fill-accent-default); border-color: transparent; }
+.mr-radio--checked .mr-radio__dot::after { width: 8px; height: 8px; }
+.mr-radio--disabled { color: var(--fill-text-disabled); pointer-events: none; }
+
+/* ---------------------------------------------------------------
+   SLIDER
+--------------------------------------------------------------- */
+.mr-slider { position: relative; height: 32px; display: flex; align-items: center; min-width: 160px; cursor: pointer; }
+.mr-slider__track { position: relative; flex: 1; height: 4px; border-radius: var(--radius-pill); background: var(--fill-control-strong, var(--stroke-control-strong)); }
+.mr-slider__fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: inherit; background: var(--fill-accent-default); }
+.mr-slider__thumb { position: absolute; top: 50%; width: 20px; height: 20px; border-radius: 50%; background: var(--fill-accent-default); border: 4px solid var(--fill-surface-base); box-shadow: 0 0 0 1px var(--stroke-control-strong); transform: translate(-50%, -50%); transition: border-width var(--motion-fast) var(--ease-standard); }
+.mr-slider:hover .mr-slider__thumb { border-width: 3px; }
+
+/* ---------------------------------------------------------------
+   NUMBER BOX
+--------------------------------------------------------------- */
+.mr-numberbox { display: inline-flex; align-items: center; height: var(--size-control-height); background: var(--fill-control-default); border: 1px solid var(--stroke-control); border-bottom-color: var(--stroke-control-secondary); border-radius: var(--radius-control); overflow: hidden; }
+.mr-numberbox:focus-within { background: var(--fill-control-input-active); box-shadow: inset 0 -2px 0 0 var(--fill-accent-default); }
+.mr-numberbox input { width: 64px; border: none; outline: none; background: transparent; font: var(--text-body); color: var(--fill-text-primary); padding: 0 10px; text-align: left; }
+.mr-numberbox__btns { display: flex; flex-direction: column; flex: none; }
+.mr-numberbox__btn { width: 28px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fill-text-secondary); cursor: pointer; }
+.mr-numberbox__btn:hover { background: var(--fill-subtle-secondary); color: var(--fill-text-primary); }
+.mr-numberbox__btn .mr-icon { font-size: 12px; }

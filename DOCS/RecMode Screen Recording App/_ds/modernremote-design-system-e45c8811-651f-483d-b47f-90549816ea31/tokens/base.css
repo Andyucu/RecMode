@@ -1,0 +1,71 @@
+/* ============================================================
+   ModernRemote — Base element defaults.
+   Light, non-opinionated. Applies the Fluent type + color tokens
+   to bare elements so specimen cards and kits inherit sane
+   defaults without per-element wiring.
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font: var(--text-body);
+  color: var(--fill-text-primary);
+  background: var(--fill-surface-mica);
+}
+
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Fluent surface helper — apply Mica-like backdrop to a region */
+.mr-surface {
+  background: var(--fill-surface-mica);
+  color: var(--fill-text-primary);
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+}
+
+a {
+  color: var(--fill-accent-text);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--stroke-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+::selection {
+  background: var(--fill-accent-default);
+  color: var(--fill-text-on-accent);
+}
+
+/* Thin Fluent-style scrollbars for kit scroll regions */
+.mr-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stroke-control-strong) transparent;
+}
+.mr-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.mr-scroll::-webkit-scrollbar-thumb {
+  background: var(--stroke-control-strong);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.mr-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--fill-text-tertiary);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}

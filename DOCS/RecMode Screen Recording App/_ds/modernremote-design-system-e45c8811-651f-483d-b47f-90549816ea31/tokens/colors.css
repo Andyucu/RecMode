@@ -1,0 +1,158 @@
+/* ============================================================
+   ModernRemote — Color tokens (Windows 11 / Fluent)
+   ------------------------------------------------------------
+   Light theme on :root, dark theme under :root[data-theme="dark"].
+   Values follow the WinUI 3 / Fluent theme resources.
+
+   Naming:
+     --fill-text-*      text fills (primary→disabled)
+     --fill-accent-*    accent (brand) fills + variants
+     --fill-control-*   control backgrounds & strokes
+     --fill-surface-*   layered app surfaces (Mica/Layer/Card)
+     --fill-system-*    semantic (success/caution/critical/info)
+     --stroke-*         dividers, borders, focus
+   ============================================================ */
+
+:root {
+  /* ---------- Brand accent ----------
+     Single hook: change --accent-base (or set data-accent on :root) and the
+     whole ramp + semantic fills follow. Default = Windows blue. */
+  --accent-base:     #0078d4;
+  --accent-light-1:  color-mix(in srgb, var(--accent-base) 86%, #ffffff);
+  --accent-light-2:  color-mix(in srgb, var(--accent-base) 58%, #ffffff);
+  --accent-light-3:  color-mix(in srgb, var(--accent-base) 32%, #ffffff);
+  --accent-dark-1:   color-mix(in srgb, var(--accent-base) 84%, #000000);
+  --accent-dark-2:   color-mix(in srgb, var(--accent-base) 62%, #000000);
+  --accent-dark-3:   color-mix(in srgb, var(--accent-base) 42%, #000000);
+
+  /* ---------- Text fills (on light) ---------- */
+  --fill-text-primary:   rgba(0, 0, 0, 0.896);
+  --fill-text-secondary: rgba(0, 0, 0, 0.606);
+  --fill-text-tertiary:  rgba(0, 0, 0, 0.446);
+  --fill-text-disabled:  rgba(0, 0, 0, 0.361);
+  --fill-text-on-accent: #ffffff;
+  --fill-text-on-accent-disabled: rgba(255, 255, 255, 0.70);
+
+  /* ---------- Accent fills (semantic) ---------- */
+  --fill-accent-default:  var(--accent-dark-1);
+  --fill-accent-secondary: color-mix(in srgb, var(--accent-dark-1) 90%, transparent);
+  --fill-accent-tertiary:  color-mix(in srgb, var(--accent-dark-1) 80%, transparent);
+  --fill-accent-disabled:  rgba(0, 0, 0, 0.217);
+  --fill-accent-text:      var(--accent-dark-2);   /* hyperlink / accent text */
+
+  /* ---------- Control fills ---------- */
+  --fill-control-default:   rgba(255, 255, 255, 0.70);
+  --fill-control-secondary: rgba(249, 249, 249, 0.50);
+  --fill-control-tertiary:  rgba(249, 249, 249, 0.30);
+  --fill-control-disabled:  rgba(249, 249, 249, 0.30);
+  --fill-control-input-active: #ffffff;
+
+  --fill-subtle-default:    transparent;
+  --fill-subtle-secondary:  rgba(0, 0, 0, 0.037);   /* hover */
+  --fill-subtle-tertiary:   rgba(0, 0, 0, 0.024);   /* pressed */
+
+  /* ---------- Layered surfaces (Mica / Layer / Card) ---------- */
+  --fill-surface-base:       #f3f3f3;  /* solid window base */
+  --fill-surface-secondary:  #eeeeee;
+  --fill-surface-tertiary:   #f9f9f9;
+  --fill-surface-mica:       #f3f3f3;  /* approximated Mica backdrop */
+  --fill-surface-layer:      rgba(255, 255, 255, 0.50);
+  --fill-surface-layer-alt:  #ffffff;
+  --fill-surface-card:       rgba(255, 255, 255, 0.70);
+  --fill-surface-card-secondary: rgba(246, 246, 246, 0.50);
+  --fill-surface-smoke:      rgba(0, 0, 0, 0.30);    /* dialog scrim */
+  --fill-surface-acrylic:    rgba(252, 252, 252, 0.85); /* flyout/menu */
+
+  /* ---------- Strokes ---------- */
+  --stroke-control:          rgba(0, 0, 0, 0.058);
+  --stroke-control-secondary: rgba(0, 0, 0, 0.162); /* bottom "accent" stroke of inputs */
+  --stroke-control-strong:   rgba(0, 0, 0, 0.446);
+  --stroke-card:             rgba(0, 0, 0, 0.058);
+  --stroke-surface:          rgba(117, 117, 117, 0.40);
+  --stroke-divider:          rgba(0, 0, 0, 0.083);
+  --stroke-focus:            rgba(0, 0, 0, 0.896);   /* outer focus rect */
+  --stroke-focus-inner:      #ffffff;
+
+  /* ---------- System / semantic ---------- */
+  --fill-system-success:        #0f7b0f;
+  --fill-system-success-bg:     #dff6dd;
+  --fill-system-caution:        #9d5d00;
+  --fill-system-caution-bg:     #fff4ce;
+  --fill-system-critical:       #c42b1c;
+  --fill-system-critical-bg:    #fde7e9;
+  --fill-system-info:           var(--accent-dark-1);
+  --fill-system-info-bg:        #f3f3f3;
+  --fill-system-neutral:        rgba(0, 0, 0, 0.446);
+  --fill-system-neutral-bg:     rgba(0, 0, 0, 0.024);
+
+  /* Connection-status dots (ModernRemote domain) */
+  --status-connected:    #0f7b0f;
+  --status-connecting:   #9d5d00;
+  --status-disconnected: rgba(0, 0, 0, 0.361);
+  --status-error:        #c42b1c;
+}
+
+/* ============================================================
+   DARK THEME
+   ============================================================ */
+:root[data-theme="dark"] {
+  /* Accent default is brighter in dark mode */
+  --fill-accent-default:   var(--accent-light-2);
+  --fill-accent-secondary: color-mix(in srgb, var(--accent-light-2) 90%, transparent);
+  --fill-accent-tertiary:  color-mix(in srgb, var(--accent-light-2) 80%, transparent);
+  --fill-accent-disabled:  rgba(255, 255, 255, 0.158);
+  --fill-accent-text:      var(--accent-light-3);
+
+  --fill-text-primary:   #ffffff;
+  --fill-text-secondary: rgba(255, 255, 255, 0.786);
+  --fill-text-tertiary:  rgba(255, 255, 255, 0.544);
+  --fill-text-disabled:  rgba(255, 255, 255, 0.363);
+  --fill-text-on-accent: #000000;
+  --fill-text-on-accent-disabled: rgba(0, 0, 0, 0.53);
+
+  --fill-control-default:   rgba(255, 255, 255, 0.061);
+  --fill-control-secondary: rgba(255, 255, 255, 0.084);
+  --fill-control-tertiary:  rgba(255, 255, 255, 0.033);
+  --fill-control-disabled:  rgba(255, 255, 255, 0.042);
+  --fill-control-input-active: rgba(30, 30, 30, 0.70);
+
+  --fill-subtle-default:    transparent;
+  --fill-subtle-secondary:  rgba(255, 255, 255, 0.061);
+  --fill-subtle-tertiary:   rgba(255, 255, 255, 0.033);
+
+  --fill-surface-base:       #202020;
+  --fill-surface-secondary:  #1c1c1c;
+  --fill-surface-tertiary:   #282828;
+  --fill-surface-mica:       #202020;
+  --fill-surface-layer:      rgba(58, 58, 58, 0.30);
+  --fill-surface-layer-alt:  rgba(255, 255, 255, 0.054);
+  --fill-surface-card:       rgba(255, 255, 255, 0.051);
+  --fill-surface-card-secondary: rgba(255, 255, 255, 0.026);
+  --fill-surface-smoke:      rgba(0, 0, 0, 0.30);
+  --fill-surface-acrylic:    rgba(44, 44, 44, 0.90);
+
+  --stroke-control:          rgba(255, 255, 255, 0.070);
+  --stroke-control-secondary: rgba(255, 255, 255, 0.093);
+  --stroke-control-strong:   rgba(255, 255, 255, 0.544);
+  --stroke-card:             rgba(255, 255, 255, 0.058);
+  --stroke-surface:          rgba(117, 117, 117, 0.40);
+  --stroke-divider:          rgba(255, 255, 255, 0.083);
+  --stroke-focus:            #ffffff;
+  --stroke-focus-inner:      #000000;
+
+  --fill-system-success:        #6ccb5f;
+  --fill-system-success-bg:     #393d1b;
+  --fill-system-caution:        #fce100;
+  --fill-system-caution-bg:     #433519;
+  --fill-system-critical:       #ff99a4;
+  --fill-system-critical-bg:    #442726;
+  --fill-system-info:           var(--accent-light-2);
+  --fill-system-info-bg:        #2d2d2d;
+  --fill-system-neutral:        rgba(255, 255, 255, 0.544);
+  --fill-system-neutral-bg:     rgba(255, 255, 255, 0.033);
+
+  --status-connected:    #6ccb5f;
+  --status-connecting:   #fce100;
+  --status-disconnected: rgba(255, 255, 255, 0.363);
+  --status-error:        #ff99a4;
+}

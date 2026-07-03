@@ -1,0 +1,23 @@
+# Normalize line endings. Text files use LF in the repo; Windows checkouts get CRLF where natural.
+* text=auto
+
+*.cs        text eol=crlf
+*.xaml      text eol=crlf
+*.csproj    text eol=crlf
+*.props     text eol=crlf
+*.targets   text eol=crlf
+*.slnx      text eol=crlf
+*.ps1       text eol=crlf
+*.manifest  text eol=crlf
+*.json      text eol=lf
+*.md        text
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.svg text
+*.zip binary
+*.exe binary
+*.dll binary
+*.dmp binary

@@ -1,0 +1,15 @@
+/* ============================================================
+   ModernRemote Design System — global entry point.
+   Consumers link THIS file. Keep it as @import lines only.
+   ============================================================ */
+@import url("./tokens/fonts.css");
+@import url("./tokens/colors.css");
+@import url("./tokens/typography.css");
+@import url("./tokens/spacing.css");
+@import url("./tokens/elevation.css");
+@import url("./tokens/motion.css");
+@import url("./tokens/themes.css");
+@import url("./tokens/base.css");
+@import url("./assets/icons.css");
+@import url("./assets/materials.css");
+@import url("./components/components.css");

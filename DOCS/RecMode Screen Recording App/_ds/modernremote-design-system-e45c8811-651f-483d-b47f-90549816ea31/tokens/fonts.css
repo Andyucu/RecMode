@@ -1,0 +1,43 @@
+/* ============================================================
+   ModernRemote — Fonts
+   ------------------------------------------------------------
+   Windows 11 / Fluent uses "Segoe UI Variable" (optical sizes
+   Small / Text / Display) for UI, and "Cascadia Code" /
+   "Cascadia Mono" for terminals & code (the Windows Terminal
+   default). Those binaries are proprietary / not redistributable,
+   so the type tokens point at the real families and fall back to
+   the host's system sans / mono. On Windows 11 (the target OS)
+   the REAL fonts render natively.
+
+   SUBSTITUTION FLAG — to pin exact cross-platform rendering,
+   upload the real font files (or a licensed metric-compatible
+   replacement such as Selawik for Segoe UI) and add the url()
+   sources to the @font-face rules below. We intentionally avoid
+   a remote Google-Fonts @import in this closure so the sheet
+   stays self-contained.
+
+   The @font-face rules below declare the real families with
+   local() sources only: on Windows 11 (the target OS) the actual
+   installed font loads; everywhere else local() misses and the
+   token's fallback stack renders. Add `url(...)` sources here to
+   ship the binaries with the system.
+   ============================================================ */
+
+@font-face {
+  font-family: "Segoe UI Variable";
+  src: local("Segoe UI Variable Text"), local("Segoe UI Variable"), local("Segoe UI");
+  font-weight: 100 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Segoe UI Variable Display";
+  src: local("Segoe UI Variable Display"), local("Segoe UI Variable"), local("Segoe UI Semibold"), local("Segoe UI");
+  font-weight: 100 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: local("Cascadia Code"), local("Cascadia Mono"), local("Consolas");
+  font-weight: 200 700;
+  font-display: swap;
+}

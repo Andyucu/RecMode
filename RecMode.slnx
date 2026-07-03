@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RecMode.App/RecMode.App.csproj" />
+    <Project Path="src/RecMode.Audio/RecMode.Audio.csproj" />
+    <Project Path="src/RecMode.Capture/RecMode.Capture.csproj" />
+    <Project Path="src/RecMode.Core/RecMode.Core.csproj" />
+    <Project Path="src/RecMode.Encoding/RecMode.Encoding.csproj" />
+    <Project Path="src/RecMode.Interop/RecMode.Interop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RecMode.Core.Tests/RecMode.Core.Tests.csproj" />
+    <Project Path="tests/RecMode.Encoding.Tests/RecMode.Encoding.Tests.csproj" />
+    <Project Path="tests/RecMode.Recording.Tests/RecMode.Recording.Tests.csproj" />
+  </Folder>
+</Solution>

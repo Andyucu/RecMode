@@ -1,0 +1,49 @@
+/* ============================================================
+   ModernRemote — Typography tokens
+   Windows 11 / Fluent type ramp. Real font on Windows is
+   "Segoe UI Variable"; "Open Sans" is the cross-platform fallback.
+   ============================================================ */
+:root {
+  /* ---- Families ---- */
+  --font-ui: "Segoe UI Variable", "Segoe UI Variable Text", "Segoe UI",
+             "Open Sans", system-ui, -apple-system, sans-serif;
+  /* Display optical size — used for Title Large / Display ramp steps */
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable",
+                  "Segoe UI", "Open Sans", system-ui, sans-serif;
+  /* Terminal / code — Windows Terminal default */
+  --font-mono: "Cascadia Code", "Cascadia Mono", "Consolas",
+               ui-monospace, "SF Mono", monospace;
+
+  /* ---- Weights ---- */
+  --weight-regular: 400;
+  --weight-medium: 500;   /* Segoe "Semilight"->"Medium" range */
+  --weight-semibold: 600; /* Fluent "Strong" / Subtitle / Title */
+  --weight-bold: 700;
+
+  /* ---- Fluent type ramp ----
+     size / line-height / weight. Sizes are in px to match WinUI. */
+  --type-caption-size: 12px;        --type-caption-line: 16px;
+  --type-body-size: 14px;           --type-body-line: 20px;
+  --type-body-strong-size: 14px;    --type-body-strong-line: 20px;
+  --type-body-large-size: 18px;     --type-body-large-line: 24px;
+  --type-subtitle-size: 20px;       --type-subtitle-line: 28px;
+  --type-title-size: 28px;          --type-title-line: 36px;
+  --type-title-large-size: 40px;    --type-title-large-line: 52px;
+  --type-display-size: 68px;        --type-display-line: 92px;
+
+  /* Fluent uses near-zero tracking; display tightens slightly */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+}
+
+/* ---- Convenience composite tokens (semantic) ---- */
+:root {
+  --text-caption: var(--weight-regular) var(--type-caption-size) / var(--type-caption-line) var(--font-ui);
+  --text-body: var(--weight-regular) var(--type-body-size) / var(--type-body-line) var(--font-ui);
+  --text-body-strong: var(--weight-semibold) var(--type-body-strong-size) / var(--type-body-strong-line) var(--font-ui);
+  --text-body-large: var(--weight-regular) var(--type-body-large-size) / var(--type-body-large-line) var(--font-ui);
+  --text-subtitle: var(--weight-semibold) var(--type-subtitle-size) / var(--type-subtitle-line) var(--font-ui);
+  --text-title: var(--weight-semibold) var(--type-title-size) / var(--type-title-line) var(--font-display);
+  --text-title-large: var(--weight-semibold) var(--type-title-large-size) / var(--type-title-large-line) var(--font-display);
+  --text-display: var(--weight-semibold) var(--type-display-size) / var(--type-display-line) var(--font-display);
+}

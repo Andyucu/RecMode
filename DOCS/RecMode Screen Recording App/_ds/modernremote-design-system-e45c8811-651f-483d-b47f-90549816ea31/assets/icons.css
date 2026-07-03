@@ -1,0 +1,32 @@
+/* ============================================================
+   ModernRemote — Iconography
+   ------------------------------------------------------------
+   Real icon set: Microsoft "Fluent System Icons" (MIT), served
+   from jsDelivr. We render each monochrome SVG through a CSS
+   mask so it inherits `currentColor` and themes correctly in
+   light/dark — unlike <img>, which would stay black.
+
+   NOTE: Windows 11's *system* glyphs (caption buttons, some
+   chrome) ship in the proprietary "Segoe Fluent Icons" font,
+   which we cannot redistribute. Fluent System Icons cover the
+   same shapes and are the supported open substitute.
+
+   Usage (plain HTML):
+     <span class="mr-icon" style="--i:url('…/folder_20_regular.svg')"></span>
+   Usage (React): see components/core/Icon.jsx
+   ============================================================ */
+
+.mr-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask: var(--i) center / contain no-repeat;
+  mask: var(--i) center / contain no-repeat;
+}
+.mr-icon[data-size="16"] { font-size: 16px; }
+.mr-icon[data-size="20"] { font-size: 20px; }
+.mr-icon[data-size="24"] { font-size: 24px; }
+.mr-icon[data-size="28"] { font-size: 28px; }

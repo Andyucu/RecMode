@@ -1,0 +1,44 @@
+# RecMode .editorconfig
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,csproj,props,targets,xml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{ps1,psm1}]
+indent_size = 4
+
+[*.cs]
+# Language conventions
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_expression_bodied_methods = when_on_single_line:silent
+
+# Naming: private fields _camelCase
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_prefix
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_prefix.required_prefix = _
+dotnet_naming_style.underscore_prefix.capitalization = camel_case
+
+# Analyzer noise control for a desktop app
+dotnet_diagnostic.CA1848.severity = none   # LoggerMessage delegates — not worth it app-wide
+dotnet_diagnostic.CA1031.severity = none   # catching general Exception is intentional at boundaries
+dotnet_diagnostic.CA1716.severity = none   # "Error"/"Report" are intended domain names
+dotnet_diagnostic.CA1305.severity = none   # invariant-culture noise on file paths/log templates

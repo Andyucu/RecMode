@@ -1,0 +1,20 @@
+<Application x:Class="RecMode.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Phase 0 placeholder palette; Phase 1 ports the design-system tokens. -->
+            <Color x:Key="BackgroundColor">#202020</Color>
+            <Color x:Key="SurfaceColor">#2B2B2B</Color>
+            <Color x:Key="TextColor">#FFFFFF</Color>
+            <Color x:Key="SubtleTextColor">#C8C8C8</Color>
+            <Color x:Key="AccentColor">#0078D4</Color>
+
+            <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
+            <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+            <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+            <SolidColorBrush x:Key="SubtleTextBrush" Color="{StaticResource SubtleTextColor}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

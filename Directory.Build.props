@@ -1,0 +1,32 @@
+<Project>
+
+  <!-- Shared MSBuild properties for every RecMode project. -->
+  <PropertyGroup>
+    <!-- Win11 primary; floor is Win10 2004 (19041) — set by process-loopback audio + WDA_EXCLUDEFROMCAPTURE. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier Condition="'$(IsPublishable)' == 'true'">win-x64</RuntimeIdentifier>
+
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+
+    <!-- Analyzers on; keep noise realistic for a desktop app (see .editorconfig). -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+
+    <Company>RecMode</Company>
+    <Product>RecMode</Product>
+    <Copyright>Copyright © RecMode</Copyright>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>en</NeutralLanguage>
+
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RecMode.Core\RecMode.Core.csproj" />
+    <ProjectReference Include="..\RecMode.Interop\RecMode.Interop.csproj" />
+  </ItemGroup>
+
+</Project>
