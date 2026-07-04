@@ -18,6 +18,11 @@ public sealed record FfmpegJob
 
     public required string PipeName { get; init; }
     public required string OutputPath { get; init; }
+
+    /// <summary>Set to add a second (audio) input: f32le 48 kHz stereo over this named pipe.</summary>
+    public string? AudioPipeName { get; init; }
+    public AudioCodec AudioCodec { get; init; } = AudioCodec.Aac;
+    public int AudioBitrateKbps { get; init; } = 192;
 }
 
 /// <summary>
@@ -31,14 +36,42 @@ public static class FfmpegArgsBuilder
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        string input =
+        string videoIn =
             $"-f rawvideo -pix_fmt nv12 -s {job.Width}x{job.Height} -r {job.FrameRate} " +
             $"-i \\\\.\\pipe\\{job.PipeName}";
 
-        string encoder = BuildEncoderArgs(job.Encoder, job.Quality);
-        string container = job.Container == MediaContainer.Mp4 ? "-movflags +faststart" : "";
+        string audioIn = "", audioMap = "", audioEnc = "";
+        if (job.AudioPipeName is not null)
+        {
+            audioIn = $"-f f32le -ar 48000 -ac 2 -i \\\\.\\pipe\\{job.AudioPipeName}";
+            audioMap = "-map 0:v:0 -map 1:a:0";
+            audioEnc = BuildAudioArgs(job.Container, job.AudioCodec, job.AudioBitrateKbps);
+        }
 
-        return $"-hide_banner -loglevel warning {input} {encoder} -pix_fmt yuv420p {container} -y \"{job.OutputPath}\"";
+        string encoder = BuildEncoderArgs(job.Encoder, job.Quality);
+        string faststart = job.Container == MediaContainer.Mp4 ? "-movflags +faststart" : "";
+
+        return $"-hide_banner -loglevel warning {videoIn} {audioIn} {audioMap} " +
+               $"{encoder} -pix_fmt yuv420p {audioEnc} {faststart} -y \"{job.OutputPath}\"";
+    }
+
+    /// <summary>Audio codec steered by container (plan §3.3): MP4/MOV→AAC, MKV/WebM→Opus, with FLAC where valid.</summary>
+    public static string BuildAudioArgs(MediaContainer container, AudioCodec requested, int bitrateKbps)
+    {
+        AudioCodec codec = container switch
+        {
+            MediaContainer.WebM => AudioCodec.Opus,                                   // WebM = Opus only
+            MediaContainer.Mp4 or MediaContainer.Mov => requested == AudioCodec.Flac  // MP4/MOV can't do Opus
+                ? AudioCodec.Aac : requested == AudioCodec.Opus ? AudioCodec.Aac : requested,
+            _ => requested, // MKV takes anything
+        };
+
+        return codec switch
+        {
+            AudioCodec.Opus => $"-c:a libopus -b:a {bitrateKbps}k",
+            AudioCodec.Flac => "-c:a flac",
+            _ => $"-c:a aac -b:a {bitrateKbps}k",
+        };
     }
 
     /// <summary>CRF from the design model, clamped to a sane encoder range.</summary>

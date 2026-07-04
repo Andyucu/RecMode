@@ -132,6 +132,13 @@ public partial class App : Application
     private void RunSelfTest(IAppPaths paths, string mode)
     {
         bool region = mode == "region";
+
+        // "av" mode: force system audio on so the recording gets an audio track.
+        if (mode == "av")
+        {
+            var s = _host!.Services.GetRequiredService<ISettingsService>();
+            s.Current.SystemAudioEnabled = true;
+        }
         var coordinator = _host!.Services.GetRequiredService<Services.RecordingCoordinator>();
         var probe = _host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");

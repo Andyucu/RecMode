@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using RecMode.Audio;
 using RecMode.Capture;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
@@ -41,6 +42,12 @@ public sealed class RecordingCoordinator : IDisposable
     private string _finalPath = "";
     private string _recordingPath = "";
 
+    // Audio.
+    private readonly Func<IAudioMixer> _mixerFactory;
+    private IAudioMixer? _mixer;
+    private Thread? _audioThread;
+    private CancellationTokenSource? _audioStop;
+
     private readonly IEncoderProbe _encoderProbe;
 
     public RecordingCoordinator(
@@ -50,7 +57,8 @@ public sealed class RecordingCoordinator : IDisposable
         ISettingsService settings,
         IErrorReporter errors,
         RecordingStateMachine stateMachine,
-        IEncoderProbe encoderProbe)
+        IEncoderProbe encoderProbe,
+        Func<IAudioMixer> mixerFactory)
     {
         _captureFactory = captureFactory;
         _ffmpeg = ffmpeg;
@@ -59,6 +67,7 @@ public sealed class RecordingCoordinator : IDisposable
         _errors = errors;
         _stateMachine = stateMachine;
         _encoderProbe = encoderProbe;
+        _mixerFactory = mixerFactory;
     }
 
     public RecordingState State => _stateMachine.State;
@@ -154,6 +163,9 @@ public sealed class RecordingCoordinator : IDisposable
                 : _finalPath;
             _ffmpegPath = ff.FfmpegPath;
 
+            bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
+            string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
+
             var job = new FfmpegJob
             {
                 Encoder = encoder,
@@ -164,7 +176,16 @@ public sealed class RecordingCoordinator : IDisposable
                 Quality = quality,
                 PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
                 OutputPath = _recordingPath,
+                AudioPipeName = audioPipeName,
+                AudioCodec = _settings.Current.AudioCodec,
+                AudioBitrateKbps = _settings.Current.AudioBitrateKbps,
             };
+
+            if (audioEnabled)
+            {
+                _mixer = _mixerFactory();
+                _mixer.Start(_settings.Current.SystemAudioEnabled, _settings.Current.MicrophoneEnabled);
+            }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
             _session = TryStartAnyEncoder(BuildFallbackChain(encoder), job, _capture.Nv12ByteSize);
@@ -183,8 +204,28 @@ public sealed class RecordingCoordinator : IDisposable
             _pacer = new Thread(() => PaceLoop(fps)) { IsBackground = true, Name = "recmode-pacer" };
             _pacer.Start();
 
-            Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} -> {Path}",
-                encoder.FfmpegId, dstW, dstH, fps, _safeRemux, _finalPath);
+            // Audio pump runs on its own thread: ffmpeg opens the audio pipe only after it has probed the
+            // video stream (which needs frames flowing), so we start video pacing first, then wait + pump.
+            if (_mixer is not null && _session.AudioPipe is { } audioPipe)
+            {
+                _audioStop = new CancellationTokenSource();
+                _audioThread = new Thread(() =>
+                {
+                    try
+                    {
+                        audioPipe.WaitForConnection();
+                        _mixer.PumpUntil(audioPipe, () => _stateMachine.Elapsed, _audioStop.Token);
+                    }
+                    catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                    {
+                        Log.Warning(ex, "Audio pump ended");
+                    }
+                }) { IsBackground = true, Name = "recmode-audio" };
+                _audioThread.Start();
+            }
+
+            Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} audio={Audio} -> {Path}",
+                encoder.FfmpegId, dstW, dstH, fps, _safeRemux, audioEnabled, _finalPath);
             return true;
         }
         catch (Exception ex)
@@ -350,6 +391,10 @@ public sealed class RecordingCoordinator : IDisposable
 
     private RecordingResult Finalize()
     {
+        // Stop the audio pump before the session closes the pipes.
+        _audioStop?.Cancel();
+        _audioThread?.Join(3000);
+
         string stderr = _session?.StandardError ?? "";
         RecordingResult result = _session?.StopAndFinalize(TimeSpan.FromSeconds(20))
             ?? new RecordingResult(false, -1, "", 0);
@@ -362,8 +407,13 @@ public sealed class RecordingCoordinator : IDisposable
         _capture?.Stop();
         _session?.Dispose();
         _capture?.Dispose();
+        _mixer?.Dispose();
+        _audioStop?.Dispose();
         _session = null;
         _capture = null;
+        _mixer = null;
+        _audioThread = null;
+        _audioStop = null;
 
         // Safe recording: remux the crash-safe MKV to MP4 without re-encoding.
         if (result.Success && _safeRemux)
@@ -548,10 +598,15 @@ public sealed class RecordingCoordinator : IDisposable
 
     private void SafeTeardown()
     {
+        try { _audioStop?.Cancel(); } catch (Exception) { }
+        try { _audioThread?.Join(1000); } catch (Exception) { }
         try { _session?.Dispose(); } catch (Exception) { }
         try { _capture?.Dispose(); } catch (Exception) { }
+        try { _mixer?.Dispose(); } catch (Exception) { }
         _session = null;
         _capture = null;
+        _mixer = null;
+        _audioThread = null;
     }
 
     private static string ContainerExtension(MediaContainer c) => c switch

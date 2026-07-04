@@ -29,6 +29,9 @@ public sealed class FfmpegRecordingSession : IDisposable
     public string OutputPath { get; private set; } = "";
     public long FramesWritten => _framesWritten;
 
+    /// <summary>The audio input pipe (server side) when the job configured audio; the coordinator connects + pumps it.</summary>
+    public NamedPipeServerStream? AudioPipe { get; private set; }
+
     /// <summary>ffmpeg's captured stderr (for diagnosing failures).</summary>
     public string StandardError { get { lock (_stderrLock) { return _stderr.ToString(); } } }
 
@@ -43,6 +46,13 @@ public sealed class FfmpegRecordingSession : IDisposable
         _pipe = new NamedPipeServerStream(
             job.PipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous, frameBytes * 4, frameBytes * 4);
+
+        if (job.AudioPipeName is not null)
+        {
+            AudioPipe = new NamedPipeServerStream(
+                job.AudioPipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous, 1 << 20, 1 << 20);
+        }
 
         string args = FfmpegArgsBuilder.Build(job);
         var psi = new ProcessStartInfo(_ffmpegPath, args)
@@ -116,6 +126,13 @@ public sealed class FfmpegRecordingSession : IDisposable
             _pipe = null;
         }
 
+        if (AudioPipe is not null)
+        {
+            try { AudioPipe.Flush(); AudioPipe.WaitForPipeDrain(); } catch (IOException) { }
+            AudioPipe.Dispose();
+            AudioPipe = null;
+        }
+
         int exitCode = -1;
         if (_ffmpeg is not null)
         {
@@ -138,6 +155,7 @@ public sealed class FfmpegRecordingSession : IDisposable
 
         _disposed = true;
         try { _pipe?.Dispose(); } catch (IOException) { }
+        try { AudioPipe?.Dispose(); } catch (IOException) { }
 
         try
         {

@@ -8,6 +8,9 @@
     <Project Path="src/RecMode.Interop/RecMode.Interop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RecMode.Audio.Tests/RecMode.Audio.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="tests/RecMode.Core.Tests/RecMode.Core.Tests.csproj" />
     <Project Path="tests/RecMode.Encoding.Tests/RecMode.Encoding.Tests.csproj" />
     <Project Path="tests/RecMode.Recording.Tests/RecMode.Recording.Tests.csproj" />

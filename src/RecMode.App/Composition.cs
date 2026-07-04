@@ -3,6 +3,7 @@ using RecMode.App.Services;
 using RecMode.App.Themes;
 using RecMode.App.ViewModels;
 using RecMode.App.Views;
+using RecMode.Audio;
 using RecMode.Capture;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
@@ -38,6 +39,7 @@ internal static class Composition
         services.AddSingleton<IEncoderProbe, EncoderProbe>();
         services.AddSingleton<Func<ICaptureEngine>>(_ => () => new WgcCaptureEngine());
         services.AddSingleton<Func<IPreviewEngine>>(_ => () => new WgcPreviewEngine());
+        services.AddSingleton<Func<IAudioMixer>>(_ => () => new AudioMixer());
         services.AddSingleton<RecordingCoordinator>();
 
         // Theming.

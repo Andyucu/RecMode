@@ -96,8 +96,10 @@
                 </Border>
             </Grid>
 
-            <!-- Video settings card -->
-            <Border Grid.Column="1" Style="{StaticResource Card}" VerticalAlignment="Top">
+            <!-- Right panel: Video + Audio cards -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+            <Border Style="{StaticResource Card}">
                 <StackPanel IsEnabled="{Binding CanEditSettings}">
                     <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
@@ -174,6 +176,35 @@
                             IsSnapToTickEnabled="True" TickFrequency="1" />
                 </StackPanel>
             </Border>
+
+            <!-- Audio mixer card -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="Audio" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <!-- System audio -->
+                    <Grid Margin="0,0,0,6">
+                        <TextBlock Text="System audio" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,14"
+                                 Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 BorderThickness="0" />
+
+                    <!-- Microphone -->
+                    <Grid Margin="0,0,0,6">
+                        <TextBlock Text="Microphone" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding MicEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6"
+                                 Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 BorderThickness="0" />
+                </StackPanel>
+            </Border>
+            </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>

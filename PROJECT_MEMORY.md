@@ -8,6 +8,46 @@
 
 ---
 
+## Session 2026-07-04 — Phase 4 (part 1): audio mixer, meters, A/V mux
+
+**Goal:** Get sound into recordings — system + mic mixer, meters, muxed audio, mixer UI.
+
+### What was built
+- **`RecMode.Audio`** (NAudio): `AudioLevel`, `AudioMath` (SoftClip=tanh, Peak, Rms — unit-tested),
+  `MixSource` (one WASAPI capture → normalized to 48 kHz stereo f32 via `BufferedWaveProvider` +
+  `MonoToStereoSampleProvider` + `WdlResamplingSampleProvider`; meter in DataAvailable; buffer bounded +
+  DiscardOnBufferOverflow so metering-only doesn't grow), `AudioMixer`/`IAudioMixer` (system loopback +
+  mic; per-source gain/mute; `PumpUntil(pipe, Func<TimeSpan> activeElapsed, token)` mixes with soft-clip
+  and paces to **active elapsed** so audio pauses with video).
+- **Encoding**: `FfmpegJob` gains `AudioPipeName`/`AudioCodec`/`AudioBitrateKbps`; `FfmpegArgsBuilder`
+  adds the audio input + `BuildAudioArgs` (container steering: MP4/MOV→AAC, MKV→requested, WebM→Opus,
+  FLAC valid on MKV); `FfmpegRecordingSession` creates + exposes the `AudioPipe`, closes both pipes on finalize.
+- **Coordinator**: injects `Func<IAudioMixer>`; if `SystemAudioEnabled||MicrophoneEnabled`, sets the audio
+  pipe on the job, starts a recording mixer, and (after the video pacer, to avoid the 2-input deadlock)
+  runs an audio thread: `AudioPipe.WaitForConnection()` then `PumpUntil(..., () => _stateMachine.Elapsed)`.
+  Audio torn down in Finalize/SafeTeardown.
+- **UI**: RecordViewModel metering (separate meter mixer + `DispatcherTimer` ≤30 Hz → `SystemMeter`/`MicMeter`
+  RMS; `SystemAudioEnabled`/`MicEnabled` toggles persisted; started/stopped with nav/minimize). RecordView
+  Audio card (System + Mic toggle + `ProgressBar` meter); right panel wrapped in a `ScrollViewer`.
+
+### Verification
+- `--selftest-av` → MP4 with **h264 + aac (48 kHz, 2ch)**; video 5.999 / audio 6.000 s (~1 ms aligned).
+- Audio card renders (screenshot): System toggle on + meter, Mic toggle off + meter. 54 tests, 0 warnings.
+
+### Gotchas
+- **ProgressBar `Value` binding defaults effectively TwoWay** on a read-only VM property → `InvalidOperationException`
+  ("cannot work on read-only property"). Fix: `Value="{Binding SystemMeter, Mode=OneWay}"`.
+- Meter mixer (VM) and recording mixer (coordinator) are **separate instances** (two WASAPI loopback clients
+  — allowed) → clean ownership; recording mixer is fresh (no stale-buffer sync issue).
+- Two-input pipe deadlock (again): start video pacing before waiting on the audio-pipe connection.
+
+### Remaining for Phase 4
+- Mic verified on real hardware (headless env = no mic signal, like AMF needed real AMD hw). Per-source
+  mute/gain UI (mixer supports them). FLAC path. Caution meter colour >82%. Mid-recording mute/gain
+  propagation to the recording mixer. ±40 ms soak sync test (beep+flash).
+
+---
+
 ## Session 2026-07-04 — Phase 3 (part 1): pause/resume, safe recording, encoder fallback
 
 **Goal:** Productionize the recording flow — pause/resume with no gap, safe recording, fallback chain.

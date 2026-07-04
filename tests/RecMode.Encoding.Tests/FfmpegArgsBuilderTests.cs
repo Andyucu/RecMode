@@ -67,4 +67,24 @@ public class FfmpegArgsBuilderTests
         Assert.Contains("+faststart", FfmpegArgsBuilder.Build(Job(enc, MediaContainer.Mp4)));
         Assert.DoesNotContain("+faststart", FfmpegArgsBuilder.Build(Job(enc, MediaContainer.Mkv)));
     }
+
+    [Fact]
+    public void AudioCodec_SteeredByContainer()
+    {
+        // MP4/MOV → AAC; MKV → requested; WebM → Opus (plan §3.3).
+        Assert.Equal("-c:a aac -b:a 192k", FfmpegArgsBuilder.BuildAudioArgs(MediaContainer.Mp4, AudioCodec.Aac, 192));
+        Assert.Equal("-c:a aac -b:a 192k", FfmpegArgsBuilder.BuildAudioArgs(MediaContainer.Mp4, AudioCodec.Opus, 192)); // MP4 can't Opus
+        Assert.Equal("-c:a libopus -b:a 128k", FfmpegArgsBuilder.BuildAudioArgs(MediaContainer.Mkv, AudioCodec.Opus, 128));
+        Assert.Equal("-c:a libopus -b:a 128k", FfmpegArgsBuilder.BuildAudioArgs(MediaContainer.WebM, AudioCodec.Aac, 128)); // WebM → Opus
+        Assert.Equal("-c:a flac", FfmpegArgsBuilder.BuildAudioArgs(MediaContainer.Mkv, AudioCodec.Flac, 192));
+    }
+
+    [Fact]
+    public void AudioInput_AddedWhenPipeConfigured()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { AudioPipeName = "aud" };
+        string args = FfmpegArgsBuilder.Build(job);
+        Assert.Contains("-f f32le -ar 48000 -ac 2 -i", args);
+        Assert.Contains("-map 0:v:0 -map 1:a:0", args);
+    }
 }

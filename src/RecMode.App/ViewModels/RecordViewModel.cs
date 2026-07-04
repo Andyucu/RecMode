@@ -25,6 +25,9 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private readonly ISettingsService _settings;
     private readonly Func<IPreviewEngine> _previewFactory;
     private readonly IRegionPicker _regionPicker;
+    private readonly Func<RecMode.Audio.IAudioMixer> _mixerFactory;
+    private RecMode.Audio.IAudioMixer? _meterMixer;
+    private System.Windows.Threading.DispatcherTimer? _meterTimer;
 
     private MonitorInfo? _selectedMonitor;
     private WindowInfo? _selectedWindow;
@@ -50,13 +53,17 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private ImageSource? _previewImage;
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
-        ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker)
+        ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
+        Func<RecMode.Audio.IAudioMixer> mixerFactory)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
         _settings = settings;
         _previewFactory = previewFactory;
         _regionPicker = regionPicker;
+        _mixerFactory = mixerFactory;
+        _systemAudioEnabled = settings.Current.SystemAudioEnabled;
+        _micEnabled = settings.Current.MicrophoneEnabled;
 
         if (settings.Current.RegionWidth > 0 && settings.Current.RegionHeight > 0)
         {
@@ -275,12 +282,14 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _isActivePage = true;
         LoadDevices();
         StartPreview();
+        StartMetering();
     }
 
     public void OnNavigatedFrom()
     {
         _isActivePage = false;
         StopPreview();
+        StopMetering();
     }
 
     /// <summary>Called by the shell on minimize/restore to honour the §3.9 "nothing runs when hidden" rule.</summary>
@@ -289,10 +298,15 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         if (minimized)
         {
             StopPreview();
+            StopMetering();
         }
-        else if (_isActivePage && !IsRecording)
+        else if (_isActivePage)
         {
-            StartPreview();
+            if (!IsRecording)
+            {
+                StartPreview();
+            }
+            StartMetering();
         }
     }
 
@@ -362,6 +376,107 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
             ?? Encoders.FirstOrDefault(e => e is { Codec: VideoCodec.H264, IsHardware: true })
             ?? Encoders.FirstOrDefault(e => e.Codec == VideoCodec.H264)
             ?? Encoders.FirstOrDefault();
+    }
+
+    // ---------- Audio mixer ----------
+
+    private bool _systemAudioEnabled;
+    private bool _micEnabled;
+    private double _systemMeter;
+    private double _micMeter;
+
+    public bool SystemAudioEnabled
+    {
+        get => _systemAudioEnabled;
+        set
+        {
+            if (SetProperty(ref _systemAudioEnabled, value))
+            {
+                _settings.Current.SystemAudioEnabled = value;
+                _settings.RequestSave();
+                RestartMetering();
+            }
+        }
+    }
+
+    public bool MicEnabled
+    {
+        get => _micEnabled;
+        set
+        {
+            if (SetProperty(ref _micEnabled, value))
+            {
+                _settings.Current.MicrophoneEnabled = value;
+                _settings.RequestSave();
+                RestartMetering();
+            }
+        }
+    }
+
+    /// <summary>RMS level 0..1 for the meter bars.</summary>
+    public double SystemMeter { get => _systemMeter; private set => SetProperty(ref _systemMeter, value); }
+    public double MicMeter { get => _micMeter; private set => SetProperty(ref _micMeter, value); }
+
+    private void StartMetering()
+    {
+        if (_meterMixer is not null || !_isActivePage)
+        {
+            return;
+        }
+
+        if (!SystemAudioEnabled && !MicEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            RecMode.Audio.IAudioMixer mixer = _mixerFactory();
+            mixer.Start(SystemAudioEnabled, MicEnabled);
+            _meterMixer = mixer;
+            _meterTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(33), // ≤ 30 Hz (§3.9)
+            };
+            _meterTimer.Tick += OnMeterTick;
+            _meterTimer.Start();
+        }
+        catch (Exception)
+        {
+            StopMetering(); // metering is best-effort
+        }
+    }
+
+    private void OnMeterTick(object? sender, EventArgs e)
+    {
+        if (_meterMixer is null)
+        {
+            return;
+        }
+
+        SystemMeter = _meterMixer.SystemLevel.Rms;
+        MicMeter = _meterMixer.MicLevel.Rms;
+    }
+
+    private void StopMetering()
+    {
+        if (_meterTimer is not null)
+        {
+            _meterTimer.Stop();
+            _meterTimer.Tick -= OnMeterTick;
+            _meterTimer = null;
+        }
+
+        _meterMixer?.Dispose();
+        _meterMixer = null;
+        SystemMeter = 0;
+        MicMeter = 0;
+    }
+
+    private void RestartMetering()
+    {
+        StopMetering();
+        StartMetering();
     }
 
     // ---------- Preview lifecycle (§3.9) ----------
