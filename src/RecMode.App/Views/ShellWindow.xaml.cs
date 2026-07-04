@@ -19,7 +19,17 @@ public partial class ShellWindow : Window
         _os = os;
         _theme = theme;
         SourceInitialized += OnSourceInitialized;
+        StateChanged += OnStateChanged;
         _theme.Changed += ApplyBackdrop;
+    }
+
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        // §3.9: tear down the live preview while minimized.
+        if (DataContext is ShellViewModel shell)
+        {
+            shell.Record.SetWindowMinimized(WindowState == WindowState.Minimized);
+        }
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) => ApplyBackdrop();

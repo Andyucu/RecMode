@@ -17,8 +17,8 @@ public interface ICaptureEngine : IDisposable
     /// <summary>Unique frames delivered by WGC so far (on-change; the pacer duplicates to CFR).</summary>
     long CapturedFrameCount { get; }
 
-    /// <summary>Starts capturing <paramref name="monitor"/>, converting to NV12 scaled to <paramref name="dstW"/>×<paramref name="dstH"/>.</summary>
-    void Start(MonitorInfo monitor, int dstW, int dstH);
+    /// <summary>Starts capturing <paramref name="target"/>, converting to NV12 scaled to <paramref name="dstW"/>×<paramref name="dstH"/>.</summary>
+    void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor);
 
     /// <summary>Copies the most recent NV12 frame into <paramref name="dest"/>. False until the first frame arrives.</summary>
     bool TryGetLatestFrame(byte[] dest);
@@ -31,5 +31,25 @@ public static class CaptureCapabilities
 {
     public static IReadOnlyList<MonitorInfo> EnumerateMonitors() => CaptureInterop.EnumerateMonitors();
 
+    public static IReadOnlyList<WindowInfo> EnumerateWindows() => CaptureInterop.EnumerateWindows();
+
     public static bool IsSupported() => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported();
+
+    /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>
+    public static bool TryGetSourceSize(CaptureTarget target, out int width, out int height)
+    {
+        try
+        {
+            Windows.Graphics.Capture.GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
+            width = item.Size.Width;
+            height = item.Size.Height;
+            return width > 0 && height > 0;
+        }
+        catch (Exception)
+        {
+            width = 0;
+            height = 0;
+            return false;
+        }
+    }
 }

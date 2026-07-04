@@ -8,6 +8,46 @@
 
 ---
 
+## Session 2026-07-04 — Phase 2 (part 1): live preview, window capture, cursor/border, black-frame watchdog
+
+**Goal:** Productionize the capture engine — the headline being live preview in the Record screen.
+
+### What was built
+- **`CaptureTarget`** (Monitor|Window) + `WindowInfo`; `CaptureInterop`: `EnumerateWindows` (visible, titled,
+  non-tool, non-DWM-cloaked), `CreateItemForWindow`, unified `CreateItem(target)`. Engines now take a target.
+- **`BgraScaler`** — VideoProcessor BGRA→BGRA scaled + tight readback (single plane) for preview.
+- **`IPreviewEngine`/`WgcPreviewEngine`** — separate WGC session, fits source into ≤1280×720, throttles to
+  ~30 fps (early-out in FrameArrived), latest-frame pull (`TryGetLatestFrame`) + `FrameAvailable` signal.
+- **`CaptureSessionConfig`** — cursor capture (Win10 2004+ projected property) + `IsBorderRequired=false`
+  (Win11-only, SDK 22000+ → set via **reflection** since our TFM is 19041). Applied by both engines.
+- **`RecordingCoordinator`**: `Start` now takes `CaptureTarget`; queries source size via
+  `CaptureCapabilities.TryGetSourceSize`; passes `CaptureCursor`. **Black-frame watchdog** in the pace loop:
+  samples 256 NV12 luma bytes every 16 frames; uniformly <20 for >3s → one RecoverableWarning.
+- **RecordViewModel**: preview lifecycle (`StartPreview`/`StopPreview`/`RestartPreview`) tied to nav
+  (`OnNavigatedTo/From`), minimize (`SetWindowMinimized`, called from `ShellWindow.StateChanged`), and record
+  (stop preview on record start, resume on finish). `PreviewImage` (`WriteableBitmap`, `WritePixels` on the UI
+  thread from the `FrameAvailable` signal). Window source: `IsScreenSource`/`IsWindowSource`, `Windows` list,
+  `SelectedWindow`, `ShowWindowPicker`. **RecordView**: `Image` bound to `PreviewImage` (placeholder collapses
+  via `HasPreview` trigger); Window tile enabled; display/window picker swap on `ShowWindowPicker`.
+
+### Verification
+- Screenshot: preview pane shows the **live 5120×1440 desktop**; Window tile enabled. Record self-test still
+  produces a valid MP4 (h264_amf 4096×1152, 349 frames). 46 tests, 0 warnings.
+
+### Gotchas
+- `GraphicsCaptureSession.IsBorderRequired` doesn't exist in the 19041 projection (added SDK 22000) → set via
+  reflection, guarded. `IsCursorCaptureEnabled` IS in 19041.
+- Preview + recording use **separate** WGC sessions and are never simultaneous (preview stops on record start)
+  — matches §3.9 "preview auto-pauses during recording."
+- WriteableBitmap has thread affinity → create + `WritePixels` on the UI thread; engine only signals.
+
+### Remaining for Phase 2 (not done)
+- Region source + region-select overlay (dimmed layer, drag/resize, px label, presets, persisted, GPU crop).
+- All-displays (virtual desktop) capture. HDR→SDR tone-map in the NV12 pass (needs HDR monitor to verify).
+- Allocation-free hot path (texture ring + pooled buffers, profiler-verified). <3% CPU Record-open budget.
+
+---
+
 ## Session 2026-07-04 — Phase 1: Minimal shell + Record essentials
 
 **Goal:** First real recording through real UI. Productionize the Tier-1 spike; build the themed shell +

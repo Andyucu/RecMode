@@ -30,9 +30,9 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     public int Nv12ByteSize { get; private set; }
     public long CapturedFrameCount => Interlocked.Read(ref _capturedFrames);
 
-    public void Start(MonitorInfo monitor, int dstW, int dstH)
+    public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor)
     {
-        ArgumentNullException.ThrowIfNull(monitor);
+        ArgumentNullException.ThrowIfNull(target);
         if (IsRunning)
         {
             throw new InvalidOperationException("Capture is already running.");
@@ -45,7 +45,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
         (_device, _context) = CaptureInterop.CreateDevice();
         IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(_device);
-        GraphicsCaptureItem item = CaptureInterop.CreateItemForMonitor(monitor.Handle);
+        GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
 
         int srcW = item.Size.Width, srcH = item.Size.Height;
         _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH);
@@ -62,6 +62,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         _framePool.FrameArrived += OnFrameArrived;
 
         _session = _framePool.CreateCaptureSession(item);
+        CaptureSessionConfig.Apply(_session, captureCursor);
         _session.StartCapture();
         IsRunning = true;
     }

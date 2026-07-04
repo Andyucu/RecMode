@@ -37,6 +37,7 @@ internal static class Composition
         services.AddSingleton<IFfmpegLocator, FfmpegLocator>();
         services.AddSingleton<IEncoderProbe, EncoderProbe>();
         services.AddSingleton<Func<ICaptureEngine>>(_ => () => new WgcCaptureEngine());
+        services.AddSingleton<Func<IPreviewEngine>>(_ => () => new WgcPreviewEngine());
         services.AddSingleton<RecordingCoordinator>();
 
         // Theming.

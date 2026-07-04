@@ -61,8 +61,10 @@ public sealed class RecordingCoordinator : IDisposable
     public event Action<RecordingResult>? Finished;
 
     /// <summary>Starts a recording. Returns false (with a reported BlockingError) if pre-flight fails.</summary>
-    public bool Start(MonitorInfo monitor, EncoderInfo encoder, MediaContainer container, int fps, int quality)
+    public bool Start(CaptureTarget target, EncoderInfo encoder, MediaContainer container, int fps, int quality)
     {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(encoder);
         if (_stateMachine.IsActive)
         {
             return false;
@@ -89,16 +91,24 @@ public sealed class RecordingCoordinator : IDisposable
             return false;
         }
 
+        if (!CaptureCapabilities.TryGetSourceSize(target, out int srcW, out int srcH))
+        {
+            _errors.Block("record.source-unavailable", "The selected source couldn't be captured.",
+                "Pick a different display or window.");
+            return false;
+        }
+
         try
         {
-            (int dstW, int dstH) = CaptureSizing.Resolve(monitor.Width, monitor.Height, encoder);
+            (int dstW, int dstH) = CaptureSizing.Resolve(srcW, srcH, encoder);
 
             _capture = _captureFactory();
-            _capture.Start(monitor, dstW, dstH);
+            _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
 
             string ext = ContainerExtension(container);
+            string sourceLabel = target.Kind == CaptureKind.Window ? "Window" : "Display";
             string fileName = FilenameBuilder.BuildFileName(
-                _settings.Current.FilenamePattern, DateTimeOffset.Now, "Display", encoder.Codec.ToString(), ext);
+                _settings.Current.FilenamePattern, DateTimeOffset.Now, sourceLabel, encoder.Codec.ToString(), ext);
             string outputPath = FilenameBuilder.BuildUniquePath(outputDir, fileName);
 
             var job = new FfmpegJob
@@ -153,9 +163,12 @@ public sealed class RecordingCoordinator : IDisposable
     private void PaceLoop(int fps)
     {
         byte[] frame = new byte[_capture!.Nv12ByteSize];
+        int lumaLength = _capture.OutputWidth * _capture.OutputHeight;
         long interval = Stopwatch.Frequency / fps;
         long start = Stopwatch.GetTimestamp();
         long lastReport = start;
+        long blackSince = 0;
+        bool blackWarned = false;
 
         _ = timeBeginPeriod(1);
         try
@@ -185,6 +198,30 @@ public sealed class RecordingCoordinator : IDisposable
                 }
 
                 long now = Stopwatch.GetTimestamp();
+
+                // Black-frame watchdog (§3.6): exclusive-fullscreen games / DRM windows capture as black.
+                if (!blackWarned && (i & 15) == 0)
+                {
+                    if (IsLikelyBlack(frame, lumaLength))
+                    {
+                        if (blackSince == 0)
+                        {
+                            blackSince = now;
+                        }
+                        else if (now - blackSince > 3 * Stopwatch.Frequency)
+                        {
+                            blackWarned = true;
+                            _errors.Warn("record.black-frames",
+                                "The recording looks black. Exclusive-fullscreen games and DRM-protected windows can't be captured.",
+                                "Switch the game to borderless/windowed mode.");
+                        }
+                    }
+                    else
+                    {
+                        blackSince = 0;
+                    }
+                }
+
                 if (now - lastReport >= Stopwatch.Frequency / 4) // ≤ 4 Hz
                 {
                     lastReport = now;
@@ -255,6 +292,28 @@ public sealed class RecordingCoordinator : IDisposable
             : _session!.FramesWritten / _stateMachine.Elapsed.TotalSeconds;
         ProgressChanged?.Invoke(new RecordingProgress(
             _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0));
+    }
+
+    /// <summary>Cheap black-frame test: sample the NV12 luma plane; near-zero everywhere ≈ black.</summary>
+    private static bool IsLikelyBlack(byte[] nv12, int lumaLength)
+    {
+        if (lumaLength <= 0)
+        {
+            return false;
+        }
+
+        const int samples = 256;
+        int stepSize = Math.Max(1, lumaLength / samples);
+        byte max = 0;
+        for (int i = 0; i < lumaLength; i += stepSize)
+        {
+            if (nv12[i] > max)
+            {
+                max = nv12[i];
+            }
+        }
+
+        return max < 20; // studio-black luma is ~16
     }
 
     private static void WaitUntil(long targetTicks, Func<bool> abort)

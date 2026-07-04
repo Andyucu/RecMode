@@ -152,7 +152,8 @@ public partial class App : Application
                 var encoder = encoders.FirstOrDefault(x => x is { Codec: RecMode.Core.Settings.VideoCodec.H264, IsHardware: true })
                     ?? encoders.First(x => x.Codec == RecMode.Core.Settings.VideoCodec.H264);
 
-                if (!coordinator.Start(monitor, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, 70))
+                var target = RecMode.Capture.CaptureTarget.FromMonitor(monitor);
+                if (!coordinator.Start(target, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, 70))
                 {
                     System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
                     Dispatcher.BeginInvoke(() => Shutdown(3));

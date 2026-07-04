@@ -27,7 +27,30 @@ internal static class CaptureInterop
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX info);
 
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(WindowEnumProc callback, IntPtr data);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int max);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
+    private delegate bool WindowEnumProc(IntPtr hwnd, IntPtr data);
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int DWMWA_CLOAKED = 14;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
@@ -82,6 +105,48 @@ internal static class CaptureInterop
                     IsPrimary = primary,
                 });
             }
+            return true;
+        }, IntPtr.Zero);
+
+        return results;
+    }
+
+    public static IReadOnlyList<WindowInfo> EnumerateWindows()
+    {
+        var results = new List<WindowInfo>();
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd))
+            {
+                return true;
+            }
+
+            int len = GetWindowTextLength(hwnd);
+            if (len == 0)
+            {
+                return true;
+            }
+
+            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            if ((exStyle & WS_EX_TOOLWINDOW) != 0)
+            {
+                return true;
+            }
+
+            // Skip DWM-cloaked windows (UWP ghosts, other virtual desktops).
+            if (DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0)
+            {
+                return true;
+            }
+
+            var sb = new System.Text.StringBuilder(len + 1);
+            _ = GetWindowText(hwnd, sb, sb.Capacity);
+            string title = sb.ToString();
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                results.Add(new WindowInfo { Handle = hwnd, Title = title });
+            }
+
             return true;
         }, IntPtr.Zero);
 
@@ -149,12 +214,25 @@ internal static class CaptureInterop
         }
     }
 
-    public static GraphicsCaptureItem CreateItemForMonitor(nint hMonitor)
+    public static GraphicsCaptureItem CreateItemForMonitor(nint hMonitor) =>
+        CreateItem(interop => interop.CreateForMonitor(hMonitor, ref _itemIid));
+
+    public static GraphicsCaptureItem CreateItemForWindow(nint hWnd) =>
+        CreateItem(interop => interop.CreateForWindow(hWnd, ref _itemIid));
+
+    public static GraphicsCaptureItem CreateItem(CaptureTarget target) => target.Kind switch
+    {
+        CaptureKind.Window => CreateItemForWindow(target.Handle),
+        _ => CreateItemForMonitor(target.Handle),
+    };
+
+    private static Guid _itemIid = GraphicsCaptureItem_IID;
+
+    private static GraphicsCaptureItem CreateItem(Func<IGraphicsCaptureItemInterop, IntPtr> create)
     {
         var factory = ActivationFactory.Get("Windows.Graphics.Capture.GraphicsCaptureItem");
         var interop = factory.AsInterface<IGraphicsCaptureItemInterop>();
-        Guid iid = GraphicsCaptureItem_IID;
-        IntPtr itemPtr = interop.CreateForMonitor(hMonitor, ref iid);
+        IntPtr itemPtr = create(interop);
         try
         {
             return GraphicsCaptureItem.FromAbi(itemPtr);

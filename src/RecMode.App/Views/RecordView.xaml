@@ -21,9 +21,11 @@
             <StackPanel>
                 <TextBlock Text="{x:Static res:Strings.Record_SourceHeader}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsChecked="True" Tag="&#xE7F4;"
+                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE7F4;"
+                                 IsChecked="{Binding IsScreenSource, Mode=TwoWay}"
                                  Content="{x:Static res:Strings.Source_Screen}" Margin="0,0,10,0" />
-                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xE737;"
+                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE737;"
+                                 IsChecked="{Binding IsWindowSource, Mode=TwoWay}"
                                  Content="{x:Static res:Strings.Source_Window}" Margin="0,0,10,0" />
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xEF20;"
                                  Content="{x:Static res:Strings.Source_Region}" Margin="0,0,10,0" />
@@ -33,14 +35,13 @@
             </StackPanel>
         </Border>
 
-        <!-- Body: preview placeholder + settings -->
+        <!-- Body: preview + settings -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="326" />
             </Grid.ColumnDefinitions>
 
-            <!-- Preview + command bar -->
             <Grid Grid.Column="0" Margin="0,0,16,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
@@ -48,13 +49,26 @@
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSecondaryBrush}" CornerRadius="8"
-                        BorderBrush="{DynamicResource StrokeCardBrush}" BorderThickness="1">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="&#xE7F4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="40"
-                                   Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Live preview arrives in the next build" Style="{StaticResource CaptionText}"
-                                   Margin="0,10,0,0" HorizontalAlignment="Center" />
-                    </StackPanel>
+                        BorderBrush="{DynamicResource StrokeCardBrush}" BorderThickness="1" ClipToBounds="True">
+                    <Grid>
+                        <Image Source="{Binding PreviewImage}" Stretch="Uniform" Margin="6"
+                               RenderOptions.BitmapScalingMode="LowQuality" />
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasPreview}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="&#xE7F4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="40"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Preview paused" Style="{StaticResource CaptionText}"
+                                       Margin="0,10,0,0" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16,12">
@@ -64,15 +78,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-
                         <Button Grid.Column="0" Command="{Binding RecordCommand}" Content="{Binding RecordButtonText}"
                                 Style="{StaticResource AccentButton}" Width="120" Height="36" />
-
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                             <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />
                             <TextBlock Text="{Binding StatsText}" Style="{StaticResource CaptionText}" />
                         </StackPanel>
-
                         <TextBlock Grid.Column="2" Text="{Binding ElapsedText}" Style="{StaticResource MonoText}"
                                    FontSize="22" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
                     </Grid>
@@ -84,9 +95,37 @@
                 <StackPanel IsEnabled="{Binding CanEditSettings}">
                     <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
-                    <TextBlock Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12" />
+                    <!-- Display picker (screen source) -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowWindowPicker}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12" />
+                    </StackPanel>
+
+                    <!-- Window picker (window source) -->
+                    <StackPanel Visibility="Collapsed">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowWindowPicker}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12" />
+                    </StackPanel>
 
                     <TextBlock Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
