@@ -48,6 +48,12 @@ internal static class Composition
         // Region selection.
         services.AddSingleton<IRegionPicker, RegionPicker>();
 
+        // MVP UX services (Phase 5).
+        services.AddSingleton<ScreenshotService>();
+        services.AddSingleton<GlobalHotkeys>();
+        services.AddSingleton<HotkeyBindings>();
+        services.AddSingleton<TrayIconService>();
+
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();
         services.AddSingleton<LibraryViewModel>();

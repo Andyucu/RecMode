@@ -52,9 +52,11 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private byte[] _previewBuffer = [];
     private ImageSource? _previewImage;
 
+    private readonly ScreenshotService _screenshots;
+
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
-        Func<RecMode.Audio.IAudioMixer> mixerFactory)
+        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
@@ -62,6 +64,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _previewFactory = previewFactory;
         _regionPicker = regionPicker;
         _mixerFactory = mixerFactory;
+        _screenshots = screenshots;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
 
@@ -80,6 +83,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         RecordCommand = new RelayCommand(ToggleRecord, () => CurrentTarget() is not null && SelectedEncoder is not null);
         ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
         PauseResumeCommand = new RelayCommand(TogglePause);
+        ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget() is not null);
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
@@ -94,6 +98,17 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand RecordCommand { get; }
     public IRelayCommand ChangeRegionCommand { get; }
     public IRelayCommand PauseResumeCommand { get; }
+    public IRelayCommand ScreenshotCommand { get; }
+
+    /// <summary>Captures a still of the current source (F11 / button). Runs on the UI thread.</summary>
+    public void TakeScreenshot()
+    {
+        CaptureTarget? target = CurrentTarget();
+        if (target is not null)
+        {
+            _screenshots.Capture(target);
+        }
+    }
 
     public ImageSource? PreviewImage { get => _previewImage; private set => SetProperty(ref _previewImage, value); }
     public bool HasPreview => PreviewImage is not null;

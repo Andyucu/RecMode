@@ -22,6 +22,9 @@
     <PackageVersion Include="Vortice.Direct3D11" Version="3.6.2" />
     <PackageVersion Include="Vortice.DXGI" Version="3.6.2" />
     <PackageVersion Include="NAudio" Version="2.2.1" />
+
+    <!-- Tray icon (Phase 5). -->
+    <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.2.0" />
   </ItemGroup>
 
   <!-- Test stack -->

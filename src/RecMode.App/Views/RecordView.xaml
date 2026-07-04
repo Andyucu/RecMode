@@ -85,6 +85,8 @@
                             <Button Command="{Binding PauseResumeCommand}" Content="{Binding PauseButtonText}"
                                     Style="{StaticResource SecondaryButton}" Width="96" Height="36" Margin="8,0,0,0"
                                     Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Command="{Binding ScreenshotCommand}" Content="{x:Static res:Strings.Record_Screenshot}"
+                                    Style="{StaticResource SecondaryButton}" Width="112" Height="36" Margin="8,0,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                             <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />

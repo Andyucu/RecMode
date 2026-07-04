@@ -8,6 +8,49 @@
 
 ---
 
+## Session 2026-07-04 — Phase 5 (part 1): hotkeys, tray, screenshots, failure-mode UX
+
+**Goal:** Start the MVP UX layer — global hotkeys, tray + minimize-to-tray, screenshots, and a real error-channel UI.
+
+### What was built
+- **`GlobalHotkeys`** (App/Services): message-only `HwndSource` (`HWND_MESSAGE`) + `RegisterHotKey`/`WM_HOTKEY`
+  hook; `Register(mods, vk) → id`, `Pressed`/`RegistrationFailed` events; unregisters + disposes the source.
+  `VirtualKeys` (F9/F10/F11). **`HotkeyBindings`** maps F9→RecordCommand, F10→PauseResumeCommand,
+  F11→ScreenshotCommand; a failed registration → `errors.Warn("hotkey.in-use", …)`.
+- **`ScreenshotCapturer`** (Capture): one-shot WGC grab — free-threaded frame pool, `TryGetNextFrame`, full-res
+  BGRA staging readback honouring `target.Region` (clamped crop), `ManualResetEventSlim` 2s wait; returns
+  `ScreenshotImage(W,H,Stride,Bgra)`. **`ScreenshotService`** (App): encodes PNG via `PngBitmapEncoder` to
+  `settings.ScreenshotFolder ?? paths.ScreenshotsDirectory` using `FilenameBuilder` pattern + unique path,
+  copies to clipboard (`Clipboard.SetImage`, swallow transient lock), raises `Captured`. Failures → `Warn`.
+  `RecordViewModel.ScreenshotCommand`/`TakeScreenshot()` (enabled when a source exists); Screenshot button on
+  the Record toolbar (new `Record_Screenshot` string).
+- **`TrayIconService`** (App, H.NotifyIcon.Wpf 2.2.0): `TaskbarIcon` with a code-drawn 32px icon + context menu
+  (Show / Start-stop / Screenshot / Quit); double-click shows; `window.StateChanged` → `Hide()` on Minimized
+  (minimize-to-tray). Icon handle destroyed on dispose.
+- **Failure-mode UX:** `ShellViewModel` subscribes to `IErrorReporter.ErrorReported` → snackbar
+  (`SnackbarMessage/Visible/IsError` + `DismissSnackbarCommand`); warnings auto-dismiss (5s `DispatcherTimer`),
+  blocking/fatal persist. Snackbar border added to `ShellWindow.xaml` (acrylic, accent/critical dot). Marshals
+  to the UI thread via `Dispatcher.CheckAccess`.
+- Wiring: 4 services registered in `Composition`; `App.OnStartup` resolves `HotkeyBindings.Register()` +
+  `TrayIconService.Attach(shell)` on the UI thread after `shell.Show()`; added `--selftest-screenshot` hook
+  (captures primary monitor synchronously on the STA thread → `selftest-result.txt`).
+
+### Verification
+- `--selftest-screenshot` → `success=True`, valid **5120×1440** PNG (2.1 MB) in `Recordings/Screenshots/`.
+- Normal launch stays alive 4s with hotkeys + tray wired (DI + tray creation OK). Build clean, **54 tests pass**.
+
+### Gotchas
+- Assembly name is `RecMode.exe` (not `RecMode.App.exe`).
+- Hand-written `Strings.cs` accessor (not designer-gen) → new resx keys need a matching property added there too.
+- `Clipboard.SetImage` can throw if another app holds the clipboard; caught — the PNG is still saved.
+- Killing the app leaves `Data/logs/crash/session.open` (the unclean-exit sentinel) — expected, not a crash.
+
+### Remaining for Phase 5
+- Countdown overlay; capture-excluded recording toolbar; real CLI (`--record/--screenshot/--stop/--tray`) +
+  single-instance forwarding (replaces the self-test hooks); basic Library; portable USB acceptance test.
+
+---
+
 ## Session 2026-07-04 — Phase 4 (part 1): audio mixer, meters, A/V mux
 
 **Goal:** Get sound into recordings — system + mic mixer, meters, muxed audio, mixer UI.

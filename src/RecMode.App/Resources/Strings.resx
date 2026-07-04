@@ -71,6 +71,7 @@
   <data name="Record_Quality" xml:space="preserve"><value>Quality</value></data>
   <data name="Record_Start" xml:space="preserve"><value>Record</value></data>
   <data name="Record_Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="Record_Screenshot" xml:space="preserve"><value>Screenshot</value></data>
   <data name="Status_Ready" xml:space="preserve"><value>Ready</value></data>
   <data name="Status_Recording" xml:space="preserve"><value>Recording</value></data>
 

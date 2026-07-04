@@ -77,6 +77,10 @@ public partial class App : Application
         var shell = _host.Services.GetRequiredService<ShellWindow>();
         MainWindow = shell;
         shell.Show();
+
+        // MVP UX: global hotkeys + tray icon (Phase 5). Resolved on the UI thread (hotkeys need a message pump).
+        _host.Services.GetRequiredService<Services.HotkeyBindings>().Register();
+        _host.Services.GetRequiredService<Services.TrayIconService>().Attach(shell);
     }
 
     private static void ConfigureLogging(AppPaths paths)
@@ -132,6 +136,19 @@ public partial class App : Application
     private void RunSelfTest(IAppPaths paths, string mode)
     {
         bool region = mode == "region";
+        string result = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+
+        // Screenshot runs synchronously on this (UI) thread — the clipboard copy needs STA.
+        if (mode == "screenshot")
+        {
+            var svc = _host!.Services.GetRequiredService<Services.ScreenshotService>();
+            var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+            var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            string? path = svc.Capture(RecMode.Capture.CaptureTarget.FromMonitor(mon));
+            System.IO.File.WriteAllText(result, $"success={path is not null}\npath={path}\n");
+            Dispatcher.BeginInvoke(() => Shutdown(path is null ? 3 : 0));
+            return;
+        }
 
         // "av" mode: force system audio on so the recording gets an audio track.
         if (mode == "av")
