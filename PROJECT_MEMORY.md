@@ -8,6 +8,61 @@
 
 ---
 
+## Session 2026-07-04 — Phase 1: Minimal shell + Record essentials
+
+**Goal:** First real recording through real UI. Productionize the Tier-1 spike; build the themed shell +
+functional Record screen; pick monitor/encoder/format/fps/quality → Record → valid file.
+
+### What was built
+- **RecMode.Capture**: `MonitorInfo`, `CaptureInterop` (monitor enum via EnumDisplayMonitors, D3D device on
+  discrete GPU, WGC item per-HMONITOR, surface→texture), `Nv12Converter` (VideoProcessor, ported from spike),
+  `ICaptureEngine`/`WgcCaptureEngine` (publishes latest NV12 for the pacer; start/stop lifecycle §3.9),
+  `CaptureCapabilities` (EnumerateMonitors/IsSupported).
+- **RecMode.Encoding**: `EncoderInfo`+`EncoderCatalog` (codec×backend matrix), `IEncoderProbe`/`EncoderProbe`
+  (`-encoders` list **+ trial-encode gating**), `FfmpegArgsBuilder` (CRF=51−q·0.38; amf cqp / nvenc cq / qsv
+  global_quality / sw crf; +faststart for mp4), `FfmpegRecordingSession` (pipe+process, WriteFrame,
+  StopAndFinalize, stderr capture, `EncoderPipeBrokenException`).
+- **RecMode.App/Services**: `CaptureSizing` (hw-H.264 4096 cap + even dims), `RecordingProgress`,
+  `RecordingCoordinator` (singleton; pre-flight → capture.Start → session.Start → state machine →
+  CFR pacing thread writing NV12; broken pipe → Fatal + finalize; ≤4 Hz progress).
+- **App UI**: `Themes/Palette.Light|Dark.xaml` (ported from `_ds/tokens/colors.css`), `Controls.xaml`
+  (type ramp, Card, buttons, NavButton, SourceTile, retemplated ComboBox, Slider, ToggleSwitch, caption
+  buttons), `ThemeManager` (swap palette + 5 accents + Changed event), `Interop/Windowing/WindowBackdrop`
+  (Mica + dark titlebar). VMs (manual `SetProperty`/`RelayCommand`): Shell (nav + theme toggle),
+  Record (devices/encoder/format/fps/quality/record), Settings (theme/accent/output), Library/Schedule stubs.
+  Views: ShellWindow (WindowChrome, sidebar, DataTemplates), RecordView, SettingsView, Library/ScheduleView.
+  `Resources/Strings.resx` + hand-written `Strings.cs` (ResourceManager wrapper — designer gen ran too late
+  for WPF markup compile). DI in `Composition.cs`; theme applied in `App.OnStartup` before first paint.
+
+### Verification
+- **UI**: launched, screenshot-verified — dark theme, sidebar w/ accent pill, source tiles (Screen selected),
+  combos show "Display 1 (5120 × 1440) · primary" / "H.264 · AMD AMF", `GPU · Amf`, `70 · CRF 24`, Record
+  button + `00:00`. No startup crash, no errors in log.
+- **Pipeline**: `--selftest-record` hook drives the *production* `RecordingCoordinator` 6s → valid MP4
+  (h264_amf **4096×1152**@60, 354 frames, ffprobe-verified). Same coordinator the Record button calls.
+- **Tests**: 46 pass (added `FilenameBuilderTests`, `FfmpegArgsBuilderTests`). Release build 0 warnings.
+
+### Gotchas / learnings
+- **`ffmpeg -encoders` is not a capability check** — it lists every compiled encoder. h264_nvenc showed
+  "available" on this AMD box then failed opening ("Cannot load nvcuda.dll"), killing the pipe after 2
+  frames. Fix: `EncoderProbe.TrialEncode` runs a 2-frame black-source encode per hardware candidate; only
+  passers are offered. (This is the plan's §3.2 trial-encode, pulled forward.)
+- **Hardware H.264 max width = 4096** → `CaptureSizing` scales hw-H.264 output down (5120→4096, height
+  proportional, even dims). Software H.264/HEVC/AV1 keep native.
+- WPF markup compile runs before MSBuild strongly-typed-resx generation → the generated `Strings` type isn't
+  visible to XAML `x:Static`. Solution: hand-written `Strings.cs` over a `ResourceManager`.
+- Custom ComboBox `ControlTemplate` ignores `DisplayMemberPath` for the selection box → override `ToString()`
+  on `MonitorInfo`/`EncoderInfo` and drop `DisplayMemberPath`.
+- Dev runs need ffmpeg next to the exe → `StageFfmpeg` MSBuild target copies `tools/ffmpeg` to `$(OutDir)ffmpeg`
+  (SkipUnchangedFiles).
+
+### Next actions
+- Phase 2: live preview (D3DImage) in RecordView replacing the placeholder; window/region/all-displays
+  capture; cursor toggle + Win11 border suppression; HDR→SDR tone-map; black-frame watchdog; allocation
+  profiling. Remove the temporary `--selftest-record` hook when the Phase 5 CLI lands.
+
+---
+
 ## Session 2026-07-04 — Phase 0.5: Pipeline spike ⚠️ GATE PASSED
 
 **Goal:** Prove the whole risky spine end-to-end and evaluate the §3.3 throughput decision gate before

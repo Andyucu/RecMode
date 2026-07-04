@@ -60,6 +60,19 @@ public partial class App : Application
 
         Log.Information("RecMode starting — portable={Portable}, data={Data}", paths.IsPortable, paths.DataDirectory);
 
+        // Apply theme/accent before the first window paints.
+        var settings = _host.Services.GetRequiredService<ISettingsService>();
+        var theme = _host.Services.GetRequiredService<Themes.ThemeManager>();
+        theme.Apply(settings.Current.Theme, settings.Current.Accent);
+
+        // Headless verification hook (temporary; the real CLI arrives in Phase 5): drive the production
+        // RecordingCoordinator for a few seconds and exit, writing the outcome to Data\selftest-result.txt.
+        if (Array.Exists(e.Args, a => a == "--selftest-record"))
+        {
+            RunSelfTest(paths);
+            return;
+        }
+
         var shell = _host.Services.GetRequiredService<ShellWindow>();
         MainWindow = shell;
         shell.Show();
@@ -113,6 +126,48 @@ public partial class App : Application
         Log.Error(e.Exception, "Unobserved task exception");
         _crash?.RecordUnhandledException(e.Exception, isTerminating: false);
         e.SetObserved();
+    }
+
+    private void RunSelfTest(IAppPaths paths)
+    {
+        var coordinator = _host!.Services.GetRequiredService<Services.RecordingCoordinator>();
+        var probe = _host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
+        string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+
+        coordinator.Finished += result =>
+        {
+            System.IO.File.WriteAllText(resultPath,
+                $"success={result.Success}\nexit={result.ExitCode}\nframes={result.FramesWritten}\npath={result.OutputPath}\n");
+            Log.Information("Self-test finished: {@Result}", result);
+            Dispatcher.BeginInvoke(() => Shutdown(result.Success ? 0 : 3));
+        };
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+                var monitor = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+                var encoders = probe.GetAvailableEncoders();
+                var encoder = encoders.FirstOrDefault(x => x is { Codec: RecMode.Core.Settings.VideoCodec.H264, IsHardware: true })
+                    ?? encoders.First(x => x.Codec == RecMode.Core.Settings.VideoCodec.H264);
+
+                if (!coordinator.Start(monitor, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, 70))
+                {
+                    System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
+                    Dispatcher.BeginInvoke(() => Shutdown(3));
+                    return;
+                }
+
+                System.Threading.Thread.Sleep(6000);
+                coordinator.Stop();
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.WriteAllText(resultPath, $"success=false\nexception={ex}\n");
+                Dispatcher.BeginInvoke(() => Shutdown(3));
+            }
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)

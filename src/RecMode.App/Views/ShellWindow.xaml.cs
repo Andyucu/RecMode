@@ -1,13 +1,48 @@
 using System.Windows;
+using System.Windows.Interop;
+using RecMode.App.Themes;
 using RecMode.App.ViewModels;
+using RecMode.Core.Infrastructure;
+using RecMode.Interop.Windowing;
 
 namespace RecMode.App.Views;
 
 public partial class ShellWindow : Window
 {
-    public ShellWindow(ShellViewModel viewModel)
+    private readonly IOsCapabilities _os;
+    private readonly ThemeManager _theme;
+
+    public ShellWindow(ShellViewModel viewModel, IOsCapabilities os, ThemeManager theme)
     {
         InitializeComponent();
         DataContext = viewModel;
+        _os = os;
+        _theme = theme;
+        SourceInitialized += OnSourceInitialized;
+        _theme.Changed += ApplyBackdrop;
     }
+
+    private void OnSourceInitialized(object? sender, EventArgs e) => ApplyBackdrop();
+
+    private void ApplyBackdrop()
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        WindowBackdrop.SetDarkTitleBar(hwnd, _theme.IsDark);
+        if (_os.SupportsMicaBackdrop)
+        {
+            WindowBackdrop.TryEnableMica(hwnd);
+        }
+    }
+
+    private void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximizeRestore(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnClose(object sender, RoutedEventArgs e) => Close();
 }

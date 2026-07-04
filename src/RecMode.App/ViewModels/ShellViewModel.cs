@@ -1,55 +1,97 @@
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
-using RecMode.Core.Infrastructure;
+using CommunityToolkit.Mvvm.Input;
+using RecMode.App.Themes;
 using RecMode.Core.Settings;
-using RecMode.Encoding.Ffmpeg;
 
 namespace RecMode.App.ViewModels;
 
 /// <summary>
-/// The shell's view model. In Phase 0 it surfaces a foundation health summary (mode, OS build, ffmpeg
-/// status, crash recovery) so the scaffolding is demoable and every Core service is exercised end-to-end.
-/// Phase 1 replaces the body with real navigation. Properties are set once at construction, so plain
-/// auto-properties suffice here; observable state arrives with the interactive views.
+/// Hosts the sidebar navigation and the current page (plan: sidebar-only shell in Phase 1). Owns the
+/// theme toggle. Pages are injected and swapped through <see cref="CurrentPage"/>; a <see cref="INavigationAware"/>
+/// page is notified so it can honour the §3.9 lifecycle.
 /// </summary>
 public sealed class ShellViewModel : ObservableObject
 {
+    private readonly ISettingsService _settings;
+    private readonly ThemeManager _theme;
+
+    private object _currentPage;
+    private string _selectedNav = "Record";
+
     public ShellViewModel(
-        IAppPaths paths,
-        IOsCapabilities os,
-        ISettingsService settings,
-        IFfmpegLocator ffmpeg,
-        ICrashReporter crash)
+        RecordViewModel record,
+        LibraryViewModel library,
+        ScheduleViewModel schedule,
+        SettingsViewModel settings,
+        ISettingsService settingsService,
+        ThemeManager theme)
     {
-        Title = "RecMode";
-        ModeLine = paths.IsPortable ? "Portable mode" : "Installed mode";
-        DataLocation = paths.DataDirectory;
+        Record = record;
+        Library = library;
+        Schedule = schedule;
+        Settings = settings;
+        _settings = settingsService;
+        _theme = theme;
 
-        OsLine = os.IsWindows11
-            ? $"Windows 11 (build {os.BuildNumber})"
-            : os.MeetsMinimumOs
-                ? $"Windows 10 (build {os.BuildNumber})"
-                : $"Unsupported OS (build {os.BuildNumber})";
+        _currentPage = record;
+        (record as INavigationAware)?.OnNavigatedTo();
 
-        FfmpegResolution resolution = ffmpeg.Resolve();
-        FfmpegLine = resolution.IsAvailable
-            ? $"ffmpeg ready ({resolution.Source}{(resolution.HashVerified ? ", hash-verified" : "")})"
-            : $"ffmpeg not found — {resolution.Error?.Message}";
-
-        ThemeLine = $"Theme: {settings.Current.Theme}, accent {settings.Current.Accent}";
-
-        RecoveryLine = crash.PreviousSessionCrashed
-            ? "Previous session didn't close cleanly — recovery available."
-            : "No pending recovery.";
-
-        StatusPill = "Ready";
+        NavigateCommand = new RelayCommand<string>(Navigate);
+        ToggleThemeCommand = new RelayCommand(ToggleTheme);
     }
 
-    public string Title { get; }
-    public string ModeLine { get; }
-    public string DataLocation { get; }
-    public string OsLine { get; }
-    public string FfmpegLine { get; }
-    public string ThemeLine { get; }
-    public string RecoveryLine { get; }
-    public string StatusPill { get; }
+    public RecordViewModel Record { get; }
+    public LibraryViewModel Library { get; }
+    public ScheduleViewModel Schedule { get; }
+    public SettingsViewModel Settings { get; }
+
+    public ICommand NavigateCommand { get; }
+    public ICommand ToggleThemeCommand { get; }
+
+    public object CurrentPage
+    {
+        get => _currentPage;
+        private set => SetProperty(ref _currentPage, value);
+    }
+
+    public string SelectedNav
+    {
+        get => _selectedNav;
+        set => SetProperty(ref _selectedNav, value);
+    }
+
+    public bool IsDark => _theme.IsDark;
+
+    private void Navigate(string? page)
+    {
+        object next = page switch
+        {
+            "Record" => Record,
+            "Library" => Library,
+            "Schedule" => Schedule,
+            "Settings" => Settings,
+            _ => Record,
+        };
+
+        if (ReferenceEquals(next, CurrentPage))
+        {
+            return;
+        }
+
+        (CurrentPage as INavigationAware)?.OnNavigatedFrom();
+        CurrentPage = next;
+        SelectedNav = page ?? "Record";
+        (next as INavigationAware)?.OnNavigatedTo();
+    }
+
+    private void ToggleTheme()
+    {
+        var next = _theme.IsDark ? AppTheme.Light : AppTheme.Dark;
+        _settings.Current.Theme = next;
+        _theme.ApplyTheme(next);
+        _theme.ApplyAccent(_settings.Current.Accent);
+        _settings.RequestSave();
+        OnPropertyChanged(nameof(IsDark));
+    }
 }

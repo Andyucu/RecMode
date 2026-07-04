@@ -42,3 +42,5 @@ dotnet_diagnostic.CA1848.severity = none   # LoggerMessage delegates — not wor
 dotnet_diagnostic.CA1031.severity = none   # catching general Exception is intentional at boundaries
 dotnet_diagnostic.CA1716.severity = none   # "Error"/"Report" are intended domain names
 dotnet_diagnostic.CA1305.severity = none   # invariant-culture noise on file paths/log templates
+dotnet_diagnostic.CA1822.severity = none   # "could be static" — noisy for VM/service members
+dotnet_diagnostic.CA1859.severity = none   # "use concrete type" — micro-perf, not worth the churn

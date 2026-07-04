@@ -24,6 +24,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Localization-ready strings (plan §1): resx embedded; accessed via a hand-written ResourceManager
+         wrapper (Resources/Strings.cs) so the type exists during WPF markup compilation. -->
+    <EmbeddedResource Update="Resources\Strings.resx" />
+  </ItemGroup>
+
+  <!-- Dev convenience: stage the bundled ffmpeg next to the exe so portable-mode resolution works when
+       running from bin. SkipUnchangedFiles keeps rebuilds fast. publish-portable.ps1 handles releases. -->
+  <Target Name="StageFfmpeg" AfterTargets="Build">
+    <ItemGroup>
+      <FfmpegFiles Include="$(MSBuildThisFileDirectory)..\..\tools\ffmpeg\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FfmpegFiles)" DestinationFolder="$(OutDir)ffmpeg" SkipUnchangedFiles="true"
+          Condition="'@(FfmpegFiles)' != ''" />
+  </Target>
+
+  <ItemGroup>
     <ProjectReference Include="..\RecMode.Core\RecMode.Core.csproj" />
     <ProjectReference Include="..\RecMode.Interop\RecMode.Interop.csproj" />
     <ProjectReference Include="..\RecMode.Capture\RecMode.Capture.csproj" />
