@@ -38,6 +38,13 @@ public static class CaptureCapabilities
     /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>
     public static bool TryGetSourceSize(CaptureTarget target, out int width, out int height)
     {
+        if (target.Region is { } region)
+        {
+            width = region.Width;
+            height = region.Height;
+            return width > 0 && height > 0;
+        }
+
         try
         {
             Windows.Graphics.Capture.GraphicsCaptureItem item = CaptureInterop.CreateItem(target);

@@ -69,7 +69,13 @@ public partial class App : Application
         // RecordingCoordinator for a few seconds and exit, writing the outcome to Data\selftest-result.txt.
         if (Array.Exists(e.Args, a => a == "--selftest-record"))
         {
-            RunSelfTest(paths);
+            RunSelfTest(paths, region: false);
+            return;
+        }
+
+        if (Array.Exists(e.Args, a => a == "--selftest-region"))
+        {
+            RunSelfTest(paths, region: true);
             return;
         }
 
@@ -128,7 +134,7 @@ public partial class App : Application
         e.SetObserved();
     }
 
-    private void RunSelfTest(IAppPaths paths)
+    private void RunSelfTest(IAppPaths paths, bool region)
     {
         var coordinator = _host!.Services.GetRequiredService<Services.RecordingCoordinator>();
         var probe = _host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
@@ -152,7 +158,9 @@ public partial class App : Application
                 var encoder = encoders.FirstOrDefault(x => x is { Codec: RecMode.Core.Settings.VideoCodec.H264, IsHardware: true })
                     ?? encoders.First(x => x.Codec == RecMode.Core.Settings.VideoCodec.H264);
 
-                var target = RecMode.Capture.CaptureTarget.FromMonitor(monitor);
+                var target = region
+                    ? RecMode.Capture.CaptureTarget.FromRegion(monitor, new RecMode.Capture.RegionRect(100, 100, 1280, 720))
+                    : RecMode.Capture.CaptureTarget.FromMonitor(monitor);
                 if (!coordinator.Start(target, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, 70))
                 {
                     System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");

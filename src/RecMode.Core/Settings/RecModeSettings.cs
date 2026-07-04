@@ -22,6 +22,12 @@ public sealed class RecModeSettings
     public string? ScreenshotFolder { get; set; }
     public string FilenamePattern { get; set; } = "RecMode {date} {time}";
 
+    // Last region selection (monitor-local pixels; Width 0 = unset). Persisted per plan Phase 2.
+    public int RegionX { get; set; }
+    public int RegionY { get; set; }
+    public int RegionWidth { get; set; }
+    public int RegionHeight { get; set; }
+
     // Recording behavior
     public int CountdownSeconds { get; set; } = 3;
     public bool CaptureCursor { get; set; } = true;

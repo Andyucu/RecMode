@@ -24,7 +24,8 @@ internal sealed class BgraScaler : IDisposable
     public int Stride => OutputWidth * 4;
     public int ByteSize => Stride * OutputHeight;
 
-    public BgraScaler(ID3D11Device device, ID3D11DeviceContext context, int srcW, int srcH, int dstW, int dstH)
+    public BgraScaler(ID3D11Device device, ID3D11DeviceContext context, int srcW, int srcH, int dstW, int dstH,
+        RegionRect? sourceRect = null)
     {
         _context = context;
         OutputWidth = dstW;
@@ -69,6 +70,12 @@ internal sealed class BgraScaler : IDisposable
 
         _outputView = _videoDevice.CreateVideoProcessorOutputView(_bgraGpu, _enumerator,
             new VideoProcessorOutputViewDescription { ViewDimension = VideoProcessorOutputViewDimension.Texture2D });
+
+        if (sourceRect is { } r)
+        {
+            _videoContext.VideoProcessorSetStreamSourceRect(_processor, 0, true,
+                new Vortice.RawRect(r.X, r.Y, r.X + r.Width, r.Y + r.Height));
+        }
     }
 
     public void Scale(ID3D11Texture2D src, byte[] dest)

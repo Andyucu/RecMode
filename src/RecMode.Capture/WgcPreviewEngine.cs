@@ -48,8 +48,11 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
 
         int srcW = Math.Max(2, item.Size.Width), srcH = Math.Max(2, item.Size.Height);
-        (int dstW, int dstH) = FitPreview(srcW, srcH);
-        _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH);
+        // For a region, the preview should be sized to the region, not the whole monitor.
+        int effectiveW = target.Region?.Width ?? srcW;
+        int effectiveH = target.Region?.Height ?? srcH;
+        (int dstW, int dstH) = FitPreview(Math.Max(2, effectiveW), Math.Max(2, effectiveH));
+        _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
         Width = dstW;
         Height = dstH;
         Stride = _scaler.Stride;

@@ -24,6 +24,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private readonly IEncoderProbe _encoderProbe;
     private readonly ISettingsService _settings;
     private readonly Func<IPreviewEngine> _previewFactory;
+    private readonly IRegionPicker _regionPicker;
 
     private MonitorInfo? _selectedMonitor;
     private WindowInfo? _selectedWindow;
@@ -31,8 +32,11 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private MediaContainer _selectedFormat;
     private int _selectedFrameRate;
     private int _quality;
+    private RegionRect? _region;
     private bool _isScreenSource = true;
     private bool _isWindowSource;
+    private bool _isRegionSource;
+    private bool _selectingRegion;
     private bool _isRecording;
     private bool _isActivePage;
     private string _statusText = "Ready";
@@ -46,12 +50,19 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private ImageSource? _previewImage;
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
-        ISettingsService settings, Func<IPreviewEngine> previewFactory)
+        ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
         _settings = settings;
         _previewFactory = previewFactory;
+        _regionPicker = regionPicker;
+
+        if (settings.Current.RegionWidth > 0 && settings.Current.RegionHeight > 0)
+        {
+            _region = new RegionRect(settings.Current.RegionX, settings.Current.RegionY,
+                settings.Current.RegionWidth, settings.Current.RegionHeight);
+        }
 
         Formats = [MediaContainer.Mp4, MediaContainer.Mkv];
         FrameRates = [30, 60, 120];
@@ -60,6 +71,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
 
         RecordCommand = new RelayCommand(ToggleRecord, () => CurrentTarget() is not null && SelectedEncoder is not null);
+        ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
@@ -72,6 +84,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     public IReadOnlyList<int> FrameRates { get; }
 
     public IRelayCommand RecordCommand { get; }
+    public IRelayCommand ChangeRegionCommand { get; }
 
     public ImageSource? PreviewImage { get => _previewImage; private set => SetProperty(ref _previewImage, value); }
     public bool HasPreview => PreviewImage is not null;
@@ -105,7 +118,68 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         }
     }
 
+    public bool IsRegionSource
+    {
+        get => _isRegionSource;
+        set
+        {
+            if (!SetProperty(ref _isRegionSource, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ShowRegionInfo));
+            RecordCommand.NotifyCanExecuteChanged();
+            if (!value || _selectingRegion)
+            {
+                return;
+            }
+
+            // On first switch to Region, pick immediately if none stored yet.
+            if (_region is null)
+            {
+                PickRegion(revertOnCancel: true);
+            }
+            else
+            {
+                RestartPreview();
+            }
+        }
+    }
+
+    private void PickRegion(bool revertOnCancel)
+    {
+        if (SelectedMonitor is not { } mon)
+        {
+            if (revertOnCancel) RevertToScreen();
+            return;
+        }
+
+        _selectingRegion = true;
+        RegionRect? picked = _regionPicker.Pick(mon);
+        _selectingRegion = false;
+
+        if (picked is { } r)
+        {
+            _region = r;
+            _settings.Current.RegionX = r.X;
+            _settings.Current.RegionY = r.Y;
+            _settings.Current.RegionWidth = r.Width;
+            _settings.Current.RegionHeight = r.Height;
+            _settings.RequestSave();
+            OnPropertyChanged(nameof(RegionLabel));
+            RestartPreview();
+            RecordCommand.NotifyCanExecuteChanged();
+        }
+        else if (revertOnCancel)
+        {
+            RevertToScreen();
+        }
+    }
+
+    public string RegionLabel => _region is { } r ? $"Region {r.Width} × {r.Height}" : "No region selected";
     public bool ShowWindowPicker => IsWindowSource;
+    public bool ShowRegionInfo => IsRegionSource;
 
     public MonitorInfo? SelectedMonitor
     {
@@ -213,12 +287,27 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
     private CaptureTarget? CurrentTarget()
     {
+        if (IsRegionSource)
+        {
+            return _region is { } r && SelectedMonitor is { } mon
+                ? CaptureTarget.FromRegion(mon, r)
+                : null;
+        }
+
         if (IsWindowSource)
         {
             return SelectedWindow is null ? null : CaptureTarget.FromWindow(SelectedWindow);
         }
 
         return SelectedMonitor is null ? null : CaptureTarget.FromMonitor(SelectedMonitor);
+    }
+
+    private void RevertToScreen()
+    {
+        _isRegionSource = false;
+        OnPropertyChanged(nameof(IsRegionSource));
+        OnPropertyChanged(nameof(ShowRegionInfo));
+        IsScreenSource = true; // re-checks the Screen tile and restarts preview
     }
 
     private void LoadDevices()

@@ -48,7 +48,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
 
         int srcW = item.Size.Width, srcH = item.Size.Height;
-        _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH);
+        _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
         OutputWidth = dstW;
         OutputHeight = dstH;
         Nv12ByteSize = _converter.Nv12ByteSize;

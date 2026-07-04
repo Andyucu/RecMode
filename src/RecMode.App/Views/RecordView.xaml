@@ -27,7 +27,8 @@
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE737;"
                                  IsChecked="{Binding IsWindowSource, Mode=TwoWay}"
                                  Content="{x:Static res:Strings.Source_Window}" Margin="0,0,10,0" />
-                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xEF20;"
+                    <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xEF20;"
+                                 IsChecked="{Binding IsRegionSource, Mode=TwoWay}"
                                  Content="{x:Static res:Strings.Source_Region}" Margin="0,0,10,0" />
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xE960;"
                                  Content="{x:Static res:Strings.Source_Webcam}" />
@@ -125,6 +126,25 @@
                         <TextBlock Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                                   ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12" />
+                    </StackPanel>
+
+                    <!-- Region info (region source) -->
+                    <StackPanel Visibility="Collapsed">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowRegionInfo}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="{x:Static res:Strings.Source_Region}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,12">
+                            <TextBlock Text="{Binding RegionLabel}" VerticalAlignment="Center" />
+                            <Button Content="Change…" Command="{Binding ChangeRegionCommand}"
+                                    Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" />
+                        </Grid>
                     </StackPanel>
 
                     <TextBlock Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />

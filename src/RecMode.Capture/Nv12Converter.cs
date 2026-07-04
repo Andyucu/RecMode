@@ -25,7 +25,8 @@ internal sealed class Nv12Converter : IDisposable
     /// <summary>Tightly-packed NV12 size = W*H (Y) + W*H/2 (interleaved UV).</summary>
     public int Nv12ByteSize => OutputWidth * OutputHeight * 3 / 2;
 
-    public Nv12Converter(ID3D11Device device, ID3D11DeviceContext context, int srcW, int srcH, int dstW, int dstH)
+    public Nv12Converter(ID3D11Device device, ID3D11DeviceContext context, int srcW, int srcH, int dstW, int dstH,
+        RegionRect? sourceRect = null)
     {
         _context = context;
         OutputWidth = dstW;
@@ -72,6 +73,13 @@ internal sealed class Nv12Converter : IDisposable
 
         var outDesc = new VideoProcessorOutputViewDescription { ViewDimension = VideoProcessorOutputViewDimension.Texture2D };
         _outputView = _videoDevice.CreateVideoProcessorOutputView(_nv12Gpu, _enumerator, outDesc);
+
+        // Region capture: crop the source to the region rect; the VideoProcessor scales it to the NV12 output.
+        if (sourceRect is { } r)
+        {
+            _videoContext.VideoProcessorSetStreamSourceRect(_processor, 0, true,
+                new Vortice.RawRect(r.X, r.Y, r.X + r.Width, r.Y + r.Height));
+        }
     }
 
     /// <summary>Converts <paramref name="src"/> to NV12 and copies tightly-packed bytes into <paramref name="dest"/>.</summary>

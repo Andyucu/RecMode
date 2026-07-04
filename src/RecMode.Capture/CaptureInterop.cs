@@ -100,6 +100,8 @@ internal static class CaptureInterop
                     Handle = hMon,
                     DeviceName = mi.szDevice,
                     DisplayName = $"Display {index} ({w} × {h}){(primary ? " · primary" : "")}",
+                    X = mi.rcMonitor.Left,
+                    Y = mi.rcMonitor.Top,
                     Width = w,
                     Height = h,
                     IsPrimary = primary,
@@ -223,7 +225,7 @@ internal static class CaptureInterop
     public static GraphicsCaptureItem CreateItem(CaptureTarget target) => target.Kind switch
     {
         CaptureKind.Window => CreateItemForWindow(target.Handle),
-        _ => CreateItemForMonitor(target.Handle),
+        _ => CreateItemForMonitor(target.Handle), // Monitor and Region both capture the whole monitor; Region crops in the NV12 pass
     };
 
     private static Guid _itemIid = GraphicsCaptureItem_IID;

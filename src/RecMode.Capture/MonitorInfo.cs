@@ -12,6 +12,9 @@ public sealed record MonitorInfo
     /// <summary>Device name, e.g. <c>\\.\DISPLAY1</c>.</summary>
     public required string DeviceName { get; init; }
 
+    /// <summary>Monitor origin in virtual-desktop pixels (top-left).</summary>
+    public int X { get; init; }
+    public int Y { get; init; }
     public int Width { get; init; }
     public int Height { get; init; }
     public bool IsPrimary { get; init; }

@@ -8,6 +8,51 @@
 
 ---
 
+## Session 2026-07-04 — Phase 2 (region capture + overlay) + CPU budget
+
+**Goal:** Region source with a select overlay + GPU crop; verify the Record-screen-open CPU budget.
+
+### What was built
+- **`RegionRect`** (readonly record struct) + `CaptureTarget.Region` / `CaptureKind.Region` / `FromRegion`.
+- **GPU crop** via `VideoProcessorSetStreamSourceRect` (Vortice `RawRect`) in both `Nv12Converter`
+  (recording) and `BgraScaler` (preview) — optional `sourceRect` param; the processor crops+scales in the
+  same pass (no extra copy). `TryGetSourceSize` returns the region size; engines pass `target.Region`.
+- **`RegionSelectWindow`** — full-monitor overlay: `WindowStyle=None`, `AllowsTransparency`, `Topmost`,
+  dim `#66000000`; positioned in **physical pixels** via `SetWindowPos` (bypasses DIP math); selection in
+  DIPs converted to monitor pixels with the composition transform `M11` (DPI-safe); rubber-band drag, live
+  `W × H` px label, presets (1920×1080 / 1280×720 / Full), Esc=cancel / Enter=use, even-dim clamping.
+- **`IRegionPicker`/`RegionPicker`** (shows the overlay modally; keeps the VM free of Views).
+- **RecordViewModel**: `IsRegionSource` opens the picker on first switch (reverts to Screen on cancel);
+  region persisted to settings (`RegionX/Y/Width/Height`) and restored on load; `ChangeRegionCommand`
+  re-picks; `RegionLabel`/`ShowRegionInfo`; `CurrentTarget` returns `FromRegion`. RecordView: Region tile
+  enabled, region-info panel with "Change…".
+
+### Verification
+- Overlay screenshot: dimmed screen + accent-bordered selection rect + px readout + preset/confirm toolbar.
+- **Region crop correctness:** `--selftest-region` records a `RegionRect(100,100,1280,720)` → ffprobe
+  confirms the output is exactly **1280×720** h264. Monitor-record regression still valid. 46 tests, 0 warnings.
+- **CPU budget (§1):** Record-screen-open with live preview = **1.93% total CPU, 198 MB** (< 3% / < 250 MB).
+  Note it's ~31% of one core — headroom for the allocation-profiling pass (preview readback + WritePixels +
+  Dispatcher marshaling at 30 fps).
+
+### Gotchas
+- `SelectedMonitor` is a **property**, so `is not null` doesn't null-narrow it → bind a local
+  (`is { } mon`) before passing to non-null params, else CS8604 becomes an error (WarningsAsErrors=nullable).
+- Region select overlay must be positioned in physical pixels (SetWindowPos), then selection DIPs → pixels
+  via `CompositionTarget.TransformToDevice.M11` — otherwise DPI scaling corrupts the region rect.
+- `Vortice.RawRect(left, top, right, bottom)` for the source rect (not x/y/w/h).
+
+### Remaining for Phase 2
+- All-displays capture (WGC can't do the virtual desktop; needs DXGI Desktop Duplication for multi-monitor).
+- HDR→SDR tone-map in the NV12 pass (needs an HDR monitor to verify; VideoProcessor color-space route).
+- Allocation-free hot path (texture ring + pooled buffers, profiler-verified); preview CPU/core is the target.
+
+### Note
+- Build/commit here were briefly blocked by a command-safety classifier outage; resumed once it recovered.
+- Added temporary `--selftest-region` hook alongside `--selftest-record` (both removed when Phase 5 CLI lands).
+
+---
+
 ## Session 2026-07-04 — Phase 2 (part 1): live preview, window capture, cursor/border, black-frame watchdog
 
 **Goal:** Productionize the capture engine — the headline being live preview in the Record screen.

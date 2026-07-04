@@ -43,6 +43,9 @@ internal static class Composition
         // Theming.
         services.AddSingleton<ThemeManager>();
 
+        // Region selection.
+        services.AddSingleton<IRegionPicker, RegionPicker>();
+
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();
         services.AddSingleton<LibraryViewModel>();
