@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DISPOSABLE Phase 0.5 pipeline spike (plan section 3.3 decision gate). Not part of RecMode.slnx.
+    Build/run directly:  dotnet run project tools/spike -c Release  args
+    Keep the learnings, not this code.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RecMode.Spike</RootNamespace>
+    <AssemblyName>RecMode.Spike</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" />
+    <PackageReference Include="Vortice.DXGI" />
+    <PackageReference Include="NAudio" />
+  </ItemGroup>
+
+</Project>

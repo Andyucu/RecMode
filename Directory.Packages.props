@@ -16,6 +16,12 @@
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="9.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageVersion Include="Serilog.Sinks.Async" Version="2.1.0" />
+
+    <!-- Capture (D3D11/DXGI via Vortice) + audio (NAudio WASAPI). Used by the Phase 0.5 spike first,
+         then RecMode.Capture / RecMode.Audio in Phase 2/4. -->
+    <PackageVersion Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageVersion Include="Vortice.DXGI" Version="3.6.2" />
+    <PackageVersion Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <!-- Test stack -->

@@ -1,0 +1,5 @@
+{
+  "build": "BtbN ffmpeg-master-latest win64-gpl (N-125444-g6d72600a30)",
+  "ffmpegSha256": "95aee5e6cb047c87a60f01a0968207d6e2bd5819f20bc41c8261c3aceff941ec",
+  "ffprobeSha256": "3d5c036b51929f95ee7328a64ac93ffff7d066624a4b9a53660ce7ba8f3e7488"
+}

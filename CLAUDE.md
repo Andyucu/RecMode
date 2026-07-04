@@ -29,7 +29,14 @@ Modern Windows 11 screen recorder (Bandicam-class). **.NET 10 · WPF · Fluent d
 - [x] Implementation plan v1 written; **v2 revision** (spike, decision gate, MVP cut, tests, error taxonomy, OS matrix, portable-first, resource controls) — 2026-07-03
 - [x] Project memory + changelog created
 - [x] **Phase 0 — Foundation (2026-07-04):** git init; `RecMode.slnx` (6 src + 3 test projects); `Directory.Build.props` + central package mgmt; DI host (M.E.Hosting) + Serilog; Core error taxonomy, recording state machine (pause-PTS/gapless), versioned settings service (migration + corrupt recovery), `AppPaths` (portable), `OsCapabilities`, crash reporter + opt-in minidump; `FfmpegLocator` (bundled/override + SHA-256 manifest verify); WPF shell window (DI'd); `build.ps1` + `publish-portable.ps1` + `portable.marker`. **Acceptance met:** `dotnet build` clean (0 warnings), `dotnet test` 33/33 green, themed window launches in portable mode, ffmpeg resolution runs (binaries not yet staged → graceful "not found"). Details in `PROJECT_MEMORY.md`.
-- [ ] Phase 0.5 — Pipeline spike ⚠️ gate: WGC→D3D11→NV12→pipe→ffmpeg H.264→MP4/MKV + system audio, 5-min no-drift, throughput measured, kill-test → **record gate outcome here**
+- [x] **Phase 0.5 — Pipeline spike ⚠️ GATE PASSED (2026-07-04, on AMD AMF).** Disposable spike in `tools/spike/` (WGC→D3D11→GPU-NV12 via VideoProcessor→staging readback→named pipe→ffmpeg→file, CFR-paced; + WASAPI loopback audio 2nd pipe). **Dev machine is AMD (RX 7900 XTX / Ryzen 7 7700X), so the hw path validated is `h264_amf`, not NVENC.**
+  - **1440p60 h264_amf, 5-min run:** 17,992/18,000 CFR frames (0 steady-state drops; 8-frame startup ramp), **316 MB/s** sustained pipe throughput (94.8 GB total), **app CPU 10.2% of one core** excl. ffmpeg, memory **flat** (~108 MB peak). Output valid: h264 2560×1440 exactly 60fps, 299.87s. **All three gate criteria pass** (0 drops, <15% one core, no steady-state pipe stall — the single ~95ms stall is one-time AMF encoder-init at t=0).
+  - **Encoder/container matrix validated:** h264_amf + libx264, ×MP4 + MKV — all ffprobe-valid.
+  - **Headroom:** native 5120×1440 (2× pixels) via libx264 = **620 MB/s, 0 stalls, 18.9% one core**. Pipeline is not the bottleneck.
+  - **Audio:** system loopback muxes to AAC; video/audio duration align within **~49 ms** (rigorous ±40 ms beep+flash check deferred to Phase 4).
+  - **Kill test (ffmpeg killed mid-record):** **MP4 → dead ("moov atom not found")**; **MKV → recoverable** — truncated MKV remuxed `-c copy` into a clean playable MP4 (5.8s recovered). **Confirms the "safe recording = MKV + auto-remux to MP4" design.** App-side: ffmpeg death makes `pipe.Write` throw `IOException` — production must catch at the pipe boundary → `FatalFinalizationError` + recovery.
+  - **Findings for production:** h264_amf rejects width >4096 (H.264 level cap) → ultrawide/5K needs HEVC/AV1 or downscale; start the encoder before the first real frame to avoid the init stall; CFR duplication works (WGC delivers ~52 unique fps on static desktop → paced to exactly 60).
+  - **Gate verdict: Tier 1 (NV12-first + readback + pipe) is sufficient for MVP. No Tier 2 (in-proc hw frames) needed now.** NVENC/QSV still need their own gate re-check on NVIDIA/Intel hardware (Phase 3 re-check / Phase 7 vendor smoke).
 - [ ] Phase 1 — Minimal shell + Record essentials (functional, not pixel-perfect; sidebar only)
 - [ ] Phase 2 — Capture engine: monitor/window/region/all-displays, preview, region overlay
 - [ ] Phase 3 — Encoding productionized ⚠️ gate re-check: state machine, pause PTS, fallback chain, crash safety, resource-control args
@@ -42,9 +49,10 @@ Modern Windows 11 screen recorder (Bandicam-class). **.NET 10 · WPF · Fluent d
 - [ ] Phase 10 — Hardening, a11y, Win10 regression pass, portable zip 1.0.0 (installer = stretch)
 
 ## Working notes
-- Git repo initialized (Phase 0). **Local commits only — do NOT push to GitHub until the user says so.**
-- **Next: Phase 0.5 pipeline spike (⚠️ decision gate).** Prereqs: add Vortice.Windows + NAudio packages; **stage real ffmpeg binaries in `tools\ffmpeg\`** (+ generate `ffmpeg.manifest.json` with SHA-256 per `ffmpeg/README.md`). Spike proves WGC→D3D11→NV12→pipe→ffmpeg h264_nvenc→MP4/MKV + system audio, 5-min no-drift.
-- Phase 0.5 spike results (throughput MB/s, CPU %, dropped frames, kill-test findings) must be written into this file **and** `PROJECT_MEMORY.md` when measured.
-- Build/test: `./build.ps1` (Debug) or `./build.ps1 -Configuration Release`. Portable zip: `./publish-portable.ps1`.
-- Gotcha: solution file is `.slnx` (not `.sln`); app.manifest `<assembly>` root must be well-formed or the exe fails to start with a SxS error.
+- Git repo initialized. **Local commits only — do NOT push to GitHub until the user says so.**
+- **Next: Phase 1 — Minimal shell + Record essentials** (sidebar-only shell, source picker, real encoder/format/fps/quality controls wired to the probe, Record/Stop → valid file). Port the Tier-1 learnings from `tools/spike/` into `RecMode.Capture` (WGC + `Nv12Converter`/VideoProcessor + CFR pacing) and `RecMode.Encoding` (pipe + ffmpeg session). Reuse the spike's `Interop.cs` monitor-capture pattern.
+- **ffmpeg is staged**: real BtbN GPL build in `tools\ffmpeg\` (gitignored binaries) + committed `ffmpeg.manifest.json` (SHA-256). `publish-portable.ps1` copies it into the zip. `FfmpegLocator` hash-verify will pass against the manifest.
+- Vortice.Direct3D11/DXGI + NAudio versions pinned in `Directory.Packages.props` (used by the spike; wire into Capture/Audio in Phase 2/4).
+- Build/test: `./build.ps1` (Debug) or `-Configuration Release`. Portable zip: `./publish-portable.ps1`. Run spike: `dotnet run --project tools/spike -c Release -- record 10 h264_amf mp4 2560x1440`.
+- Gotchas: solution is `.slnx` (not `.sln`); app.manifest `<assembly>` root must be well-formed (else SxS start failure); WGC multi-input pipe deadlocks unless video bytes flow before ffmpeg opens the 2nd (audio) pipe — start video pacing first, wait for the audio-pipe connection on its own thread.
 - When implementing UI, open `RecMode.dc.html` in a browser next to the app and match both themes.
