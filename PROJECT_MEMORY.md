@@ -8,6 +8,43 @@
 
 ---
 
+## Session 2026-07-04 — Phase 3 (part 1): pause/resume, safe recording, encoder fallback
+
+**Goal:** Productionize the recording flow — pause/resume with no gap, safe recording, fallback chain.
+
+### What was built
+- **Pause/resume (PTS continuity, §3.7):** rewrote `PaceLoop` to be **Elapsed-driven** — target frame count =
+  `_stateMachine.Elapsed.TotalSeconds · fps`; write until caught up, else sleep. Since `Elapsed` excludes
+  paused spans and ffmpeg assigns PTS by frame index (`-r fps` rawvideo), pausing writes no frames → gapless,
+  and resume produces no catch-up burst (Elapsed didn't advance during pause). `Coordinator.Pause/Resume`;
+  `RecordViewModel` Pause/Resume button + `IsPaused`/`PauseButtonText`; StatsText shows "Paused".
+  **Verified:** 3s + pause 2s + 3s → exactly 6.0s / 360 frames (not 8s).
+- **Safe recording (§3):** when `SafeRecording && container==Mp4`, record to `<stem>.recording.mkv`, remux
+  `-c copy -movflags +faststart` → MP4 on finalize, delete the mkv. On remux failure, keep the mkv + warn.
+  **Verified:** `safe=true` in the log; final MP4 valid; no leftover mkv.
+- **Encoder fallback chain (§3.6):** `BuildFallbackChain` (selected → same-codec other backend → any hw
+  H.264 → libx264); `TryStartAnyEncoder` tries each, catching `EncoderStartException`. Added a **connection
+  timeout** in `FfmpegRecordingSession.Start` (polls `_ffmpeg.HasExited` + 8s cap) so a bad encoder can't
+  deadlock `WaitForConnection`. Coordinator now injects `IEncoderProbe`.
+- **Disk-space pre-flight** (< 2 GB free → RecoverableWarning). **Richer stats:** `RecordingProgress` gains
+  `Mbps` + `FileSizeBytes` (polled from the recording file); StatsText = "fps · Mbps · MB".
+
+### Gotchas / notes
+- Pause correctness hinges on ffmpeg assigning PTS by **frame index** (rawvideo `-r fps`), so only the frame
+  **count** matters — wall-clock write timing is irrelevant to output timing. Pace by Elapsed·fps, done.
+- Fallback handles **pre-connect** failures (ffmpeg exits/won't connect). **Post-connect** encoder-open death
+  (e.g. nvenc "Cannot load nvcuda.dll" breaks the pipe after ~2 frames) is *prevented* by trial-encode gating
+  (not offered) and otherwise handled by `HandleFatalPipeBreak` → Fatal + recoverable MKV. Live hw→sw
+  Degraded swap mid-stream is still TODO (Phase 3 part 2).
+- Added `--selftest-pause` hook (3s/pause2s/3s). Self-test dispatch now matches any `--selftest-<mode>`.
+
+### Remaining for Phase 3
+- Countdown wiring (state machine has the transitions; overlay lands Phase 5), full snapshot-tested args
+  matrix, resource-control args (thread cap / sw+hw effort / process priority), auto-split (segment muxer,
+  FAT32 4 GB), orphan-MKV detection + recovery on launch, mid-stream hw→sw Degraded fallback, gate re-check.
+
+---
+
 ## Session 2026-07-04 — Phase 2 (region capture + overlay) + CPU budget
 
 **Goal:** Region source with a select overlay + GPU crop; verify the Record-screen-open CPU budget.

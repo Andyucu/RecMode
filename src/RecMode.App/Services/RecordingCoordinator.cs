@@ -35,13 +35,22 @@ public sealed class RecordingCoordinator : IDisposable
     private Thread? _pacer;
     private volatile bool _stopRequested;
 
+    // Safe-recording remux (record to MKV, convert to MP4 on stop).
+    private string? _ffmpegPath;
+    private bool _safeRemux;
+    private string _finalPath = "";
+    private string _recordingPath = "";
+
+    private readonly IEncoderProbe _encoderProbe;
+
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
         IFfmpegLocator ffmpeg,
         IAppPaths paths,
         ISettingsService settings,
         IErrorReporter errors,
-        RecordingStateMachine stateMachine)
+        RecordingStateMachine stateMachine,
+        IEncoderProbe encoderProbe)
     {
         _captureFactory = captureFactory;
         _ffmpeg = ffmpeg;
@@ -49,6 +58,7 @@ public sealed class RecordingCoordinator : IDisposable
         _settings = settings;
         _errors = errors;
         _stateMachine = stateMachine;
+        _encoderProbe = encoderProbe;
     }
 
     public RecordingState State => _stateMachine.State;
@@ -91,6 +101,26 @@ public sealed class RecordingCoordinator : IDisposable
             return false;
         }
 
+        // Disk-space pre-flight (§3.6): warn under 2 GB free on the output volume.
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
+            if (root is not null)
+            {
+                var drive = new DriveInfo(root);
+                if (drive.IsReady && drive.AvailableFreeSpace < 2L * 1024 * 1024 * 1024)
+                {
+                    _errors.Warn("record.low-disk",
+                        $"Low disk space ({drive.AvailableFreeSpace / (1024 * 1024 * 1024)} GB free).",
+                        "The recording may stop early if the disk fills.");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            // Free-space check is best-effort.
+        }
+
         if (!CaptureCapabilities.TryGetSourceSize(target, out int srcW, out int srcH))
         {
             _errors.Block("record.source-unavailable", "The selected source couldn't be captured.",
@@ -105,33 +135,56 @@ public sealed class RecordingCoordinator : IDisposable
             _capture = _captureFactory();
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
 
-            string ext = ContainerExtension(container);
-            string sourceLabel = target.Kind == CaptureKind.Window ? "Window" : "Display";
+            // Safe recording (§3): capture to MKV (crash-safe) then remux to MP4 (-c copy) on stop.
+            _safeRemux = _settings.Current.SafeRecording && container == MediaContainer.Mp4;
+            MediaContainer actualContainer = _safeRemux ? MediaContainer.Mkv : container;
+
+            string sourceLabel = target.Kind switch
+            {
+                CaptureKind.Window => "Window",
+                CaptureKind.Region => "Region",
+                _ => "Display",
+            };
             string fileName = FilenameBuilder.BuildFileName(
-                _settings.Current.FilenamePattern, DateTimeOffset.Now, sourceLabel, encoder.Codec.ToString(), ext);
-            string outputPath = FilenameBuilder.BuildUniquePath(outputDir, fileName);
+                _settings.Current.FilenamePattern, DateTimeOffset.Now, sourceLabel, encoder.Codec.ToString(),
+                ContainerExtension(container));
+            _finalPath = FilenameBuilder.BuildUniquePath(outputDir, fileName);
+            _recordingPath = _safeRemux
+                ? Path.Combine(outputDir, Path.GetFileNameWithoutExtension(_finalPath) + ".recording.mkv")
+                : _finalPath;
+            _ffmpegPath = ff.FfmpegPath;
 
             var job = new FfmpegJob
             {
                 Encoder = encoder,
-                Container = container,
+                Container = actualContainer,
                 Width = dstW,
                 Height = dstH,
                 FrameRate = fps,
                 Quality = quality,
                 PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
-                OutputPath = outputPath,
+                OutputPath = _recordingPath,
             };
 
-            _session = new FfmpegRecordingSession(ff.FfmpegPath);
-            _session.Start(job, _capture.Nv12ByteSize);
+            // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
+            _session = TryStartAnyEncoder(BuildFallbackChain(encoder), job, _capture.Nv12ByteSize);
+            if (_session is null)
+            {
+                _errors.Block("record.no-encoder", "No video encoder could be started.",
+                    "Try a different encoder in Settings.");
+                SafeTeardown();
+                return false;
+            }
 
             _stateMachine.StartRecording();
             _stopRequested = false;
+            _lastSizeBytes = 0;
+            _lastSizeTicks = 0;
             _pacer = new Thread(() => PaceLoop(fps)) { IsBackground = true, Name = "recmode-pacer" };
             _pacer.Start();
 
-            Log.Information("Recording started: {Enc} {W}x{H}@{Fps} -> {Path}", encoder.FfmpegId, dstW, dstH, fps, outputPath);
+            Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} -> {Path}",
+                encoder.FfmpegId, dstW, dstH, fps, _safeRemux, _finalPath);
             return true;
         }
         catch (Exception ex)
@@ -160,30 +213,61 @@ public sealed class RecordingCoordinator : IDisposable
         Finished?.Invoke(result);
     }
 
+    /// <summary>Pauses the recording — the pacer stops writing; output has no gap for the paused span (§3.7).</summary>
+    public void Pause()
+    {
+        if (_stateMachine.State is RecordingState.Recording or RecordingState.Degraded)
+        {
+            _stateMachine.Pause();
+            RaiseProgress();
+        }
+    }
+
+    /// <summary>Resumes a paused recording.</summary>
+    public void Resume()
+    {
+        if (_stateMachine.State == RecordingState.Paused)
+        {
+            _stateMachine.Resume();
+            RaiseProgress();
+        }
+    }
+
+    public bool IsPaused => _stateMachine.State == RecordingState.Paused;
+
     private void PaceLoop(int fps)
     {
         byte[] frame = new byte[_capture!.Nv12ByteSize];
         int lumaLength = _capture.OutputWidth * _capture.OutputHeight;
-        long interval = Stopwatch.Frequency / fps;
-        long start = Stopwatch.GetTimestamp();
-        long lastReport = start;
+        long framesWritten = 0;
+        long lastReport = Stopwatch.GetTimestamp();
         long blackSince = 0;
         bool blackWarned = false;
 
         _ = timeBeginPeriod(1);
         try
         {
-            for (long i = 0; !_stopRequested; i++)
+            while (!_stopRequested)
             {
-                long target = start + i * interval;
-                WaitUntil(target, () => _stopRequested);
-                if (_stopRequested)
+                if (_stateMachine.State == RecordingState.Paused)
                 {
-                    break;
+                    Thread.Sleep(4);
+                    continue;
+                }
+
+                // CFR output paced by ACTIVE elapsed time (excludes paused spans). ffmpeg assigns PTS by
+                // frame index at -r fps, so writing exactly Elapsed·fps frames yields gapless pause/resume
+                // and duplicates the latest frame to fill gaps (the §3.3 CFR policy).
+                long targetFrames = (long)(_stateMachine.Elapsed.TotalSeconds * fps);
+                if (framesWritten >= targetFrames)
+                {
+                    Thread.Sleep(1);
+                    continue;
                 }
 
                 if (!_capture.TryGetLatestFrame(frame))
                 {
+                    Thread.Sleep(1);
                     continue; // no first frame yet
                 }
 
@@ -196,11 +280,12 @@ public sealed class RecordingCoordinator : IDisposable
                     HandleFatalPipeBreak(ex);
                     return;
                 }
+                framesWritten++;
 
                 long now = Stopwatch.GetTimestamp();
 
                 // Black-frame watchdog (§3.6): exclusive-fullscreen games / DRM windows capture as black.
-                if (!blackWarned && (i & 15) == 0)
+                if (!blackWarned && (framesWritten & 15) == 0)
                 {
                     if (IsLikelyBlack(frame, lumaLength))
                     {
@@ -280,18 +365,163 @@ public sealed class RecordingCoordinator : IDisposable
         _session = null;
         _capture = null;
 
+        // Safe recording: remux the crash-safe MKV to MP4 without re-encoding.
+        if (result.Success && _safeRemux)
+        {
+            if (Remux(_recordingPath, _finalPath))
+            {
+                TryDelete(_recordingPath);
+                result = result with { OutputPath = _finalPath };
+            }
+            else
+            {
+                _errors.Warn("record.remux-failed",
+                    "Saved as MKV — converting to MP4 failed, but your recording is safe.",
+                    "The .recording.mkv file is playable and can be converted manually.");
+                result = result with { OutputPath = _recordingPath };
+            }
+        }
+
         Log.Information("Recording finalized: success={Success} frames={Frames} -> {Path}",
             result.Success, result.FramesWritten, result.OutputPath);
         return result;
     }
+
+    private List<EncoderInfo> BuildFallbackChain(EncoderInfo selected)
+    {
+        IReadOnlyList<EncoderInfo> available = _encoderProbe.GetAvailableEncoders();
+        var chain = new List<EncoderInfo> { selected };
+
+        void Add(EncoderInfo? e)
+        {
+            if (e is not null && !chain.Exists(c => c.FfmpegId == e.FfmpegId))
+            {
+                chain.Add(e);
+            }
+        }
+
+        foreach (EncoderInfo e in available.Where(x => x.Codec == selected.Codec))
+        {
+            Add(e); // same codec, other backends
+        }
+        foreach (EncoderInfo e in available.Where(x => x is { Codec: VideoCodec.H264, IsHardware: true }))
+        {
+            Add(e); // any hardware H.264
+        }
+        Add(available.FirstOrDefault(x => x.FfmpegId == "libx264")); // last-resort software
+
+        return chain;
+    }
+
+    private FfmpegRecordingSession? TryStartAnyEncoder(List<EncoderInfo> chain, FfmpegJob template, int frameBytes)
+    {
+        for (int i = 0; i < chain.Count; i++)
+        {
+            EncoderInfo enc = chain[i];
+            var session = new FfmpegRecordingSession(_ffmpegPath!);
+            try
+            {
+                session.Start(template with { Encoder = enc }, frameBytes);
+                if (i > 0)
+                {
+                    _errors.Warn("record.encoder-fallback",
+                        $"Using {enc.DisplayName} — the selected encoder wouldn't start.");
+                }
+                return session;
+            }
+            catch (Exception ex) when (ex is EncoderStartException or InvalidOperationException)
+            {
+                Log.Warning(ex, "Encoder {Enc} failed to start; trying next", enc.FfmpegId);
+                session.Dispose();
+            }
+        }
+
+        return null;
+    }
+
+    private bool Remux(string mkvPath, string mp4Path)
+    {
+        if (_ffmpegPath is null || !File.Exists(mkvPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var psi = new ProcessStartInfo(_ffmpegPath,
+                $"-hide_banner -loglevel error -i \"{mkvPath}\" -c copy -movflags +faststart -y \"{mp4Path}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+            };
+            using Process? process = Process.Start(psi);
+            if (process is null)
+            {
+                return false;
+            }
+
+            process.StandardError.ReadToEnd();
+            return process.WaitForExit(30000) && process.ExitCode == 0 && File.Exists(mp4Path);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            Log.Error(ex, "Remux failed");
+            return false;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Leave the file; it's harmless.
+        }
+    }
+
+    private long _lastSizeBytes;
+    private long _lastSizeTicks;
 
     private void RaiseProgress()
     {
         double fps = _capture is null || _stateMachine.Elapsed.TotalSeconds < 0.1
             ? 0
             : _session!.FramesWritten / _stateMachine.Elapsed.TotalSeconds;
+
+        long size = 0;
+        double mbps = 0;
+        try
+        {
+            if (_recordingPath.Length > 0 && File.Exists(_recordingPath))
+            {
+                size = new FileInfo(_recordingPath).Length;
+                long now = Stopwatch.GetTimestamp();
+                if (_lastSizeTicks != 0)
+                {
+                    double dt = (now - _lastSizeTicks) / (double)Stopwatch.Frequency;
+                    if (dt > 0)
+                    {
+                        mbps = (size - _lastSizeBytes) * 8 / dt / 1_000_000.0;
+                    }
+                }
+                _lastSizeBytes = size;
+                _lastSizeTicks = now;
+            }
+        }
+        catch (IOException)
+        {
+            // File momentarily locked; skip this sample.
+        }
+
         ProgressChanged?.Invoke(new RecordingProgress(
-            _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0));
+            _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0, mbps, size));
     }
 
     /// <summary>Cheap black-frame test: sample the NV12 luma plane; near-zero everywhere ≈ black.</summary>
@@ -314,22 +544,6 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         return max < 20; // studio-black luma is ~16
-    }
-
-    private static void WaitUntil(long targetTicks, Func<bool> abort)
-    {
-        while (!abort())
-        {
-            long remaining = targetTicks - Stopwatch.GetTimestamp();
-            if (remaining <= 0)
-            {
-                return;
-            }
-
-            double ms = remaining * 1000.0 / Stopwatch.Frequency;
-            if (ms > 2) Thread.Sleep(1);
-            else Thread.SpinWait(64);
-        }
     }
 
     private void SafeTeardown()

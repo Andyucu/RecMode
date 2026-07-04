@@ -67,15 +67,10 @@ public partial class App : Application
 
         // Headless verification hook (temporary; the real CLI arrives in Phase 5): drive the production
         // RecordingCoordinator for a few seconds and exit, writing the outcome to Data\selftest-result.txt.
-        if (Array.Exists(e.Args, a => a == "--selftest-record"))
+        string? selfTest = Array.Find(e.Args, a => a.StartsWith("--selftest-", StringComparison.Ordinal));
+        if (selfTest is not null)
         {
-            RunSelfTest(paths, region: false);
-            return;
-        }
-
-        if (Array.Exists(e.Args, a => a == "--selftest-region"))
-        {
-            RunSelfTest(paths, region: true);
+            RunSelfTest(paths, selfTest["--selftest-".Length..]);
             return;
         }
 
@@ -134,8 +129,9 @@ public partial class App : Application
         e.SetObserved();
     }
 
-    private void RunSelfTest(IAppPaths paths, bool region)
+    private void RunSelfTest(IAppPaths paths, string mode)
     {
+        bool region = mode == "region";
         var coordinator = _host!.Services.GetRequiredService<Services.RecordingCoordinator>();
         var probe = _host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
@@ -168,7 +164,20 @@ public partial class App : Application
                     return;
                 }
 
-                System.Threading.Thread.Sleep(6000);
+                if (mode == "pause")
+                {
+                    // 3s record, 2s paused (should contribute no frames), 3s record → ~6s / ~360 frames.
+                    System.Threading.Thread.Sleep(3000);
+                    coordinator.Pause();
+                    System.Threading.Thread.Sleep(2000);
+                    coordinator.Resume();
+                    System.Threading.Thread.Sleep(3000);
+                }
+                else
+                {
+                    System.Threading.Thread.Sleep(6000);
+                }
+
                 coordinator.Stop();
             }
             catch (Exception ex)

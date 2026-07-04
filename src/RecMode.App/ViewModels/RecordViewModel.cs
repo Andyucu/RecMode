@@ -72,6 +72,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
         RecordCommand = new RelayCommand(ToggleRecord, () => CurrentTarget() is not null && SelectedEncoder is not null);
         ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
+        PauseResumeCommand = new RelayCommand(TogglePause);
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
@@ -85,6 +86,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
     public IRelayCommand RecordCommand { get; }
     public IRelayCommand ChangeRegionCommand { get; }
+    public IRelayCommand PauseResumeCommand { get; }
 
     public ImageSource? PreviewImage { get => _previewImage; private set => SetProperty(ref _previewImage, value); }
     public bool HasPreview => PreviewImage is not null;
@@ -254,6 +256,15 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
     public bool CanEditSettings => !IsRecording;
     public string RecordButtonText => IsRecording ? "Stop" : "Record";
+
+    private bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set { if (SetProperty(ref _isPaused, value)) OnPropertyChanged(nameof(PauseButtonText)); }
+    }
+
+    public string PauseButtonText => IsPaused ? "Resume" : "Pause";
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
@@ -456,12 +467,34 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         }
     }
 
+    private void TogglePause()
+    {
+        if (_coordinator.IsPaused)
+        {
+            _coordinator.Resume();
+        }
+        else
+        {
+            _coordinator.Pause();
+        }
+    }
+
     private void OnProgress(RecordingProgress p) => Dispatch(() =>
     {
         IsRecording = p.State is not Core.Recording.RecordingState.Idle and not Core.Recording.RecordingState.Finalizing;
+        IsPaused = p.State == Core.Recording.RecordingState.Paused;
         ElapsedText = FormatElapsed(p.Elapsed);
-        StatsText = $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.FramesWritten} frames";
+        StatsText = IsPaused
+            ? "Paused"
+            : $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.Mbps.ToString("F1", CultureInfo.InvariantCulture)} Mbps · {FormatBytes(p.FileSizeBytes)}";
     });
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024 * 1024):F2} GB",
+        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):F0} MB",
+        _ => $"{bytes / 1024} KB",
+    };
 
     private void OnFinished(RecordingResult result) => Dispatch(() =>
     {

@@ -79,8 +79,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Command="{Binding RecordCommand}" Content="{Binding RecordButtonText}"
-                                Style="{StaticResource AccentButton}" Width="120" Height="36" />
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Button Command="{Binding RecordCommand}" Content="{Binding RecordButtonText}"
+                                    Style="{StaticResource AccentButton}" Width="120" Height="36" />
+                            <Button Command="{Binding PauseResumeCommand}" Content="{Binding PauseButtonText}"
+                                    Style="{StaticResource SecondaryButton}" Width="96" Height="36" Margin="8,0,0,0"
+                                    Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                             <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />
                             <TextBlock Text="{Binding StatsText}" Style="{StaticResource CaptionText}" />

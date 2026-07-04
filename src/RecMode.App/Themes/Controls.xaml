@@ -11,6 +11,8 @@
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="MonoFontFamily">Cascadia Code, Consolas</FontFamily>
 
+    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
     <!-- ===================== Type ramp (design §2) ===================== -->
     <Style x:Key="CaptionText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />

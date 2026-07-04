@@ -6,6 +6,9 @@ namespace RecMode.Encoding.Ffmpeg;
 /// <summary>Thrown when the ffmpeg pipe breaks mid-write (ffmpeg died). Maps to a FatalFinalizationError.</summary>
 public sealed class EncoderPipeBrokenException(string message, Exception inner) : Exception(message, inner);
 
+/// <summary>Thrown when ffmpeg fails to start or connect for an encoder (drives the fallback chain, §3.6).</summary>
+public sealed class EncoderStartException(string message) : Exception(message);
+
 /// <summary>Result of finalizing a recording session.</summary>
 public sealed record RecordingResult(bool Success, int ExitCode, string OutputPath, long FramesWritten);
 
@@ -55,8 +58,24 @@ public sealed class FfmpegRecordingSession : IDisposable
         _ffmpeg.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (_stderrLock) { _stderr.AppendLine(e.Data); } } };
         _ffmpeg.BeginErrorReadLine();
 
-        // ffmpeg opens the pipe as it initializes; block until it connects (rawvideo, single input).
-        _pipe.WaitForConnection();
+        // ffmpeg opens the pipe as it initializes; wait for it to connect, but bail if it exits first or
+        // never connects (a bad encoder). Otherwise WaitForConnection would deadlock.
+        System.Threading.Tasks.Task connect = _pipe.WaitForConnectionAsync();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (!connect.IsCompleted)
+        {
+            if (_ffmpeg.HasExited)
+            {
+                throw new EncoderStartException($"ffmpeg exited (code {_ffmpeg.ExitCode}) before the encoder pipe connected.");
+            }
+
+            if (timer.Elapsed > TimeSpan.FromSeconds(8))
+            {
+                throw new EncoderStartException("ffmpeg didn't connect to the encoder pipe within 8 seconds.");
+            }
+
+            System.Threading.Thread.Sleep(30);
+        }
     }
 
     /// <summary>Writes one tightly-packed NV12 frame. Throws <see cref="EncoderPipeBrokenException"/> if ffmpeg died.</summary>
