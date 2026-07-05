@@ -1,10 +1,99 @@
 <UserControl x:Class="RecMode.App.Views.LibraryView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:res="clr-namespace:RecMode.App.Resources">
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:res="clr-namespace:RecMode.App.Resources"
+             xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:LibraryViewModel}">
     <Grid Margin="24">
-        <TextBlock Text="{x:Static res:Strings.Nav_Library}" Style="{StaticResource TitleText}" VerticalAlignment="Top" />
-        <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" Foreground="{DynamicResource TextSecondaryBrush}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: title + tabs + folder/refresh -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <StackPanel HorizontalAlignment="Left">
+                <TextBlock Text="{x:Static res:Strings.Nav_Library}" Style="{StaticResource TitleText}" Margin="0,0,0,10" />
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel Margin="0,0,8,0">
+                        <Button Content="{x:Static res:Strings.Library_Videos}" Command="{Binding ShowVideosCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="30" Padding="14,0" />
+                        <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
+                                Visibility="{Binding ShowVideos, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <Button Content="{x:Static res:Strings.Library_Screenshots}" Command="{Binding ShowScreenshotsCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="30" Padding="14,0" />
+                        <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
+                                Visibility="{Binding ShowScreenshots, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                <Button Content="{x:Static res:Strings.Library_OpenFolder}" Command="{Binding OpenFolderCommand}"
+                        Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" />
+                <Button Content="{x:Static res:Strings.Library_Refresh}" Command="{Binding RefreshCommand}"
+                        Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" Margin="8,0,0,0" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Content: list + empty state -->
+        <Grid Grid.Row="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:LibraryItem}">
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Screenshot thumbnail over a play badge (videos: Thumbnail is null → badge shows) -->
+                                    <Border Grid.Column="0" Width="72" Height="44" CornerRadius="4"
+                                            Background="#22000000" ClipToBounds="True" VerticalAlignment="Center">
+                                        <Grid>
+                                            <TextBlock Text="▶" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                                        </Grid>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,12,0">
+                                        <TextBlock Text="{Binding DisplayName}" Style="{StaticResource BodyStrongText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Meta}" Style="{StaticResource CaptionText}" Margin="0,2,0,0" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="{x:Static res:Strings.Library_Open}"
+                                                Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" />
+                                        <Button Content="{x:Static res:Strings.Library_Reveal}"
+                                                Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                                        <Button Content="{x:Static res:Strings.Library_Delete}"
+                                                Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
+                                                Foreground="{DynamicResource CriticalBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock Text="{Binding EmptyMessage}" Style="{StaticResource BodyText}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
     </Grid>
 </UserControl>

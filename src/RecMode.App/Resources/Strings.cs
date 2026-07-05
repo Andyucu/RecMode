@@ -50,5 +50,14 @@ public static class Strings
     public static string Settings_Browse => Get(nameof(Settings_Browse));
 
     public static string Library_Empty => Get(nameof(Library_Empty));
+    public static string Library_Videos => Get(nameof(Library_Videos));
+    public static string Library_Screenshots => Get(nameof(Library_Screenshots));
+    public static string Library_Open => Get(nameof(Library_Open));
+    public static string Library_Reveal => Get(nameof(Library_Reveal));
+    public static string Library_Delete => Get(nameof(Library_Delete));
+    public static string Library_OpenFolder => Get(nameof(Library_OpenFolder));
+    public static string Library_Refresh => Get(nameof(Library_Refresh));
+    public static string Library_NoVideos => Get(nameof(Library_NoVideos));
+    public static string Library_NoScreenshots => Get(nameof(Library_NoScreenshots));
     public static string Schedule_Empty => Get(nameof(Schedule_Empty));
 }

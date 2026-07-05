@@ -8,6 +8,44 @@
 
 ---
 
+## Session 2026-07-05 — Phase 5 (part 4): basic Library
+
+**Goal:** Turn the Library stub into a working recordings + screenshots browser.
+
+### What was built
+- **`LibraryItem`** (VM model): FilePath, DisplayName, Meta (`size · date`), IsImage, Thumbnail (ImageSource?).
+- **`LibraryViewModel`** (`INavigationAware`): filesystem-backed — enumerates `RecordingsDirectory`
+  (`.mp4/.mkv/.mov/.webm`, excludes `*.recording.mkv`) or `ScreenshotsDirectory` (`.png/.jpg/.jpeg`),
+  newest-first. Videos/Screenshots tabs (`ShowVideos`/`ShowScreenshots`), `IsEmpty`/`EmptyMessage`. Commands:
+  ShowVideos/ShowScreenshots, Refresh, OpenFolder, and per-item Open (`ShellExecute`), Reveal
+  (`explorer /select,`), Delete (**`Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile` → RecycleBin**).
+  Screenshot thumbnails via `BitmapImage` (`DecodePixelWidth=160`, `OnLoad`, frozen). `Load()` on
+  `OnNavigatedTo`, `Items.Clear()` on `OnNavigatedFrom` (§3.9). Errors → `IErrorReporter.Warn`.
+- **`LibraryView.xaml`**: header (title + Videos/Screenshots tab buttons w/ accent underline bound to
+  ShowVideos/ShowScreenshots + Open folder/Refresh); `ItemsControl` of `Card` rows — 72×44 thumb (play glyph
+  underneath, `Image` on top so a null thumbnail falls through to the glyph for videos), name+meta, Open/Show
+  in folder/Delete. Item commands reach the VM via `RelativeSource AncestorType=ItemsControl` + `CommandParameter={Binding}`.
+  Empty-state TextBlock overlays when `IsEmpty` (no inverse converter needed — list just renders empty behind it).
+- Strings: Library_Videos/Screenshots/Open/Reveal/Delete/OpenFolder/Refresh/NoVideos/NoScreenshots (resx + Strings.cs).
+
+### Verification (real GUI, UI-Automation driven)
+- Nav→Library: Videos tab lists recordings (play badge, name, "639 KB · Today 09:52", Open/Show/Delete).
+- Screenshots tab: real **thumbnails** of captured desktops, "2 MB · Yesterday 23:55".
+- Delete: disk screenshots 2→1, list re-render shows the exact remaining item (CommandParameter binding good).
+- Build clean, 54 tests, 0 warnings.
+
+### Gotchas
+- Nav RadioButtons fire `Command` on **Click**, not on programmatic `SelectionItemPattern.Select()` — UI-Automation
+  tests must click the clickable point (mouse_event), not Select(), or the page won't actually navigate.
+- `Microsoft.VisualBasic.FileIO` is available in the .NET Windows Desktop framework (no package ref needed) →
+  gives Recycle-Bin delete for free.
+- Screenshots folder is a **subfolder** of Recordings, so top-level `EnumerateFiles` on Recordings excludes it.
+
+### Remaining for Phase 5
+- Portable USB acceptance test (last item → 🏁 MVP 1.0-alpha).
+
+---
+
 ## Session 2026-07-05 — Phase 5 (part 3): countdown overlay + recording toolbar
 
 **Goal:** The visible recording UX — pre-roll countdown and a floating, capture-excluded recording toolbar.

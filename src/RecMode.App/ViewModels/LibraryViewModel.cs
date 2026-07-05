@@ -1,9 +1,217 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.VisualBasic.FileIO;
+using RecMode.App.Resources;
+using RecMode.Core.Errors;
+using RecMode.Core.Infrastructure;
 
 namespace RecMode.App.ViewModels;
 
-/// <summary>Placeholder Library (plan Phase 1: stub; real library index arrives in Phase 5).</summary>
-public sealed class LibraryViewModel : ObservableObject
+/// <summary>
+/// Basic, filesystem-backed Library (plan Phase 5 MVP cut): lists recordings and screenshots from the output
+/// folders with open / reveal-in-Explorer / delete-to-Recycle-Bin. Loaded on navigation (§3.9 — no work when
+/// the page isn't visible). The richer metadata index (codec/res/duration, tags) is a later Library-pro pass.
+/// </summary>
+public sealed class LibraryViewModel : ObservableObject, INavigationAware
 {
-    public string Message => RecMode.App.Resources.Strings.Library_Empty;
+    private static readonly string[] VideoExtensions = [".mp4", ".mkv", ".mov", ".webm"];
+    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg"];
+
+    private readonly IAppPaths _paths;
+    private readonly IErrorReporter _errors;
+    private bool _showVideos = true;
+
+    public LibraryViewModel(IAppPaths paths, IErrorReporter errors)
+    {
+        _paths = paths;
+        _errors = errors;
+
+        ShowVideosCommand = new RelayCommand(() => SetTab(videos: true));
+        ShowScreenshotsCommand = new RelayCommand(() => SetTab(videos: false));
+        RefreshCommand = new RelayCommand(Load);
+        OpenFolderCommand = new RelayCommand(OpenCurrentFolder);
+        OpenCommand = new RelayCommand<LibraryItem>(Open);
+        RevealCommand = new RelayCommand<LibraryItem>(Reveal);
+        DeleteCommand = new RelayCommand<LibraryItem>(Delete);
+    }
+
+    public ObservableCollection<LibraryItem> Items { get; } = [];
+
+    public IRelayCommand ShowVideosCommand { get; }
+    public IRelayCommand ShowScreenshotsCommand { get; }
+    public IRelayCommand RefreshCommand { get; }
+    public IRelayCommand OpenFolderCommand { get; }
+    public IRelayCommand<LibraryItem> OpenCommand { get; }
+    public IRelayCommand<LibraryItem> RevealCommand { get; }
+    public IRelayCommand<LibraryItem> DeleteCommand { get; }
+
+    public bool ShowVideos
+    {
+        get => _showVideos;
+        private set
+        {
+            if (SetProperty(ref _showVideos, value))
+            {
+                OnPropertyChanged(nameof(ShowScreenshots));
+                OnPropertyChanged(nameof(EmptyMessage));
+            }
+        }
+    }
+
+    public bool ShowScreenshots => !_showVideos;
+    public bool IsEmpty => Items.Count == 0;
+    public string EmptyMessage => _showVideos ? Strings.Library_NoVideos : Strings.Library_NoScreenshots;
+
+    public void OnNavigatedTo() => Load();
+
+    public void OnNavigatedFrom() => Items.Clear();
+
+    private void SetTab(bool videos)
+    {
+        if (ShowVideos != videos)
+        {
+            ShowVideos = videos;
+            Load();
+        }
+    }
+
+    private void Load()
+    {
+        Items.Clear();
+
+        string dir = _showVideos ? _paths.RecordingsDirectory : _paths.ScreenshotsDirectory;
+        if (Directory.Exists(dir))
+        {
+            string[] exts = _showVideos ? VideoExtensions : ImageExtensions;
+            IEnumerable<FileInfo> files = new DirectoryInfo(dir).EnumerateFiles()
+                .Where(f => exts.Contains(f.Extension.ToLowerInvariant()))
+                .Where(f => !f.Name.EndsWith(".recording.mkv", StringComparison.OrdinalIgnoreCase)) // skip in-progress temp
+                .OrderByDescending(f => f.LastWriteTime);
+
+            foreach (FileInfo f in files)
+            {
+                Items.Add(new LibraryItem
+                {
+                    FilePath = f.FullName,
+                    DisplayName = Path.GetFileNameWithoutExtension(f.Name),
+                    Meta = $"{FormatSize(f.Length)} · {FormatDate(f.LastWriteTime)}",
+                    IsImage = !_showVideos,
+                    Thumbnail = _showVideos ? null : TryLoadThumbnail(f.FullName),
+                });
+            }
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private void Open(LibraryItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        Run(() => Process.Start(new ProcessStartInfo(item.FilePath) { UseShellExecute = true }),
+            "library.open-failed", "Couldn't open the file.");
+    }
+
+    private void Reveal(LibraryItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        Run(() => Process.Start("explorer.exe", $"/select,\"{item.FilePath}\""),
+            "library.reveal-failed", "Couldn't show the file in Explorer.");
+    }
+
+    private void Delete(LibraryItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Recycle Bin, not permanent — a mis-click is recoverable.
+            FileSystem.DeleteFile(item.FilePath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            Items.Remove(item);
+            OnPropertyChanged(nameof(IsEmpty));
+        }
+        catch (Exception ex)
+        {
+            _errors.Warn("library.delete-failed", "Couldn't delete the file.", null, ex);
+        }
+    }
+
+    private void OpenCurrentFolder()
+    {
+        string dir = _showVideos ? _paths.RecordingsDirectory : _paths.ScreenshotsDirectory;
+        Directory.CreateDirectory(dir);
+        Run(() => Process.Start("explorer.exe", $"\"{dir}\""),
+            "library.folder-failed", "Couldn't open the folder.");
+    }
+
+    private void Run(Action action, string code, string message)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            _errors.Warn(code, message, null, ex);
+        }
+    }
+
+    private static ImageSource? TryLoadThumbnail(string path)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad; // load now, don't lock the file
+            bmp.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            bmp.DecodePixelWidth = 160; // thumbnail-sized decode (hot-path friendly)
+            bmp.UriSource = new Uri(path);
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch
+        {
+            return null; // unreadable/corrupt image — just skip the thumbnail
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024 * 1024):F2} GB",
+        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):F0} MB",
+        >= 1024 => $"{bytes / 1024.0:F0} KB",
+        _ => $"{bytes} B",
+    };
+
+    private static string FormatDate(DateTime when)
+    {
+        DateTime today = DateTime.Today;
+        if (when.Date == today)
+        {
+            return $"Today {when:HH:mm}";
+        }
+
+        if (when.Date == today.AddDays(-1))
+        {
+            return $"Yesterday {when:HH:mm}";
+        }
+
+        return when.ToString("yyyy-MM-dd HH:mm");
+    }
 }
