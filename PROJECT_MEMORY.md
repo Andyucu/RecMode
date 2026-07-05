@@ -8,6 +8,31 @@
 
 ---
 
+## Session 2026-07-05 — Encoder effort tiers (Phase 3 §3.3)
+
+**Goal:** Fast/Balanced/Quality effort setting, mapped per-encoder to its preset (finishes the resource-control args).
+
+### What was built
+- **`EncoderEffort`** enum (Core.Settings: Fast/Balanced/Quality) + `RecModeSettings.Effort = Balanced`.
+- **`FfmpegJob.Effort`** (default Balanced); `FfmpegArgsBuilder.BuildEncoderArgs(enc, quality, effort)` maps
+  per-encoder: x264/x265 `ultrafast/veryfast/medium`, svtav1 `10/8/6`, nvenc `p2/p4/p6`, amf
+  `speed/balanced/quality`, qsv `veryfast/medium/slow` (own map — qsv has no "ultrafast"). **Balanced = the
+  previous hardcoded preset for every encoder**, so existing snapshots stay valid. Coordinator passes
+  `settings.Effort`.
+- **Settings Performance**: "Encoder effort" combo (`Efforts` list, `SelectedEffort`), gauge glyph EC4A, above
+  the thread-cap card. Strings added.
+- Tests: 9 new `[Theory]` effort mappings (x264/nvenc/amf × Fast/Balanced/Quality). Encoding 22→31, total **74**.
+
+### Verification
+- Performance section screenshot: Encoder effort card renders (gauge icon, "Balanced" default, desc). Existing
+  snapshot tests unchanged (Balanced preserved). 74 tests, 0 warnings.
+
+### Notes
+- Slow presets may not sustain 60fps in real time — the recording health indicator warns if the encoder falls
+  behind, so the two features complement each other.
+
+---
+
 ## Session 2026-07-05 — Recording health indicator (§3.6)
 
 **Goal:** Surface "the encoder can't keep up" (a promoted 1.0 feature) via the DegradedState channel.

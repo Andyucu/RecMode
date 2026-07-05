@@ -52,6 +52,8 @@ public static class Strings
     public static string Settings_Recording => Get(nameof(Settings_Recording));
     public static string Settings_Hotkeys => Get(nameof(Settings_Hotkeys));
     public static string Settings_Performance => Get(nameof(Settings_Performance));
+    public static string Settings_Effort => Get(nameof(Settings_Effort));
+    public static string Settings_EffortDesc => Get(nameof(Settings_EffortDesc));
     public static string Settings_ThreadCap => Get(nameof(Settings_ThreadCap));
     public static string Settings_ThreadCapDesc => Get(nameof(Settings_ThreadCapDesc));
     public static string Settings_EncoderPriority => Get(nameof(Settings_EncoderPriority));

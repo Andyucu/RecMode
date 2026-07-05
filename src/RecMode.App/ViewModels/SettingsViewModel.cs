@@ -38,6 +38,7 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _checkForUpdates;
     private int _cpuThreadCap;
     private bool _lowerEncoderPriority;
+    private EncoderEffort _effort;
 
     public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup)
     {
@@ -61,6 +62,7 @@ public sealed class SettingsViewModel : ObservableObject
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
         _cpuThreadCap = s.CpuThreadCap;
         _lowerEncoderPriority = s.BelowNormalEncoderPriority;
+        _effort = s.Effort;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
 
         BrowseCommand = new RelayCommand(BrowseFolder);
@@ -75,6 +77,8 @@ public sealed class SettingsViewModel : ObservableObject
     public IReadOnlyList<AudioCodec> AudioCodecs { get; } = [AudioCodec.Aac, AudioCodec.Opus, AudioCodec.Flac];
     public IReadOnlyList<int> AudioBitrates { get; } = [128, 192, 256, 320];
     public IReadOnlyList<int> ThreadCaps { get; } = [0, 2, 4, 6, 8, 12, 16];
+    public IReadOnlyList<EncoderEffort> Efforts { get; } =
+        [EncoderEffort.Fast, EncoderEffort.Balanced, EncoderEffort.Quality];
 
     public ICommand BrowseCommand { get; }
 
@@ -191,6 +195,12 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get => _lowerEncoderPriority;
         set => Persist(ref _lowerEncoderPriority, value, v => _settings.Current.BelowNormalEncoderPriority = v);
+    }
+
+    public EncoderEffort SelectedEffort
+    {
+        get => _effort;
+        set => Persist(ref _effort, value, v => _settings.Current.Effort = v);
     }
 
     public bool StartWithWindows

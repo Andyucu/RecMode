@@ -58,6 +58,7 @@ public sealed class RecModeSettings
 
     // Performance (bounds computed from hardware probe in Phase 3/9; 0 = auto)
     public int CpuThreadCap { get; set; }
+    public EncoderEffort Effort { get; set; } = EncoderEffort.Balanced;
     public bool BelowNormalEncoderPriority { get; set; } = true;
 
     // Preview

@@ -57,3 +57,11 @@ public enum AudioCodec
     Opus,
     Flac,
 }
+
+/// <summary>Encoder effort tier (plan §3.3): speed ↔ compression trade-off, mapped per-encoder to its preset.</summary>
+public enum EncoderEffort
+{
+    Fast,
+    Balanced,
+    Quality,
+}

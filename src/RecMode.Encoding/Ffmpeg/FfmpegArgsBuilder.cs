@@ -29,6 +29,9 @@ public sealed record FfmpegJob
 
     /// <summary>Run the ffmpeg process below normal priority so recording doesn't starve foreground work (§3.3).</summary>
     public bool BelowNormalPriority { get; init; }
+
+    /// <summary>Encoder effort tier (§3.3) → per-encoder preset. Balanced = the default preset for each encoder.</summary>
+    public EncoderEffort Effort { get; init; } = EncoderEffort.Balanced;
 }
 
 /// <summary>
@@ -54,7 +57,7 @@ public static class FfmpegArgsBuilder
             audioEnc = BuildAudioArgs(job.Container, job.AudioCodec, job.AudioBitrateKbps);
         }
 
-        string encoder = BuildEncoderArgs(job.Encoder, job.Quality);
+        string encoder = BuildEncoderArgs(job.Encoder, job.Quality, job.Effort);
         string faststart = job.Container == MediaContainer.Mp4 ? "-movflags +faststart" : "";
 
         // Thread cap only bites on software encoders (hardware offloads to the GPU/ASIC), so don't emit it for hw.
@@ -92,28 +95,65 @@ public static class FfmpegArgsBuilder
         return Math.Clamp((int)Math.Round(crf), 1, 51);
     }
 
-    private static string BuildEncoderArgs(EncoderInfo encoder, int quality)
+    private static string BuildEncoderArgs(EncoderInfo encoder, int quality, EncoderEffort effort)
     {
         int crf = QualityToCrf(quality);
         string c = crf.ToString(CultureInfo.InvariantCulture);
 
         return encoder.FfmpegId switch
         {
-            "libx264" => $"-c:v libx264 -preset veryfast -crf {c}",
-            "libx265" => $"-c:v libx265 -preset veryfast -crf {c}",
-            "libsvtav1" => $"-c:v libsvtav1 -preset 8 -crf {c}",
+            "libx264" => $"-c:v libx264 -preset {X264Preset(effort)} -crf {c}",
+            "libx265" => $"-c:v libx265 -preset {X264Preset(effort)} -crf {c}",
+            "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c}",
 
             "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" =>
-                $"-c:v {encoder.FfmpegId} -preset p4 -rc vbr -cq {c}",
+                $"-c:v {encoder.FfmpegId} -preset {NvencPreset(effort)} -rc vbr -cq {c}",
 
             // AMF: cqp is the simplest honest mapping for Phase 1 (qvbr tuning comes in Phase 3).
             "h264_amf" or "hevc_amf" or "av1_amf" =>
-                $"-c:v {encoder.FfmpegId} -usage transcoding -quality balanced -rc cqp -qp_i {c} -qp_p {c}",
+                $"-c:v {encoder.FfmpegId} -usage transcoding -quality {AmfQuality(effort)} -rc cqp -qp_i {c} -qp_p {c}",
 
             "h264_qsv" or "hevc_qsv" or "av1_qsv" =>
-                $"-c:v {encoder.FfmpegId} -global_quality {c}",
+                $"-c:v {encoder.FfmpegId} -preset {QsvPreset(effort)} -global_quality {c}",
 
             _ => $"-c:v {encoder.FfmpegId} -crf {c}",
         };
     }
+
+    // Per-encoder effort → preset. Balanced deliberately keeps each encoder's established default.
+    private static string X264Preset(EncoderEffort e) => e switch
+    {
+        EncoderEffort.Fast => "ultrafast",
+        EncoderEffort.Quality => "medium",
+        _ => "veryfast",
+    };
+
+    private static string SvtAv1Preset(EncoderEffort e) => e switch
+    {
+        EncoderEffort.Fast => "10",
+        EncoderEffort.Quality => "6",
+        _ => "8",
+    };
+
+    private static string NvencPreset(EncoderEffort e) => e switch
+    {
+        EncoderEffort.Fast => "p2",
+        EncoderEffort.Quality => "p6",
+        _ => "p4",
+    };
+
+    private static string AmfQuality(EncoderEffort e) => e switch
+    {
+        EncoderEffort.Fast => "speed",
+        EncoderEffort.Quality => "quality",
+        _ => "balanced",
+    };
+
+    // QSV presets are veryfast..veryslow (no "ultrafast").
+    private static string QsvPreset(EncoderEffort e) => e switch
+    {
+        EncoderEffort.Fast => "veryfast",
+        EncoderEffort.Quality => "slow",
+        _ => "medium",
+    };
 }

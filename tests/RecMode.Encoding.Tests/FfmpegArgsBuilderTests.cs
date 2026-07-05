@@ -152,6 +152,36 @@ public class FfmpegArgsBuilderTests
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
+    [Theory]
+    [InlineData(EncoderEffort.Fast, "-c:v libx264 -preset ultrafast -crf 24")]
+    [InlineData(EncoderEffort.Balanced, "-c:v libx264 -preset veryfast -crf 24")] // default preserved
+    [InlineData(EncoderEffort.Quality, "-c:v libx264 -preset medium -crf 24")]
+    public void Effort_MapsX264Preset(EncoderEffort effort, string expected)
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { Effort = effort };
+        Assert.Contains(expected, FfmpegArgsBuilder.Build(job));
+    }
+
+    [Theory]
+    [InlineData(EncoderEffort.Fast, "-preset p2")]
+    [InlineData(EncoderEffort.Balanced, "-preset p4")] // default preserved
+    [InlineData(EncoderEffort.Quality, "-preset p6")]
+    public void Effort_MapsNvencPreset(EncoderEffort effort, string expected)
+    {
+        var job = Job(Enc("h264_nvenc", VideoCodec.H264, EncoderBackend.Nvenc)) with { Effort = effort };
+        Assert.Contains(expected, FfmpegArgsBuilder.Build(job));
+    }
+
+    [Theory]
+    [InlineData(EncoderEffort.Fast, "-quality speed")]
+    [InlineData(EncoderEffort.Balanced, "-quality balanced")] // default preserved
+    [InlineData(EncoderEffort.Quality, "-quality quality")]
+    public void Effort_MapsAmfQuality(EncoderEffort effort, string expected)
+    {
+        var job = Job(Enc("h264_amf", VideoCodec.H264, EncoderBackend.Amf)) with { Effort = effort };
+        Assert.Contains(expected, FfmpegArgsBuilder.Build(job));
+    }
+
     [Fact]
     public void Snapshot_Libx264_Mp4_WithThreadCap()
     {
