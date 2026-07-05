@@ -83,6 +83,11 @@
   <data name="Settings_EncodingDefaults" xml:space="preserve"><value>Encoding defaults</value></data>
   <data name="Settings_Recording" xml:space="preserve"><value>Recording</value></data>
   <data name="Settings_Hotkeys" xml:space="preserve"><value>Hotkeys</value></data>
+  <data name="Settings_Performance" xml:space="preserve"><value>Performance</value></data>
+  <data name="Settings_ThreadCap" xml:space="preserve"><value>CPU thread cap (software encoding)</value></data>
+  <data name="Settings_ThreadCapDesc" xml:space="preserve"><value>Limit encoder threads to keep other apps responsive; Auto uses all cores</value></data>
+  <data name="Settings_EncoderPriority" xml:space="preserve"><value>Lower encoder process priority</value></data>
+  <data name="Settings_EncoderPriorityDesc" xml:space="preserve"><value>Run ffmpeg below normal so recording never starves foreground work</value></data>
   <data name="Settings_General" xml:space="preserve"><value>General</value></data>
   <data name="Settings_ThemeDesc" xml:space="preserve"><value>Light and dark follow Fluent theme resources</value></data>
   <data name="Settings_AccentDesc" xml:space="preserve"><value>Applies to selection, sliders and the record action</value></data>

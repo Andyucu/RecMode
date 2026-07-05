@@ -15,10 +15,15 @@
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:EnumDisplayConverter x:Key="EnumDisplay" />
+    <conv:ThreadCapConverter x:Key="ThreadCap" />
 
     <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->
     <DataTemplate x:Key="EnumItemTemplate">
         <TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}" />
+    </DataTemplate>
+    <!-- Combo item display for the CPU thread cap (0 → "Auto") -->
+    <DataTemplate x:Key="ThreadCapItemTemplate">
+        <TextBlock Text="{Binding Converter={StaticResource ThreadCap}}" />
     </DataTemplate>
 
     <!-- ===================== Type ramp (design §2) ===================== -->

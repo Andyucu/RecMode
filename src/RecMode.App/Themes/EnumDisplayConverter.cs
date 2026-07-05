@@ -46,3 +46,13 @@ public sealed class EnumDisplayConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;
 }
+
+/// <summary>Shows the CPU thread cap: 0 → "Auto", otherwise the number. One-way (the combo edits the int directly).</summary>
+public sealed class ThreadCapConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is int n && n > 0 ? n.ToString(CultureInfo.InvariantCulture) : "Auto";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}

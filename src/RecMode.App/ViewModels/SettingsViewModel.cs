@@ -36,6 +36,8 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _highlightClicks;
     private bool _startWithWindows;
     private bool _checkForUpdates;
+    private int _cpuThreadCap;
+    private bool _lowerEncoderPriority;
 
     public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup)
     {
@@ -57,6 +59,8 @@ public sealed class SettingsViewModel : ObservableObject
         _captureCursor = s.CaptureCursor;
         _highlightClicks = s.HighlightClicks;
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
+        _cpuThreadCap = s.CpuThreadCap;
+        _lowerEncoderPriority = s.BelowNormalEncoderPriority;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
 
         BrowseCommand = new RelayCommand(BrowseFolder);
@@ -70,6 +74,7 @@ public sealed class SettingsViewModel : ObservableObject
         [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
     public IReadOnlyList<AudioCodec> AudioCodecs { get; } = [AudioCodec.Aac, AudioCodec.Opus, AudioCodec.Flac];
     public IReadOnlyList<int> AudioBitrates { get; } = [128, 192, 256, 320];
+    public IReadOnlyList<int> ThreadCaps { get; } = [0, 2, 4, 6, 8, 12, 16];
 
     public ICommand BrowseCommand { get; }
 
@@ -174,6 +179,18 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get => _checkForUpdates;
         set => Persist(ref _checkForUpdates, value, v => _settings.Current.CheckForUpdatesOnLaunch = v);
+    }
+
+    public int CpuThreadCap
+    {
+        get => _cpuThreadCap;
+        set => Persist(ref _cpuThreadCap, value, v => _settings.Current.CpuThreadCap = v);
+    }
+
+    public bool LowerEncoderPriority
+    {
+        get => _lowerEncoderPriority;
+        set => Persist(ref _lowerEncoderPriority, value, v => _settings.Current.BelowNormalEncoderPriority = v);
     }
 
     public bool StartWithWindows

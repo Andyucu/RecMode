@@ -51,6 +51,11 @@ public static class Strings
     public static string Settings_EncodingDefaults => Get(nameof(Settings_EncodingDefaults));
     public static string Settings_Recording => Get(nameof(Settings_Recording));
     public static string Settings_Hotkeys => Get(nameof(Settings_Hotkeys));
+    public static string Settings_Performance => Get(nameof(Settings_Performance));
+    public static string Settings_ThreadCap => Get(nameof(Settings_ThreadCap));
+    public static string Settings_ThreadCapDesc => Get(nameof(Settings_ThreadCapDesc));
+    public static string Settings_EncoderPriority => Get(nameof(Settings_EncoderPriority));
+    public static string Settings_EncoderPriorityDesc => Get(nameof(Settings_EncoderPriorityDesc));
     public static string Settings_General => Get(nameof(Settings_General));
     public static string Settings_ThemeDesc => Get(nameof(Settings_ThemeDesc));
     public static string Settings_AccentDesc => Get(nameof(Settings_AccentDesc));

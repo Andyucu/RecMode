@@ -23,6 +23,12 @@ public sealed record FfmpegJob
     public string? AudioPipeName { get; init; }
     public AudioCodec AudioCodec { get; init; } = AudioCodec.Aac;
     public int AudioBitrateKbps { get; init; } = 192;
+
+    /// <summary>Software-encoder thread cap (§3.3). 0 = ffmpeg default (all cores). Ignored by hardware encoders.</summary>
+    public int CpuThreadCap { get; init; }
+
+    /// <summary>Run the ffmpeg process below normal priority so recording doesn't starve foreground work (§3.3).</summary>
+    public bool BelowNormalPriority { get; init; }
 }
 
 /// <summary>
@@ -51,8 +57,13 @@ public static class FfmpegArgsBuilder
         string encoder = BuildEncoderArgs(job.Encoder, job.Quality);
         string faststart = job.Container == MediaContainer.Mp4 ? "-movflags +faststart" : "";
 
+        // Thread cap only bites on software encoders (hardware offloads to the GPU/ASIC), so don't emit it for hw.
+        string threads = job.CpuThreadCap > 0 && !job.Encoder.IsHardware
+            ? $"-threads {job.CpuThreadCap} "
+            : "";
+
         return $"-hide_banner -loglevel warning {videoIn} {audioIn} {audioMap} " +
-               $"{encoder} -pix_fmt yuv420p {audioEnc} {faststart} -y \"{job.OutputPath}\"";
+               $"{threads}{encoder} -pix_fmt yuv420p {audioEnc} {faststart} -y \"{job.OutputPath}\"";
     }
 
     /// <summary>Audio codec steered by container (plan §3.3): MP4/MOV→AAC, MKV/WebM→Opus, with FLAC where valid.</summary>

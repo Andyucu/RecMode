@@ -214,6 +214,38 @@
                 </Grid>
             </Border>
 
+            <!-- ===== Performance ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Performance}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE950;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_ThreadCap}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_ThreadCapDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding ThreadCaps}" SelectedItem="{Binding CpuThreadCap}"
+                              ItemTemplate="{StaticResource ThreadCapItemTemplate}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE945;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_EncoderPriority}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_EncoderPriorityDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding LowerEncoderPriority, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+
             <!-- ===== Hotkeys (read-only until the remap UI) ===== -->
             <TextBlock Text="{x:Static res:Strings.Settings_Hotkeys}" Style="{StaticResource SectionHeader}" />
             <Border Style="{StaticResource SettingsCard}">

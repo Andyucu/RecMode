@@ -80,6 +80,17 @@ public class FfmpegArgsBuilderTests
     }
 
     [Fact]
+    public void ThreadCap_AppliesToSoftwareOnly()
+    {
+        var sw = Enc("libx264", VideoCodec.H264, EncoderBackend.Software);
+        var hw = Enc("h264_amf", VideoCodec.H264, EncoderBackend.Amf);
+
+        Assert.Contains("-threads 4", FfmpegArgsBuilder.Build(Job(sw) with { CpuThreadCap = 4 }));
+        Assert.DoesNotContain("-threads", FfmpegArgsBuilder.Build(Job(sw) with { CpuThreadCap = 0 })); // 0 = auto
+        Assert.DoesNotContain("-threads", FfmpegArgsBuilder.Build(Job(hw) with { CpuThreadCap = 4 })); // hw ignores it
+    }
+
+    [Fact]
     public void AudioInput_AddedWhenPipeConfigured()
     {
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { AudioPipeName = "aud" };

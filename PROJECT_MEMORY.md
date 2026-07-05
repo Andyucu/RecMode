@@ -8,6 +8,36 @@
 
 ---
 
+## Session 2026-07-05 — Encoder resource controls (Phase 3 §3.3 / Phase 9 Performance)
+
+**Goal:** Wire the resource-efficiency levers (thread cap, encoder priority) that were modelled but unused.
+
+### What was built
+- **`FfmpegJob`**: `CpuThreadCap` (int, 0=auto) + `BelowNormalPriority` (bool). **`FfmpegArgsBuilder.Build`**
+  emits `-threads {cap}` only when `cap>0 && !Encoder.IsHardware` (hw offloads to GPU/ASIC → thread cap is
+  meaningless). **`FfmpegRecordingSession.Start`**: best-effort `PriorityClass=BelowNormal` (try/catch, never
+  fatal) when requested. **Coordinator**: populates both from `settings.Current.CpuThreadCap` /
+  `.BelowNormalEncoderPriority`.
+- **Settings**: `SettingsViewModel` gains `CpuThreadCap` (list [0,2,4,6,8,12,16]) + `LowerEncoderPriority`
+  (bool→BelowNormalEncoderPriority), both via `Persist`. **`ThreadCapConverter`** (0→"Auto") + template.
+  **Performance** section in SettingsView (CPU-chip glyph E950 + thread-cap combo; lightning glyph E945 +
+  priority toggle). Strings added.
+- **Test**: `ThreadCap_AppliesToSoftwareOnly` — `-threads 4` present for libx264, absent for h264_amf and for
+  cap=0. Encoding tests 15→16, total **55**.
+
+### Verification (real GUI + tests)
+- Performance section renders (screenshot): thread cap shows "Auto" (converter), both icons correct; priority
+  toggle persisted True→False in settings.json. 55 tests, 0 warnings.
+
+### Notes
+- Advances the Phase 3 "resource-control args" tail and starts the Phase 9 "Performance group". Effort tiers
+  (NVENC p1–p7 / AMF / QSV presets) still TODO; only thread cap + priority done here.
+
+### Remaining (Phase 6)
+- Topbar + compact layout variants; Library/Record polish + motion. (Per-source audio gain/mute UI still a Phase 4 tail.)
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 6): per-card icons
 
 **Goal:** Leading Fluent icons on every Settings card + the Schedule card (finishes the icon deviation).

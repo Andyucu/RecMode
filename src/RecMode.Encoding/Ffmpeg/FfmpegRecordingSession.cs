@@ -64,6 +64,12 @@ public sealed class FfmpegRecordingSession : IDisposable
         _ffmpeg = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start ffmpeg.");
 
+        if (job.BelowNormalPriority)
+        {
+            // Best-effort: keep the encoder from starving foreground work (§3.3). Never fatal if it fails.
+            try { _ffmpeg.PriorityClass = ProcessPriorityClass.BelowNormal; } catch (Exception) { }
+        }
+
         // Capture ffmpeg's stderr so failures are diagnosable (logged on finalize / pipe break).
         _ffmpeg.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (_stderrLock) { _stderr.AppendLine(e.Data); } } };
         _ffmpeg.BeginErrorReadLine();

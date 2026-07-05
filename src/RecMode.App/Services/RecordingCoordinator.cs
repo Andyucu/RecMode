@@ -179,6 +179,8 @@ public sealed class RecordingCoordinator : IDisposable
                 AudioPipeName = audioPipeName,
                 AudioCodec = _settings.Current.AudioCodec,
                 AudioBitrateKbps = _settings.Current.AudioBitrateKbps,
+                CpuThreadCap = _settings.Current.CpuThreadCap,
+                BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
             };
 
             if (audioEnabled)
