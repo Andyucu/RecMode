@@ -300,6 +300,12 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         StartMetering();
     }
 
+    /// <summary>
+    /// Ensures a default source + encoder are selected without starting preview/metering. Lets the CLI
+    /// (<c>--record</c>/<c>--screenshot</c>) act headlessly (e.g. <c>--tray</c>) before the view is shown.
+    /// </summary>
+    public void EnsureDevicesLoaded() => LoadDevices();
+
     public void OnNavigatedFrom()
     {
         _isActivePage = false;

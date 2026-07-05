@@ -8,6 +8,48 @@
 
 ---
 
+## Session 2026-07-05 — Phase 5 (part 2): CLI + single-instance forwarding
+
+**Goal:** Make RecMode automatable (`--record/--stop/--screenshot/--tray`) and single-instance.
+
+### What was built
+- **`CommandLineOptions`** (App/Services): pure record parsing `--record`/`-r`, `--stop`/`-s`, `--screenshot`,
+  `--tray`; unknown args ignored (forward-compatible); `HasAction` = record|stop|screenshot.
+- **`SingleInstance`** (App/Services): named-mutex owner check (`Local\RecMode.SingleInstance.Mutex`, per-user;
+  mutex intentionally never released — OS reclaims on exit, dodges same-thread-release). `TryForwardToPrimary`
+  = `NamedPipeClientStream` → write `\n`-joined args (2s connect). `StartListening` = background
+  `NamedPipeServerStream` accept loop → `Split('\n')` → `onArgs` callback; cancellable.
+- **`App.OnStartup` wiring**: single-instance guard runs **before** host build — if not owner, forward args +
+  `Shutdown(0)`. `--selftest-*` bypasses the guard (keeps the headless harness working). After shell resolve:
+  `--tray` skips `shell.Show()` (headless; app kept alive by the tray HWND under OnLastWindowClose since no
+  shown window ever closes). `ExecuteCliCommand(options, startup)` runs the action; `StartListening` marshals
+  forwarded commands to the UI thread. Second launch without `--tray` → `ShowMainWindow()` (focus).
+- **`ExecuteCliCommand`**: `record.EnsureDevicesLoaded()` (new public method = idempotent `LoadDevices`, no
+  preview/metering) when `HasAction`, so `--tray --record` works before the view is shown. Screenshot →
+  `TakeScreenshot`; record → guard `!coordinator.IsRecording` + `RecordCommand.CanExecute` then execute;
+  stop → guard `coordinator.IsRecording` then toggle off (RecordCommand toggles).
+- Disposal: `_singleInstance.Dispose()` in `OnExit`. CA1001 (App owns a self-authored disposable field) →
+  justified `[SuppressMessage]` on `App` (WPF Application manages lifetime via OnExit; `_host` as `IHost`
+  interface didn't trip it, my sealed class does).
+
+### Verification (real GUI, e2e via PowerShell)
+- Primary windowed, procCount=1. `RecMode --screenshot` → forwarder exit 0 in **231 ms**, new PNG appears,
+  procCount stays **1** (dedup). Forwarded `--record` → `.recording.mkv` temp; forwarded `--stop` → new MP4
+  (ffprobe: **h264 4096×1152 ~60 fps**). `--tray --record` → **MainWindowHandle=0** (no window), temp mkv
+  present, survives forwarded `--stop` → MP4 delta=1, primary stays alive. 54 tests, 0 warnings.
+
+### Gotchas
+- `--tray` relies on OnLastWindowClose NOT firing when a window is never shown — confirmed the app stays alive
+  via the tray HWND message pump. (If close-to-tray/X semantics change later, revisit ShutdownMode.)
+- `RecordViewModel` lists (Monitors/Encoders) only populate on nav — CLI must call `EnsureDevicesLoaded` first.
+- Self-test hooks intentionally kept (bypass single-instance) as the only headless recording verification;
+  retire alongside a real test harness (Phase 10-ish).
+
+### Remaining for Phase 5
+- Countdown overlay; capture-excluded recording toolbar; basic Library; portable USB acceptance test.
+
+---
+
 ## Session 2026-07-04 — Phase 5 (part 1): hotkeys, tray, screenshots, failure-mode UX
 
 **Goal:** Start the MVP UX layer — global hotkeys, tray + minimize-to-tray, screenshots, and a real error-channel UI.
