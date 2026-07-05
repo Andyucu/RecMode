@@ -53,6 +53,8 @@ internal static class Composition
         services.AddSingleton<GlobalHotkeys>();
         services.AddSingleton<HotkeyBindings>();
         services.AddSingleton<TrayIconService>();
+        services.AddSingleton<ICountdownController, CountdownController>();
+        services.AddSingleton<RecordingToolbar>();
 
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();

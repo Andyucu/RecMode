@@ -23,6 +23,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // The app owns its own lifetime: it can run headless from the tray, and transient overlay windows
+        // (countdown, recording toolbar) must not end the process when they close. Everything that should
+        // quit does so explicitly (main-window close button, tray Quit, self-tests).
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         // Single-instance guard (before any expensive startup): a second launch forwards its command line to
         // the running instance and exits. Self-test runs bypass this so verification is never blocked. The
         // guard is skipped for --selftest-* so headless checks can always spin up their own process.
@@ -108,6 +113,7 @@ public partial class App : Application
         // MVP UX: global hotkeys + tray icon (Phase 5). Resolved on the UI thread (hotkeys need a message pump).
         _host.Services.GetRequiredService<Services.HotkeyBindings>().Register();
         _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_shell);
+        _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
 
         // Run any startup automation action (e.g. --record / --screenshot), then listen for commands forwarded
         // by future launches (single-instance). Forwarded commands are marshalled to the UI thread.
@@ -141,7 +147,7 @@ public partial class App : Application
 
         if (options.Record && !coordinator.IsRecording && record.RecordCommand.CanExecute(null))
         {
-            record.RecordCommand.Execute(null);
+            record.StartRecordingFromCli(); // automation starts immediately (no pre-roll countdown)
         }
 
         if (options.Stop && coordinator.IsRecording)
@@ -224,6 +230,14 @@ public partial class App : Application
         bool region = mode == "region";
         string result = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
 
+        // Overlay verification: capture the countdown + toolbar via the WGC path with and without capture
+        // exclusion, to prove both that they render and that exclusion keeps them out of the recording.
+        if (mode == "overlays")
+        {
+            _ = RunOverlaySelfTestAsync(paths);
+            return;
+        }
+
         // Screenshot runs synchronously on this (UI) thread — the clipboard copy needs STA.
         if (mode == "screenshot")
         {
@@ -296,6 +310,60 @@ public partial class App : Application
                 Dispatcher.BeginInvoke(() => Shutdown(3));
             }
         });
+    }
+
+    private async System.Threading.Tasks.Task RunOverlaySelfTestAsync(IAppPaths paths)
+    {
+        string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+        try
+        {
+            var os = _host!.Services.GetRequiredService<IOsCapabilities>();
+            var record = _host.Services.GetRequiredService<ViewModels.RecordViewModel>();
+            record.EnsureDevicesLoaded();
+            var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+            var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            var target = RecMode.Capture.CaptureTarget.FromMonitor(mon);
+
+            string Save(string name)
+            {
+                var img = RecMode.Capture.ScreenshotCapturer.Capture(target)!;
+                var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96,
+                    System.Windows.Media.PixelFormats.Bgra32, null, img.Bgra, img.Stride);
+                bmp.Freeze();
+                string path = System.IO.Path.Combine(paths.DataDirectory, name);
+                using var fs = System.IO.File.Create(path);
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                enc.Save(fs);
+                return path;
+            }
+
+            // 1) Overlays WITH exclusion off → they should appear in the WGC capture.
+            var countdown = new Views.CountdownWindow(mon, 9, os, excludeFromCapture: false);
+            countdown.Show();
+            var barVisible = new Views.RecordingToolbarWindow(record, os, excludeFromCapture: false);
+            barVisible.Show();
+            await System.Threading.Tasks.Task.Delay(900);
+            string visible = Save("overlays-visible.png");
+            countdown.Close();
+            barVisible.Close();
+
+            // 2) Toolbar WITH exclusion on → it should be absent from the WGC capture.
+            var barExcluded = new Views.RecordingToolbarWindow(record, os, excludeFromCapture: true);
+            barExcluded.Show();
+            await System.Threading.Tasks.Task.Delay(900);
+            string excluded = Save("overlays-excluded.png");
+            barExcluded.Close();
+
+            System.IO.File.WriteAllText(resultPath,
+                $"success=true\nsupportsExclude={os.SupportsExcludeFromCapture}\nvisible={visible}\nexcluded={excluded}\n");
+            Shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(resultPath, $"success=false\nexception={ex}\n");
+            Shutdown(3);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

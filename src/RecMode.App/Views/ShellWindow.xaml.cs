@@ -54,5 +54,7 @@ public partial class ShellWindow : Window
     private void OnMaximizeRestore(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    private void OnClose(object sender, RoutedEventArgs e) => Close();
+    // Explicit shutdown: the app runs under ShutdownMode.OnExplicitShutdown (so transient overlay windows and
+    // tray-only operation don't end the process), so the main window's close button must quit the app itself.
+    private void OnClose(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
 }

@@ -53,10 +53,12 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private ImageSource? _previewImage;
 
     private readonly ScreenshotService _screenshots;
+    private readonly ICountdownController _countdown;
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
-        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots)
+        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots,
+        ICountdownController countdown)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
@@ -65,6 +67,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _regionPicker = regionPicker;
         _mixerFactory = mixerFactory;
         _screenshots = screenshots;
+        _countdown = countdown;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
 
@@ -583,6 +586,20 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
             return;
         }
 
+        StartRecording(withCountdown: true); // interactive start (button/hotkey/tray) honours the countdown setting
+    }
+
+    /// <summary>Starts recording without the pre-roll countdown — for CLI automation (<c>--record</c>), which means "now".</summary>
+    public void StartRecordingFromCli()
+    {
+        if (!_coordinator.IsRecording)
+        {
+            StartRecording(withCountdown: false);
+        }
+    }
+
+    private void StartRecording(bool withCountdown)
+    {
         CaptureTarget? target = CurrentTarget();
         if (target is null || SelectedEncoder is null)
         {
@@ -590,6 +607,18 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         }
 
         StopPreview(); // preview and recording use separate sessions; don't run both (§3.9)
+
+        if (withCountdown)
+        {
+            int seconds = _settings.Current.CountdownSeconds;
+            MonitorInfo? mon = SelectedMonitor ?? Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
+            if (seconds > 0 && mon is not null && !_countdown.Run(mon, seconds))
+            {
+                StartPreview(); // cancelled during countdown; bring preview back
+                return;
+            }
+        }
+
         bool started = _coordinator.Start(target, SelectedEncoder, SelectedFormat, SelectedFrameRate, Quality);
         if (started)
         {

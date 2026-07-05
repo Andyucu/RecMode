@@ -8,6 +8,57 @@
 
 ---
 
+## Session 2026-07-05 — Phase 5 (part 3): countdown overlay + recording toolbar
+
+**Goal:** The visible recording UX — pre-roll countdown and a floating, capture-excluded recording toolbar.
+
+### What was built
+- **`CaptureExclusion`** (App/Services): static `Apply(Window, IOsCapabilities)` →
+  `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE=0x11)` when `SupportsExcludeFromCapture` (Win10 2004+).
+  Call after HWND exists (SourceInitialized).
+- **`CountdownWindow`** (Views) + **`ICountdownController`/`CountdownController`**: borderless topmost overlay
+  covering the target monitor (physical-pixel `SetWindowPos` like RegionSelectWindow), dim `#59000000`,
+  centered 160px bubble with a `DispatcherTimer` ticking N→1 (scale+opacity `Pop()` each tick), Esc → cancel.
+  `Run(monitor, seconds)` = modal `ShowDialog`, returns `DialogResult==true` (proceed) / false (cancel).
+  Excluded from capture. Ctor has `excludeFromCapture=true` (test seam).
+- **`RecordingToolbarWindow`** (Views) + **`RecordingToolbar`** service: acrylic bottom-centre bar (rec dot →
+  amber when paused, mono elapsed, Pause/Resume, Screenshot, stats, Stop) bound to `RecordViewModel`;
+  `ShowActivated=False` (no focus steal), excluded from capture, positioned via `SystemParameters.WorkArea`
+  (DIP). Service observes `RecordViewModel.IsRecording` PropertyChanged → Show/Hide (covers every stop path).
+  Attached in `App.OnStartup` (like tray). Ctor `excludeFromCapture=true` test seam.
+- **`RecordViewModel`**: `ToggleRecord` → `StartRecording(withCountdown:true)`; new `StartRecordingFromCli()`
+  (no countdown). `StartRecording` gates on `_countdown.Run(SelectedMonitor ?? primary, CountdownSeconds)`
+  before `coordinator.Start`; cancel → `StartPreview()`. `App.ExecuteCliCommand` `--record` →
+  `StartRecordingFromCli` (automation = start now).
+- **Lifecycle fix (important):** app now sets `ShutdownMode = OnExplicitShutdown` early in `OnStartup`. Needed
+  because transient overlay windows (and `--tray` with no shown window) would otherwise trip
+  `OnLastWindowClose` — e.g. the toolbar closing on stop during `--tray --record` would quit the app. Main
+  window close button → `Application.Current.Shutdown()` (ShellWindow.OnClose). Self-tests already Shutdown
+  explicitly, so global OnExplicitShutdown is safe for them.
+- Temp `--selftest-overlays` hook: captures countdown+toolbar via the WGC path with exclusion off (present)
+  then toolbar with exclusion on (absent) → `overlays-visible.png` / `overlays-excluded.png`.
+
+### Verification
+- Countdown renders (bubble "8" + Esc hint). Toolbar renders (dot·00:00·Pause·Screenshot·Stop).
+- **Exclusion proven**: cropped bottom-centre — toolbar present in `overlays-visible.png`, **absent** in
+  `overlays-excluded.png` (`supportsExclude=True`). Same WGC path as recording.
+- `--tray --record`→`--stop` survives toolbar open/close (procs stay 1, mp4 delta 1) under OnExplicitShutdown.
+  Normal windowed launch alive w/ visible window. `--selftest-record` still 360 frames. 54 tests, 0 warnings.
+
+### Gotchas
+- Default `OnLastWindowClose` + a self-test/tray path with no persistent shown window → closing a transient
+  window silently quits the process (exit 0, no result written). Root cause of a confusing "phase 2 never ran".
+  Fixed via `OnExplicitShutdown`.
+- `WDA_EXCLUDEFROMCAPTURE` also hides the window from GDI/BitBlt screenshots (by design) → to *see* an overlay
+  render you must capture with exclusion off; hence the two-capture test seam.
+- `CountdownWindow` uses `DialogResult` → must be shown via `ShowDialog` in production; the visual self-test
+  shows it non-modally with a large `seconds` so it never ticks to 0 (which would throw on a non-dialog).
+
+### Remaining for Phase 5
+- Basic Library; portable USB acceptance test.
+
+---
+
 ## Session 2026-07-05 — Phase 5 (part 2): CLI + single-instance forwarding
 
 **Goal:** Make RecMode automatable (`--record/--stop/--screenshot/--tray`) and single-instance.
