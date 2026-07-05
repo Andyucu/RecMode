@@ -10,9 +10,9 @@ Intentional deviations from `DOCS/RecMode Screen Recording App/RecMode.dc.html` 
 
 ## Phase 6 — Settings screen (2026-07-05, part 1)
 
-- **Card icons omitted for now.** The design's settings cards carry a leading Fluent SVG icon (paint brush, video, timer, …). RecMode has no XAML icon-geometry system yet, so cards ship as title + description + control without the leading glyph. Structure, grouping, and controls match. **Follow-up:** add the Fluent System Icons geometry set (a Phase 6 item) and slot icons into the `SettingsCard`.
+- **Icons: `Segoe Fluent Icons` font, not embedded SVGs.** RecMode renders the design's icon language via the Windows `Segoe Fluent Icons` (fallback `Segoe MDL2 Assets`) font glyphs — the mechanism the source tiles already use. **Nav sidebar icons done 2026-07-05** (Record=video, Library=grid, Schedule=calendar, Settings=gear). **Still pending:** per-card leading icons on the Settings/Schedule cards (a curated glyph pass across ~14 cards); cards currently ship title + description + control.
 - ~~Theme & accent use combo boxes, not a segmented control / colour swatches.~~ **Resolved 2026-07-05:** Appearance now uses a segmented System/Light/Dark selector and five accent colour swatches (with a selection ring), matching the design. Both apply live and persist (`EnumToBoolConverter` binds RadioButtons to the enum settings).
-- **Enum labels come from `ToString()`** (e.g. `Av1`, `Mp4`, `WebM`, `Aac`) rather than the design's polished casing (`AV1`, `MP4`, `AAC`). **Follow-up:** friendly-name converters when the codec matrix lands (Phase 7).
+- ~~Enum labels come from `ToString()`~~ **Resolved 2026-07-05:** an `EnumDisplayConverter` renders friendly labels (H.264 / HEVC / AV1 / MP4 / MKV / MOV / WebM / AAC / Opus / FLAC) in the encoding-defaults and Record Format combos while the stored value stays a plain enum.
 - **Hotkeys are read-only key caps.** The design has a per-shortcut "Change" affordance; remapping is Phase 9.
 
 ## Known Deviations

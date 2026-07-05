@@ -14,6 +14,12 @@
 
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
+    <conv:EnumDisplayConverter x:Key="EnumDisplay" />
+
+    <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->
+    <DataTemplate x:Key="EnumItemTemplate">
+        <TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}" />
+    </DataTemplate>
 
     <!-- ===================== Type ramp (design §2) ===================== -->
     <Style x:Key="CaptionText" TargetType="TextBlock">
@@ -196,7 +202,12 @@
                         <Grid>
                             <Border x:Name="pill" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
                                     Background="{DynamicResource AccentBrush}" Visibility="Collapsed" />
-                            <ContentPresenter VerticalAlignment="Center" Margin="10,0,0,0" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                                <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Width="22"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>

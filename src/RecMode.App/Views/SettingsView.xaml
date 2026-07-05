@@ -79,7 +79,8 @@
                         <TextBlock Text="{x:Static res:Strings.Settings_EncoderDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
                     <ComboBox Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              HorizontalAlignment="Right" ItemsSource="{Binding Codecs}" SelectedItem="{Binding SelectedCodec}" />
+                              HorizontalAlignment="Right" ItemsSource="{Binding Codecs}" SelectedItem="{Binding SelectedCodec}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}" />
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsCard}">
@@ -89,7 +90,8 @@
                         <TextBlock Text="{x:Static res:Strings.Settings_ContainerDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
                     <ComboBox Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              HorizontalAlignment="Right" ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer}" />
+                              HorizontalAlignment="Right" ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}" />
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsCard}">
@@ -99,7 +101,8 @@
                         <TextBlock Text="{x:Static res:Strings.Settings_AudioFormatDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
                     <ComboBox Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              HorizontalAlignment="Right" ItemsSource="{Binding AudioCodecs}" SelectedItem="{Binding SelectedAudioCodec}" />
+                              HorizontalAlignment="Right" ItemsSource="{Binding AudioCodecs}" SelectedItem="{Binding SelectedAudioCodec}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}" />
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsCard}">

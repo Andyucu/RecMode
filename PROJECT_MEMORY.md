@@ -8,6 +8,30 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 4): nav icons + friendly enum labels
+
+**Goal:** Sidebar nav icons and design-cased enum labels (two logged deviations).
+
+### What was built
+- **Nav icons:** `NavButton` template gained a leading glyph `TextBlock` (`Segoe Fluent Icons, Segoe MDL2
+  Assets`, 16px, bound to `Tag`). ShellWindow nav RadioButtons set `Tag`: Record `&#xE714;` (video),
+  Library `&#xE8A9;` (grid), Schedule `&#xE787;` (calendar), Settings `&#xE713;` (gear). **Key point:** the
+  app already used this font for source tiles — no SVG-geometry system needed.
+- **`EnumDisplayConverter`** (Themes, one-way): maps enum → design label (H264→"H.264", Mp4→"MP4", Aac→"AAC",
+  Av1→"AV1", …); unmapped → ToString. Registered as `EnumDisplay` + an `EnumItemTemplate` DataTemplate.
+  Applied `ItemTemplate="{StaticResource EnumItemTemplate}"` to the Settings codec/container/audio-format
+  combos and the Record Format combo (ComboBox closed display reuses the ItemTemplate → friendly in both states).
+
+### Verification (real GUI, screenshots)
+- Sidebar: four correct glyphs (video/grid/calendar/gear) in light theme.
+- Settings encoding defaults now read "H.264" / "MP4" / "AAC" (were H264/Mp4/Aac). 54 tests, 0 warnings.
+
+### Remaining for Phase 6
+- Per-card leading icons (Settings/Schedule cards) — curated glyph pass; per-schedule editor; topbar + compact
+  layouts; Library/Record polish + motion.
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 3): Appearance controls (segmented theme + accent swatches)
 
 **Goal:** Replace the Appearance combos with the design's segmented theme selector + accent colour swatches.

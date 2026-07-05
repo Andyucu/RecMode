@@ -164,7 +164,8 @@
 
                     <TextBlock Text="{x:Static res:Strings.Record_Format}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Margin="0,0,0,12" />
+                              ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Margin="0,0,0,12"
+                              ItemTemplate="{StaticResource EnumItemTemplate}" />
 
                     <TextBlock Text="{x:Static res:Strings.Record_FrameRate}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"

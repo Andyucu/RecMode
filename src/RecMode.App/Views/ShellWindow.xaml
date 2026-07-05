@@ -83,13 +83,13 @@
             <Border Grid.Column="0" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,1,0">
                 <StackPanel Margin="0,8">
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Record}"
-                                 IsChecked="True" Command="{Binding NavigateCommand}" CommandParameter="Record" />
+                                 Tag="&#xE714;" IsChecked="True" Command="{Binding NavigateCommand}" CommandParameter="Record" />
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Library}"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Library" />
+                                 Tag="&#xE8A9;" Command="{Binding NavigateCommand}" CommandParameter="Library" />
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Schedule}"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Schedule" />
+                                 Tag="&#xE787;" Command="{Binding NavigateCommand}" CommandParameter="Schedule" />
                     <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Settings}"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Settings" />
+                                 Tag="&#xE713;" Command="{Binding NavigateCommand}" CommandParameter="Settings" />
                 </StackPanel>
             </Border>
 
