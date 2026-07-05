@@ -80,6 +80,7 @@ public static class Strings
     public static string Settings_ClicksDesc => Get(nameof(Settings_ClicksDesc));
     public static string Settings_KeyboardShortcuts => Get(nameof(Settings_KeyboardShortcuts));
     public static string Settings_HotkeysDesc => Get(nameof(Settings_HotkeysDesc));
+    public static string Hotkey_Change => Get(nameof(Hotkey_Change));
     public static string Settings_HkStartStop => Get(nameof(Settings_HkStartStop));
     public static string Settings_HkPauseResume => Get(nameof(Settings_HkPauseResume));
     public static string Settings_HkScreenshot => Get(nameof(Settings_HkScreenshot));

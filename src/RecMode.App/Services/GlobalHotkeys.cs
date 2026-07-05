@@ -53,6 +53,17 @@ public sealed class GlobalHotkeys : IDisposable
         return -1;
     }
 
+    /// <summary>Unregisters every hotkey (so the caller can rebind). Does not tear down the message window.</summary>
+    public void UnregisterAll()
+    {
+        foreach (int id in _registered)
+        {
+            UnregisterHotKey(_source.Handle, id);
+        }
+
+        _registered.Clear();
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_HOTKEY)

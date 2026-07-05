@@ -112,6 +112,7 @@
   <data name="Settings_ClicksDesc" xml:space="preserve"><value>Draw a ripple around each click</value></data>
   <data name="Settings_KeyboardShortcuts" xml:space="preserve"><value>Keyboard shortcuts</value></data>
   <data name="Settings_HotkeysDesc" xml:space="preserve"><value>Global — they work while any app has focus</value></data>
+  <data name="Hotkey_Change" xml:space="preserve"><value>Change</value></data>
   <data name="Settings_HkStartStop" xml:space="preserve"><value>Start / stop recording</value></data>
   <data name="Settings_HkPauseResume" xml:space="preserve"><value>Pause / resume</value></data>
   <data name="Settings_HkScreenshot" xml:space="preserve"><value>Screenshot</value></data>

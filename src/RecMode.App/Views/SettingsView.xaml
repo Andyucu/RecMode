@@ -5,7 +5,8 @@
              xmlns:vm="clr-namespace:RecMode.App.ViewModels"
              d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             mc:Ignorable="d" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+             mc:Ignorable="d" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             Focusable="True" PreviewKeyDown="OnCaptureKeyDown">
 
     <UserControl.Resources>
         <Style x:Key="CardCombo" TargetType="ComboBox" BasedOn="{StaticResource AppComboBox}">
@@ -260,7 +261,7 @@
                 </Grid>
             </Border>
 
-            <!-- ===== Hotkeys (read-only until the remap UI) ===== -->
+            <!-- ===== Hotkeys (remappable) ===== -->
             <TextBlock Text="{x:Static res:Strings.Settings_Hotkeys}" Style="{StaticResource SectionHeader}" />
             <Border Style="{StaticResource SettingsCard}">
                 <Grid>
@@ -271,29 +272,57 @@
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="{x:Static res:Strings.Settings_KeyboardShortcuts}" Style="{StaticResource BodyStrongText}" />
                         <TextBlock Text="{x:Static res:Strings.Settings_HotkeysDesc}" Style="{StaticResource SettingsCardDesc}" Margin="0,2,0,8" />
+
                         <Grid Margin="0,4,0,0">
-                            <TextBlock Text="{x:Static res:Strings.Settings_HkStartStop}" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource KeyCap}" HorizontalAlignment="Right">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkStartStop}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
                                 <TextBlock Text="{Binding HotkeyStartStop}" Style="{StaticResource MonoText}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="startstop" Click="OnChangeHotkey"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
                         <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
                         <Grid>
-                            <TextBlock Text="{x:Static res:Strings.Settings_HkPauseResume}" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource KeyCap}" HorizontalAlignment="Right">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkPauseResume}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
                                 <TextBlock Text="{Binding HotkeyPauseResume}" Style="{StaticResource MonoText}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="pause" Click="OnChangeHotkey"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
                         <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
                         <Grid>
-                            <TextBlock Text="{x:Static res:Strings.Settings_HkScreenshot}" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource KeyCap}" HorizontalAlignment="Right">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkScreenshot}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
                                 <TextBlock Text="{Binding HotkeyScreenshot}" Style="{StaticResource MonoText}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="screenshot" Click="OnChangeHotkey"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
+
+                        <!-- Capture prompt -->
+                        <Border Margin="0,10,0,0" Padding="12,8" CornerRadius="6"
+                                Background="{DynamicResource SurfaceInputBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                                Visibility="{Binding IsCapturingHotkey, Converter={StaticResource BoolToVisibility}}">
+                            <Grid>
+                                <TextBlock Text="{Binding HotkeyCaptureHint}" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <Button Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Command="{Binding CancelHotkeyCommand}"
+                                        HorizontalAlignment="Right" Style="{StaticResource SecondaryButton}" Height="26" Padding="10,0" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </Grid>
             </Border>

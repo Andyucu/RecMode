@@ -8,6 +8,35 @@
 
 ---
 
+## Session 2026-07-05 — Remappable global hotkeys (Phase 9)
+
+**Goal:** Make the F9/F10/F11 hotkeys user-remappable (last read-only piece of Settings).
+
+### What was built
+- **`HotkeyChord`** (Core.Input, pure/tested): `Modifiers` (Win32 MOD_* values) + `VirtualKey`; `TryParse`
+  ("Ctrl+Shift+F9", case/space-insensitive; rejects modifier-only / two-key / unknown); `ToString`
+  (Ctrl→Alt→Shift→Win + key). Key map: F1–F24 (0x70+), A–Z, 0–9. **15 unit tests.**
+- **`GlobalHotkeys.UnregisterAll()`** (for rebind, keeps the message window).
+- **`HotkeyBindings`** now injects `ISettingsService`, registers from `s.HotkeyStartStop/PauseResume/Screenshot`
+  (parse → chord; fallback F9/F10/F11 if blank/invalid), and `Rebind()` = UnregisterAll + Register.
+- **`SettingsViewModel`**: injects `HotkeyBindings`; `ChangeHotkeyCommand(action)` → `BeginCapture`;
+  `IsCapturingHotkey`/`HotkeyCaptureHint`; `CompleteCapture(chordText)` persists (`Save`) + `Rebind` + clears.
+- **`SettingsView`** (code-behind): hotkeys card gets per-row Change buttons + a capture-prompt border;
+  `OnChangeHotkey` focuses the UserControl; `OnCaptureKeyDown` ignores lone modifiers, Esc cancels, else builds
+  a `HotkeyChord` from `Keyboard.Modifiers` + `KeyInterop.VirtualKeyFromKey` and calls `CompleteCapture`.
+
+### Verification
+- 15 HotkeyChord tests. Launched with custom chords (Ctrl+Alt+R, Shift+F8) → registered, **0** in-use warnings;
+  invalid stored chord ("not-a-key") → graceful fallback, no crash, app alive. Total **90** tests, 0 warnings.
+- **Gotcha:** couldn't UI-Automation-drive the capture or screenshot the hotkeys UI this run — the RecMode
+  window opened **behind the IDE** and `SetForegroundWindow` is blocked for background processes (capture grabbed
+  the IDE). Functional core verified via unit tests + settings-driven registration instead.
+
+### Remaining (Phase 9)
+- Update-notify mechanism (Velopack); the effort/thread-cap bounds from a hardware probe.
+
+---
+
 ## Session 2026-07-05 — FLAC audio verified E2E (Phase 4)
 
 **Goal:** Confirm the FLAC lossless-audio path actually works through the real pipeline (a tracked Phase 4 tail).

@@ -22,6 +22,8 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly ThemeManager _theme;
     private readonly IAppPaths _paths;
     private readonly IStartupManager _startup;
+    private readonly Services.HotkeyBindings _hotkeys;
+    private string? _capturingHotkey;
 
     private AppTheme _selectedTheme;
     private AccentColor _selectedAccent;
@@ -40,12 +42,14 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _lowerEncoderPriority;
     private EncoderEffort _effort;
 
-    public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup)
+    public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup,
+        Services.HotkeyBindings hotkeys)
     {
         _settings = settings;
         _theme = theme;
         _paths = paths;
         _startup = startup;
+        _hotkeys = hotkeys;
 
         RecModeSettings s = settings.Current;
         _selectedTheme = s.Theme;
@@ -66,6 +70,8 @@ public sealed class SettingsViewModel : ObservableObject
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
 
         BrowseCommand = new RelayCommand(BrowseFolder);
+        ChangeHotkeyCommand = new RelayCommand<string>(BeginCapture);
+        CancelHotkeyCommand = new RelayCommand(CancelCapture);
     }
 
     public IReadOnlyList<AppTheme> Themes { get; } = [AppTheme.System, AppTheme.Light, AppTheme.Dark];
@@ -81,10 +87,48 @@ public sealed class SettingsViewModel : ObservableObject
         [EncoderEffort.Fast, EncoderEffort.Balanced, EncoderEffort.Quality];
 
     public ICommand BrowseCommand { get; }
+    public IRelayCommand<string> ChangeHotkeyCommand { get; }
+    public IRelayCommand CancelHotkeyCommand { get; }
 
     public string HotkeyStartStop => _settings.Current.HotkeyStartStop;
     public string HotkeyPauseResume => _settings.Current.HotkeyPauseResume;
     public string HotkeyScreenshot => _settings.Current.HotkeyScreenshot;
+
+    /// <summary>Non-null while listening for a new chord for one hotkey ("startstop" / "pause" / "screenshot").</summary>
+    public bool IsCapturingHotkey => _capturingHotkey is not null;
+
+    public string HotkeyCaptureHint => _capturingHotkey switch
+    {
+        "startstop" => "Press a shortcut for Start / stop…  (Esc to cancel)",
+        "pause" => "Press a shortcut for Pause / resume…  (Esc to cancel)",
+        "screenshot" => "Press a shortcut for Screenshot…  (Esc to cancel)",
+        _ => "",
+    };
+
+    private void BeginCapture(string? action)
+    {
+        _capturingHotkey = action;
+        OnPropertyChanged(nameof(IsCapturingHotkey));
+        OnPropertyChanged(nameof(HotkeyCaptureHint));
+    }
+
+    private void CancelCapture() => BeginCapture(null);
+
+    /// <summary>Called by the view with the captured chord text; persists it and re-registers the global hotkeys.</summary>
+    public void CompleteCapture(string chordText)
+    {
+        switch (_capturingHotkey)
+        {
+            case "startstop": _settings.Current.HotkeyStartStop = chordText; OnPropertyChanged(nameof(HotkeyStartStop)); break;
+            case "pause": _settings.Current.HotkeyPauseResume = chordText; OnPropertyChanged(nameof(HotkeyPauseResume)); break;
+            case "screenshot": _settings.Current.HotkeyScreenshot = chordText; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
+            default: return;
+        }
+
+        _settings.Save();       // write immediately so a crash can't lose a remap
+        _hotkeys.Rebind();      // re-register the global hotkeys with the new chord
+        CancelCapture();
+    }
 
     public string VersionInfo
     {
