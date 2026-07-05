@@ -8,6 +8,27 @@
 
 ---
 
+## Session 2026-07-05 — FLAC audio verified E2E (Phase 4)
+
+**Goal:** Confirm the FLAC lossless-audio path actually works through the real pipeline (a tracked Phase 4 tail).
+
+### What was done
+- Drove the **real CLI**: set `settings.json` Container=Mkv, AudioCodec=Flac, SystemAudioEnabled=true; launched,
+  `--record` → wait → `--stop`; ffprobe'd the output.
+- **Result:** MKV with **flac** audio (48 kHz, 2ch) + h264 video. FLAC works E2E. No code change needed (args
+  were already unit-tested; container steering = FLAC→MKV only, MP4/MOV→AAC, WebM→Opus).
+- Added `Snapshot_Libx264_Mkv_WithAudioFlac` (`-c:a flac`, no bitrate, MKV no faststart). Encoding 31→32, total **75**.
+- Reset dev `settings.json` back to Mp4/Aac defaults.
+
+### Notes
+- Verified via the real `--record`/`--stop` CLI (not a self-test hook) — the self-test hardcodes Mp4, so it
+  can't exercise MKV-only codecs. Good pattern for future container-specific checks.
+
+### Remaining (Phase 4)
+- Mic on real hardware; caution meter colour >82%; ±40 ms soak sync test.
+
+---
+
 ## Session 2026-07-05 — On-battery pre-flight warning (§3.6 / Phase 9)
 
 **Goal:** Warn when recording on battery (promoted 1.0 feature) — recording is power-hungry.

@@ -183,6 +183,17 @@ public class FfmpegArgsBuilderTests
     }
 
     [Fact]
+    public void Snapshot_Libx264_Mkv_WithAudioFlac()
+    {
+        // FLAC is valid only on MKV (verified end-to-end); it takes no bitrate and MKV gets no faststart.
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mkv)
+            with { AudioPipeName = "aud", AudioCodec = AudioCodec.Flac };
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -c:a flac -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
     public void Snapshot_Libx264_Mp4_WithThreadCap()
     {
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4)
