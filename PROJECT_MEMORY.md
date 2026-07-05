@@ -8,6 +8,36 @@
 
 ---
 
+## Session 2026-07-05 — Click highlight ripple (Phase 8)
+
+**Goal:** Make "Highlight mouse clicks" real — draw a ripple at each click, captured in the recording.
+
+### What was built
+- **`GlobalMouseHook`** (App/Services): `WH_MOUSE_LL` low-level hook → `Clicked(screenX, screenY)` on L/R
+  button-down. Install on UI thread; delegate kept alive; fast callback.
+- **`ClickRippleOverlay`** (Views): fullscreen on the primary monitor, topmost, transparent,
+  **click-through** (`WS_EX_TRANSPARENT|LAYERED|NOACTIVATE|TOOLWINDOW` set in SourceInitialized), `IsHitTestVisible=False`,
+  **NOT capture-excluded** (ripple must be in the recording). `AddRipple(screenX,screenY)` → DIP-converts
+  (`/dpiScale`, monitor-relative), adds an accent ring with ScaleTransform 0.25→1 + opacity 0.85→0 over 480ms,
+  removed on completion. Ignores clicks off the covered monitor.
+- **`ClickHighlightService`** (App/Services): observes `RecordViewModel.IsRecording`; when recording **and**
+  `settings.HighlightClicks`, shows the overlay + installs the hook (`hook.Clicked→AddRipple`); tears both down
+  on stop (§3.9 — no idle hook). Registered + `Attach()`ed at startup.
+- Temp `--selftest-ripple` hook: overlay + AddRipple(centre) → WGC-capture → `ripple.png`.
+
+### Verification (WGC, headless)
+- `--selftest-ripple` → cropped centre of the capture shows the blue accent **ring** at (2560,720) — renders
+  correctly AND is captured (not excluded). 104 tests, 0 warnings.
+
+### Notes
+- Overlay covers the **primary** monitor only (clicks elsewhere aren't rippled) — fine for the common case;
+  could span the recorded monitor later. Hook path (hook→AddRipple) is standard; the render+capture is verified.
+
+### Remaining (Phase 8)
+- Annotation (interactive draw-on-screen) — the last Phase 8 item.
+
+---
+
 ## Session 2026-07-05 — Scheduler engine (Phase 8)
 
 **Goal:** Fire the scheduled recordings whose UI + model landed in Phase 6.

@@ -115,6 +115,7 @@ public partial class App : Application
         _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_shell);
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
         _host.Services.GetRequiredService<Services.SchedulerService>().Start();
+        _host.Services.GetRequiredService<Services.ClickHighlightService>().Attach();
 
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();
@@ -243,6 +244,13 @@ public partial class App : Application
             return;
         }
 
+        // Click-ripple verification: show a ripple and WGC-capture it (not excluded → part of the recording).
+        if (mode == "ripple")
+        {
+            _ = RunRippleSelfTestAsync(paths);
+            return;
+        }
+
         // Screenshot runs synchronously on this (UI) thread — the clipboard copy needs STA.
         if (mode == "screenshot")
         {
@@ -362,6 +370,44 @@ public partial class App : Application
 
             System.IO.File.WriteAllText(resultPath,
                 $"success=true\nsupportsExclude={os.SupportsExcludeFromCapture}\nvisible={visible}\nexcluded={excluded}\n");
+            Shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(resultPath, $"success=false\nexception={ex}\n");
+            Shutdown(3);
+        }
+    }
+
+    private async System.Threading.Tasks.Task RunRippleSelfTestAsync(IAppPaths paths)
+    {
+        string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+        try
+        {
+            var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+            var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+
+            var overlay = new Views.ClickRippleOverlay();
+            overlay.Show();
+            await System.Threading.Tasks.Task.Delay(200);
+            // ripple at the monitor centre (screen/physical coords)
+            overlay.AddRipple(mon.X + mon.Width / 2, mon.Y + mon.Height / 2);
+            await System.Threading.Tasks.Task.Delay(200); // catch it mid-animation
+
+            var img = RecMode.Capture.ScreenshotCapturer.Capture(RecMode.Capture.CaptureTarget.FromMonitor(mon))!;
+            var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96,
+                System.Windows.Media.PixelFormats.Bgra32, null, img.Bgra, img.Stride);
+            bmp.Freeze();
+            string path = System.IO.Path.Combine(paths.DataDirectory, "ripple.png");
+            using (var fs = System.IO.File.Create(path))
+            {
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                enc.Save(fs);
+            }
+
+            overlay.Close();
+            System.IO.File.WriteAllText(resultPath, $"success=true\nripple={path}\ncenter={mon.Width / 2},{mon.Height / 2}\n");
             Shutdown(0);
         }
         catch (Exception ex)

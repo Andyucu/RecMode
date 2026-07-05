@@ -61,6 +61,8 @@ internal static class Composition
         services.AddSingleton<IPowerStatus, PowerStatus>();
         services.AddSingleton<RecMode.Core.Library.ILibraryIndex, RecMode.Core.Library.LibraryIndex>();
         services.AddSingleton<SchedulerService>();
+        services.AddSingleton<GlobalMouseHook>();
+        services.AddSingleton<ClickHighlightService>();
 
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();
