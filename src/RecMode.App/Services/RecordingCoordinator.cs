@@ -49,6 +49,7 @@ public sealed class RecordingCoordinator : IDisposable
     private CancellationTokenSource? _audioStop;
 
     private readonly IEncoderProbe _encoderProbe;
+    private readonly IPowerStatus _power;
 
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
@@ -58,7 +59,8 @@ public sealed class RecordingCoordinator : IDisposable
         IErrorReporter errors,
         RecordingStateMachine stateMachine,
         IEncoderProbe encoderProbe,
-        Func<IAudioMixer> mixerFactory)
+        Func<IAudioMixer> mixerFactory,
+        IPowerStatus power)
     {
         _captureFactory = captureFactory;
         _ffmpeg = ffmpeg;
@@ -67,6 +69,7 @@ public sealed class RecordingCoordinator : IDisposable
         _errors = errors;
         _stateMachine = stateMachine;
         _encoderProbe = encoderProbe;
+        _power = power;
         _mixerFactory = mixerFactory;
     }
 
@@ -128,6 +131,14 @@ public sealed class RecordingCoordinator : IDisposable
         catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
         {
             // Free-space check is best-effort.
+        }
+
+        // Battery pre-flight (§3.6 / Phase 9): recording is power-hungry — nudge laptop users to plug in.
+        if (_power.IsOnBattery)
+        {
+            string pct = _power.BatteryPercent is int b ? $" ({b}% left)" : "";
+            _errors.Warn("record.on-battery", $"You're recording on battery power{pct}.",
+                "Recording is power-hungry — plug in for long sessions.");
         }
 
         if (!CaptureCapabilities.TryGetSourceSize(target, out int srcW, out int srcH))

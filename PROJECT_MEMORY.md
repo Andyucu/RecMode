@@ -8,6 +8,26 @@
 
 ---
 
+## Session 2026-07-05 — On-battery pre-flight warning (§3.6 / Phase 9)
+
+**Goal:** Warn when recording on battery (promoted 1.0 feature) — recording is power-hungry.
+
+### What was built
+- **`IPowerStatus`/`PowerStatus`** (App/Services): Win32 `GetSystemPowerStatus` P/Invoke → `IsOnBattery`
+  (`AcLineStatus==0`), `BatteryPercent` (0–100 or null). Interface makes the decision mockable.
+- **Coordinator** ctor takes `IPowerStatus`; pre-flight (after disk check) warns
+  `record.on-battery` "You're recording on battery power (NN% left) … plug in for long sessions" when
+  `IsOnBattery`. Registered in Composition.
+
+### Verification
+- Desktop (Win32_Battery absent) → `--selftest-record` succeeds with **no** on-battery warning in the log
+  (no false positive). Positive path is mockable via `IPowerStatus`; fires on real laptop battery. 74 tests, 0 warnings.
+
+### Remaining (promoted 1.0 / misc)
+- Hotkey remap UI (Phase 9); tray recent-targets; first-run encoder benchmark; disk-speed health signal.
+
+---
+
 ## Session 2026-07-05 — Encoder effort tiers (Phase 3 §3.3)
 
 **Goal:** Fast/Balanced/Quality effort setting, mapped per-encoder to its preset (finishes the resource-control args).
