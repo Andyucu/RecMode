@@ -8,6 +8,26 @@
 
 ---
 
+## Session 2026-07-05 — Snapshot-tested ffmpeg args matrix (Phase 3 §3.3)
+
+**Goal:** Lock the full ffmpeg command line so ffmpeg re-pins / careless edits can't silently change the encode.
+
+### What was built
+- 6 snapshot tests in `FfmpegArgsBuilderTests` asserting the **exact** whitespace-normalised (`Norm` =
+  `Regex.Replace(s,@"\s+"," ").Trim()`) full command line: libx264/MP4 (video-only), libx264/MKV (no
+  faststart), h264_amf/MKV, libx264/MP4+AAC, libsvtav1/WebM+Opus, libx264/MP4+`-threads 4`. Encoding tests
+  16→22; total **61**. Hand-computed expected strings all matched first run.
+
+### Notes
+- Snapshot surfaces a latent quirk to revisit: faststart is emitted for **Mp4 only**, not Mov (MOV gets no
+  `+faststart`). Captured as-is; fix when MOV is productionised (Phase 7 codec matrix).
+- Update these strings deliberately when an arg genuinely changes — that's the guard working.
+
+### Remaining (Phase 3)
+- Auto-split (segment muxer); mid-stream hw→sw Degraded fallback; production decision-gate re-check.
+
+---
+
 ## Session 2026-07-05 — Orphaned-recording recovery on launch (Phase 3 crash safety)
 
 **Goal:** Recover `*.recording.mkv` files left by a crashed session — the payoff of the safe-recording design.

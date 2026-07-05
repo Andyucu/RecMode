@@ -98,4 +98,67 @@ public class FfmpegArgsBuilderTests
         Assert.Contains("-f f32le -ar 48000 -ac 2 -i", args);
         Assert.Contains("-map 0:v:0 -map 1:a:0", args);
     }
+
+    // ---- Snapshot matrix (plan §3.3): lock the full command line so an ffmpeg re-pin or a careless edit can't
+    // silently change the encode. Update these strings deliberately when an argument genuinely changes. ----
+
+    private static string Norm(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
+
+    [Fact]
+    public void Snapshot_Libx264_Mp4_VideoOnly()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4);
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
+    public void Snapshot_Libx264_Mkv_VideoOnly_NoFaststart()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mkv);
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
+    public void Snapshot_Amf_Mkv_VideoOnly()
+    {
+        var job = Job(Enc("h264_amf", VideoCodec.H264, EncoderBackend.Amf), MediaContainer.Mkv);
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 24 -qp_p 24 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
+    public void Snapshot_Libx264_Mp4_WithAudioAac()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4)
+            with { AudioPipeName = "aud", AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 192 };
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
+    public void Snapshot_SvtAv1_WebM_WithAudioOpus()
+    {
+        var job = Job(Enc("libsvtav1", VideoCodec.Av1, EncoderBackend.Software), MediaContainer.WebM)
+            with { AudioPipeName = "aud", AudioCodec = AudioCodec.Opus, AudioBitrateKbps = 192 };
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libsvtav1 -preset 8 -crf 24 -pix_fmt yuv420p -c:a libopus -b:a 192k -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
+
+    [Fact]
+    public void Snapshot_Libx264_Mp4_WithThreadCap()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4)
+            with { CpuThreadCap = 4 };
+        Assert.Equal(
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -threads 4 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
+            Norm(FfmpegArgsBuilder.Build(job)));
+    }
 }
