@@ -79,6 +79,17 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- Leading icon for a settings/schedule card (Segoe Fluent Icons glyph via Text) -->
+    <Style x:Key="CardIcon" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,14,0" />
+    </Style>
+
     <!-- Segmented selector (design: Light/Dark/System pill segments) -->
     <Style x:Key="SegmentedButton" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />

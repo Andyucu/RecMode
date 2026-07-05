@@ -35,11 +35,14 @@
                             <Border Style="{StaticResource SettingsCard}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE787;" />
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
                                         <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrongText}" />
                                         <TextBlock Style="{StaticResource SettingsCardDesc}">
                                             <Run Text="{Binding WhenText, Mode=OneWay}" />
@@ -48,7 +51,7 @@
                                         </TextBlock>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding StateLabel}" VerticalAlignment="Center" FontSize="12" MinWidth="26"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0" />
                                         <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"

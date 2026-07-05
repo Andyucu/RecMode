@@ -8,6 +8,32 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 6): per-card icons
+
+**Goal:** Leading Fluent icons on every Settings card + the Schedule card (finishes the icon deviation).
+
+### What was built
+- **`CardIcon`** style (Controls.xaml): `Segoe Fluent Icons` glyph, 18px, 20px width, TextSecondary, centered,
+  14px right margin.
+- **SettingsView** rewritten to a consistent 3-column card grid (`Auto` icon | `*` body | `Auto` control) with
+  a glyph per card: Theme E771, Accent E790, Encoder E714, Container E7C3, Audio format E767, Audio bitrate
+  E9E9, Save-to E838, Pattern E8AC, Countdown E916, Cursor E962, Clicks E7C9, Hotkeys E765 (top-aligned),
+  Startup E7E8, Updates E895. **Schedule** card gained the calendar glyph E787 (controls shifted to column 2).
+
+### Verification (real GUI, screenshots)
+- Two Settings screenshots (top + scrolled): all 14 glyphs render correctly, no fallback boxes; the tricky
+  ones (sliders/bitrate, stopwatch/countdown, mouse/cursor, tap-pointer/clicks, rename/pattern) are all
+  sensible. 54 tests, 0 warnings.
+
+### Gotchas
+- `Segoe Fluent Icons` (Win11) / `Segoe MDL2 Assets` (Win10 fallback) covers the whole icon set — verify glyph
+  codes by screenshot (a wrong code renders as an empty box, not an error). All chosen codes rendered first try.
+
+### Remaining for Phase 6
+- Topbar + compact layout variants; Library/Record polish + motion.
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 5): schedule editor
 
 **Goal:** Make schedules editable (name/recurrence/time/duration), not just default-add.
