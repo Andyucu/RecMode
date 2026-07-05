@@ -51,6 +51,14 @@ public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths
         int recovered = 0;
         foreach (string orphan in orphans)
         {
+            // Guard against a race with a recording that just started (its temp is a live *.recording.mkv):
+            // if the file is locked for writing, it isn't an orphan — skip it.
+            if (IsInUse(orphan))
+            {
+                Log.Information("Skipping {Orphan} — it's locked (a recording is in progress)", Path.GetFileName(orphan));
+                continue;
+            }
+
             string mp4 = UniqueMp4Path(orphan);
             if (Remuxer.RemuxToMp4(ff.FfmpegPath, orphan, mp4))
             {
@@ -70,6 +78,24 @@ public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths
                 recovered == 1
                     ? "Recovered a recording from a previous session that ended unexpectedly."
                     : $"Recovered {recovered} recordings from a previous session that ended unexpectedly.");
+        }
+    }
+
+    /// <summary>True if the file can't be opened for exclusive read — i.e. another process (a live recording) holds it.</summary>
+    private static bool IsInUse(string path)
+    {
+        try
+        {
+            using FileStream _ = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 

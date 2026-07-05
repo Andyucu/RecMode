@@ -8,6 +8,31 @@
 
 ---
 
+## Session 2026-07-05 — Correctness review: orphan-recovery race fix
+
+**Goal:** Self-review recent engine changes; fix a real bug found in orphan recovery.
+
+### Bug + fix
+- **Race:** `App.OnStartup` runs `OrphanRecoveryService.RecoverOrphans` on a background thread, then may start a
+  recording (`--record`/`--tray --record`). The recording's live `*.recording.mkv` temp is indistinguishable
+  from an orphan → recovery could remux a half-written copy and **delete the temp mid-recording**, destroying
+  the take.
+- **Fix:** `IsInUse(path)` — try `File.Open(FileShare.None)`; if it throws (IOException/UnauthorizedAccess), the
+  file is locked by an active recording → skip it. Only genuinely closed orphans are recovered.
+
+### Verification (headless, E2E)
+- Two valid `*.recording.mkv` seeded; one held open with a PS `FileStream` (simulates the active recording),
+  one free. Launched the app → **locked one left untouched** (present, no mp4), **free one recovered** (mkv
+  gone, mp4 created). 94 tests, 0 warnings.
+
+### Review notes (other recent changes — no fix needed)
+- Health `_encoderBehind` hysteresis (trigger >fps, reset ≤fps/2) is intentional anti-flap.
+- Hotkey `Rebind` (UnregisterAll + Register) is idempotent (`_hooked` guards re-subscription).
+- Recovered orphans get no library-index entry (they bypass the coordinator) — acceptable; they still list via
+  the filesystem fallback.
+
+---
+
 ## Session 2026-07-05 — Library metadata index (Phase 5)
 
 **Goal:** "capture-source metadata in the library index from day one" — record metadata, show it in the Library.
