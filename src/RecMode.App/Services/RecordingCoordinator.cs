@@ -503,37 +503,8 @@ public sealed class RecordingCoordinator : IDisposable
         return null;
     }
 
-    private bool Remux(string mkvPath, string mp4Path)
-    {
-        if (_ffmpegPath is null || !File.Exists(mkvPath))
-        {
-            return false;
-        }
-
-        try
-        {
-            var psi = new ProcessStartInfo(_ffmpegPath,
-                $"-hide_banner -loglevel error -i \"{mkvPath}\" -c copy -movflags +faststart -y \"{mp4Path}\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true,
-            };
-            using Process? process = Process.Start(psi);
-            if (process is null)
-            {
-                return false;
-            }
-
-            process.StandardError.ReadToEnd();
-            return process.WaitForExit(30000) && process.ExitCode == 0 && File.Exists(mp4Path);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
-        {
-            Log.Error(ex, "Remux failed");
-            return false;
-        }
-    }
+    private bool Remux(string mkvPath, string mp4Path) =>
+        _ffmpegPath is not null && RecMode.Encoding.Ffmpeg.Remuxer.RemuxToMp4(_ffmpegPath, mkvPath, mp4Path);
 
     private static void TryDelete(string path)
     {

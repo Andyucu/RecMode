@@ -57,6 +57,7 @@ internal static class Composition
         services.AddSingleton<RecordingToolbar>();
         services.AddSingleton<IStartupManager, StartupManager>();
         services.AddSingleton<IScheduleEditor, ScheduleEditor>();
+        services.AddSingleton<OrphanRecoveryService>();
 
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();

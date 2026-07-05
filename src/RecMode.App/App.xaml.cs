@@ -115,6 +115,10 @@ public partial class App : Application
         _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_shell);
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
 
+        // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
+        var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();
+        System.Threading.Tasks.Task.Run(recovery.RecoverOrphans);
+
         // Run any startup automation action (e.g. --record / --screenshot), then listen for commands forwarded
         // by future launches (single-instance). Forwarded commands are marshalled to the UI thread.
         ExecuteCliCommand(options, startup: true);

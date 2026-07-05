@@ -8,6 +8,33 @@
 
 ---
 
+## Session 2026-07-05 — Orphaned-recording recovery on launch (Phase 3 crash safety)
+
+**Goal:** Recover `*.recording.mkv` files left by a crashed session — the payoff of the safe-recording design.
+
+### What was built
+- **`Remuxer`** (RecMode.Encoding): extracted the shared `RemuxToMp4(ffmpeg, src, mp4)` static (`-c copy
+  -movflags +faststart`, drains stderr, 30s timeout). The coordinator's `Remux` now delegates to it (DRY).
+- **`OrphanRecoveryService`** (App/Services, injects `IFfmpegLocator`/`IAppPaths`/`IErrorReporter`):
+  `RecoverOrphans()` scans `RecordingsDirectory` for `*.recording.mkv`, remuxes each → `<stem>.mp4`
+  (`UniqueMp4Path` avoids clobber → " (recovered N).mp4"), deletes the temp on success, logs, and warns once
+  ("Recovered a/N recording(s) from a previous session"). Skips gracefully if ffmpeg unavailable.
+- **App.OnStartup:** `Task.Run(recovery.RecoverOrphans)` (off the UI thread) after shell/tray wiring.
+  Registered in Composition.
+
+### Verification (real GUI + ffprobe)
+- Created a valid `OrphanTest.recording.mkv` (ffmpeg lavfi testsrc, 15KB) in Recordings; launched the app →
+  after ~6s the mkv was gone and `OrphanTest.mp4` (16KB) existed, ffprobe-valid **h264 640×360** mp4. 55 tests, 0 warnings.
+
+### Notes
+- Advances Phase 3 "orphan-MKV detection on launch". The corrupt "moov atom not found" mp4s in bin Recordings
+  are from old kill-tests — don't seed orphan tests from them; generate a fresh mkv via `-f lavfi testsrc`.
+
+### Remaining (Phase 3)
+- Snapshot-tested args matrix; auto-split (segment muxer); mid-stream hw→sw Degraded fallback; gate re-check.
+
+---
+
 ## Session 2026-07-05 — Per-source audio volume (Phase 4 mixer UI)
 
 **Goal:** Per-source volume sliders on the Record audio card, applied live to metering + the recording.
