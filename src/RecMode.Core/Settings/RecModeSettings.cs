@@ -74,6 +74,9 @@ public sealed class RecModeSettings
     /// <summary>Opt-in local crash minidumps (§3.6). Off by default — privacy is a feature.</summary>
     public bool EnableCrashMinidumps { get; set; }
 
+    // Scheduled recordings (Phase 6 UI + data model; the firing engine is Phase 8).
+    public List<ScheduleItem> Schedules { get; set; } = [];
+
     /// <summary>Deep copy for handing out immutable snapshots and detecting changes.</summary>
     public RecModeSettings Clone() => (RecModeSettings)MemberwiseClone();
 }

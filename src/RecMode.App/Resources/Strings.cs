@@ -91,4 +91,9 @@ public static class Strings
     public static string Library_NoVideos => Get(nameof(Library_NoVideos));
     public static string Library_NoScreenshots => Get(nameof(Library_NoScreenshots));
     public static string Schedule_Empty => Get(nameof(Schedule_Empty));
+    public static string Schedule_Title => Get(nameof(Schedule_Title));
+    public static string Schedule_New => Get(nameof(Schedule_New));
+    public static string Schedule_Subtext => Get(nameof(Schedule_Subtext));
+    public static string Schedule_Delete => Get(nameof(Schedule_Delete));
+    public static string Schedule_NoItems => Get(nameof(Schedule_NoItems));
 }

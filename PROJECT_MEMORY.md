@@ -8,6 +8,39 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 2): Schedule screen
+
+**Goal:** Turn the Schedule stub into the design's screen with a persisted data model (firing engine = Phase 8).
+
+### What was built
+- **Core:** `ScheduleItem` (Id, Name, `ScheduleRecurrence` {Once/Daily/Weekdays/Weekly}, Time "HH:mm",
+  DurationMinutes, Enabled) + `List<ScheduleItem> Schedules` added to `RecModeSettings` (additive, no schema
+  bump — serializes with the settings doc; save path serializes `Current` directly so the shallow `Clone()`
+  sharing the list is a non-issue).
+- **App:** `ScheduleRowViewModel` (wraps a `ScheduleItem`, `Enabled` setter persists via injected callback,
+  `WhenText`="Once · 18:32 · 30 min", `SourceText`="Follows Record settings", `StateLabel`=On/Off).
+  `ScheduleViewModel` (`INavigationAware`): loads rows from settings on nav, `NewScheduleCommand` (default
+  once-off now+30m, persists), `DeleteCommand` (removes by Id, persists), `IsEmpty`.
+- **View:** `ScheduleView.xaml` per design — title + `New schedule` accent button, subtext, `ItemsControl` of
+  `SettingsCard` rows (name + when·source, On/Off label, `ToggleSwitch`, Delete via RelativeSource command),
+  empty-state text. Strings: Schedule_Title/New/Subtext/Delete/NoItems.
+
+### Verification (real GUI, UI-Automation)
+- Screenshot matches design (header + subtext + two "Once · 18:32 · 30 min · Follows Record settings" cards,
+  On + blue toggle + Delete).
+- Persistence: New schedule ×2 → settings.json Schedules 0→2 (recurrence=Once, time=now+30, dur=30, enabled=true);
+  toggle-off → `Enabled` true→false persisted; delete → 2→1. 54 tests, 0 warnings.
+
+### Gotchas
+- UI-Automation `FindAll` over templated `ItemsControl` returns phantom/recycled containers (delete-button count
+  read as 4 for 2 rows) — same as the Library test; trust the persisted-state ground truth, not element counts.
+
+### Remaining for Phase 6
+- Fluent icon-geometry set + card icons; per-schedule editor (name/recurrence/time/duration); segmented theme +
+  accent swatches; topbar + compact layouts; Library/Record polish + motion; friendly enum names.
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 1): full Settings screen
 
 **Goal:** Start Phase 6 (design fidelity) with the Settings page — from a 3-field stub to the design's full layout.

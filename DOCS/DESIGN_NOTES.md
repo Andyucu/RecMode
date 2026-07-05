@@ -2,6 +2,12 @@
 
 Intentional deviations from `DOCS/RecMode Screen Recording App/RecMode.dc.html` live here so the design file can remain the visual source of truth while the product plan captures practical engineering decisions.
 
+## Phase 6 — Schedule screen (2026-07-05, part 2)
+
+- **Per-card Delete button added.** The design's schedule card shows only a name/description, state label, and an on/off toggle. RecMode adds a Delete action so schedules can be removed. (The design's "New schedule" also has no editor; see below.)
+- **No per-schedule editor yet.** "New schedule" adds a default once-off 30 minutes from now (matching the prototype, which likewise just appends a default). Editing name/recurrence/time/duration will land with the firing engine (Phase 8) or a dedicated edit dialog. The data model (`ScheduleItem`: recurrence, time, duration, enabled) already persists everything the engine will need.
+- **Card icons omitted** — same as Settings; pending the Fluent icon-geometry set.
+
 ## Phase 6 — Settings screen (2026-07-05, part 1)
 
 - **Card icons omitted for now.** The design's settings cards carry a leading Fluent SVG icon (paint brush, video, timer, …). RecMode has no XAML icon-geometry system yet, so cards ship as title + description + control without the leading glyph. Structure, grouping, and controls match. **Follow-up:** add the Fluent System Icons geometry set (a Phase 6 item) and slot icons into the `SettingsCard`.

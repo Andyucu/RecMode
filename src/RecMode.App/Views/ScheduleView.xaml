@@ -1,10 +1,75 @@
 <UserControl x:Class="RecMode.App.Views.ScheduleView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:res="clr-namespace:RecMode.App.Resources">
-    <Grid Margin="24">
-        <TextBlock Text="{x:Static res:Strings.Nav_Schedule}" Style="{StaticResource TitleText}" VerticalAlignment="Top" />
-        <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" Foreground="{DynamicResource TextSecondaryBrush}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:res="clr-namespace:RecMode.App.Resources"
+             xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:ScheduleViewModel}">
+    <Grid Margin="24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: title + New schedule -->
+        <Grid Grid.Row="0" Width="760" HorizontalAlignment="Left">
+            <TextBlock Text="{x:Static res:Strings.Schedule_Title}" Style="{StaticResource TitleText}" VerticalAlignment="Center" />
+            <Button Content="{x:Static res:Strings.Schedule_New}" Command="{Binding NewScheduleCommand}"
+                    Style="{StaticResource AccentButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Height="32" Padding="14,0" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Text="{x:Static res:Strings.Schedule_Subtext}" Style="{StaticResource CaptionText}"
+                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                   Width="760" HorizontalAlignment="Left" Margin="0,10,0,12" />
+
+        <!-- List + empty state -->
+        <Grid Grid.Row="2" Width="760" HorizontalAlignment="Left">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Schedules}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ScheduleRowViewModel}">
+                            <Border Style="{StaticResource SettingsCard}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrongText}" />
+                                        <TextBlock Style="{StaticResource SettingsCardDesc}">
+                                            <Run Text="{Binding WhenText, Mode=OneWay}" />
+                                            <Run Text=" · " />
+                                            <Run Text="{Binding SourceText, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding StateLabel}" VerticalAlignment="Center" FontSize="12" MinWidth="26"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0" />
+                                        <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                                      IsChecked="{Binding Enabled, Mode=TwoWay}" />
+                                        <Button Content="{x:Static res:Strings.Schedule_Delete}"
+                                                Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
+                                                Height="28" Padding="12,0" Margin="12,0,0,0"
+                                                Foreground="{DynamicResource CriticalBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock Text="{x:Static res:Strings.Schedule_NoItems}" Style="{StaticResource BodyText}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0"
+                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
     </Grid>
 </UserControl>

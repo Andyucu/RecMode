@@ -1,9 +1,75 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using RecMode.Core.Settings;
 
 namespace RecMode.App.ViewModels;
 
-/// <summary>Placeholder Schedule (plan Phase 1: stub; scheduler arrives in Phase 8).</summary>
-public sealed class ScheduleViewModel : ObservableObject
+/// <summary>
+/// Scheduled-recordings screen (plan Phase 6 — design-faithful UI + persisted data model). Schedules are
+/// stored in settings and survive restarts; the engine that actually fires them is Phase 8. Loads on
+/// navigation (§3.9). New schedules default to a once-off later today; toggling/deleting persists immediately.
+/// </summary>
+public sealed class ScheduleViewModel : ObservableObject, INavigationAware
 {
-    public string Message => RecMode.App.Resources.Strings.Schedule_Empty;
+    private readonly ISettingsService _settings;
+
+    public ScheduleViewModel(ISettingsService settings)
+    {
+        _settings = settings;
+        NewScheduleCommand = new RelayCommand(NewSchedule);
+        DeleteCommand = new RelayCommand<ScheduleRowViewModel>(Delete);
+    }
+
+    public ObservableCollection<ScheduleRowViewModel> Schedules { get; } = [];
+
+    public IRelayCommand NewScheduleCommand { get; }
+    public IRelayCommand<ScheduleRowViewModel> DeleteCommand { get; }
+
+    public bool IsEmpty => Schedules.Count == 0;
+
+    public void OnNavigatedTo() => Load();
+
+    public void OnNavigatedFrom() => Schedules.Clear();
+
+    private void Load()
+    {
+        Schedules.Clear();
+        foreach (ScheduleItem item in _settings.Current.Schedules)
+        {
+            Schedules.Add(new ScheduleRowViewModel(item, _settings.RequestSave));
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private void NewSchedule()
+    {
+        var item = new ScheduleItem
+        {
+            Name = "New schedule",
+            Recurrence = ScheduleRecurrence.Once,
+            Time = DateTime.Now.AddMinutes(30).ToString("HH:mm"),
+            DurationMinutes = 30,
+            Enabled = true,
+        };
+
+        _settings.Current.Schedules.Add(item);
+        Schedules.Add(new ScheduleRowViewModel(item, _settings.RequestSave));
+        _settings.RequestSave();
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    private void Delete(ScheduleRowViewModel? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        _settings.Current.Schedules.RemoveAll(x => x.Id == row.Model.Id);
+        Schedules.Remove(row);
+        _settings.RequestSave();
+        OnPropertyChanged(nameof(IsEmpty));
+    }
 }

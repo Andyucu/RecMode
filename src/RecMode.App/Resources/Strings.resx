@@ -123,4 +123,9 @@
   <data name="Library_NoVideos" xml:space="preserve"><value>No recordings yet.</value></data>
   <data name="Library_NoScreenshots" xml:space="preserve"><value>No screenshots yet.</value></data>
   <data name="Schedule_Empty" xml:space="preserve"><value>Scheduled recordings arrive in a later build.</value></data>
+  <data name="Schedule_Title" xml:space="preserve"><value>Scheduled recordings</value></data>
+  <data name="Schedule_New" xml:space="preserve"><value>New schedule</value></data>
+  <data name="Schedule_Subtext" xml:space="preserve"><value>Recordings start automatically, even when RecMode runs in the tray. Encoder and audio follow your current Record settings.</value></data>
+  <data name="Schedule_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Schedule_NoItems" xml:space="preserve"><value>No schedules yet. Add one to record automatically.</value></data>
 </root>
