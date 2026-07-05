@@ -50,6 +50,11 @@ public sealed class RecordingCoordinator : IDisposable
 
     private readonly IEncoderProbe _encoderProbe;
     private readonly IPowerStatus _power;
+    private readonly RecMode.Core.Library.ILibraryIndex _libraryIndex;
+
+    // Metadata snapshot for the library index (captured at Start, written on successful finalize).
+    private string _metaSource = "", _metaCodec = "", _metaContainer = "";
+    private int _metaWidth, _metaHeight, _metaFps;
 
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
@@ -60,7 +65,8 @@ public sealed class RecordingCoordinator : IDisposable
         RecordingStateMachine stateMachine,
         IEncoderProbe encoderProbe,
         Func<IAudioMixer> mixerFactory,
-        IPowerStatus power)
+        IPowerStatus power,
+        RecMode.Core.Library.ILibraryIndex libraryIndex)
     {
         _captureFactory = captureFactory;
         _ffmpeg = ffmpeg;
@@ -70,6 +76,7 @@ public sealed class RecordingCoordinator : IDisposable
         _stateMachine = stateMachine;
         _encoderProbe = encoderProbe;
         _power = power;
+        _libraryIndex = libraryIndex;
         _mixerFactory = mixerFactory;
     }
 
@@ -173,6 +180,14 @@ public sealed class RecordingCoordinator : IDisposable
                 ? Path.Combine(outputDir, Path.GetFileNameWithoutExtension(_finalPath) + ".recording.mkv")
                 : _finalPath;
             _ffmpegPath = ff.FfmpegPath;
+
+            // Snapshot metadata for the library index (written on successful finalize).
+            _metaSource = sourceLabel;
+            _metaCodec = encoder.Codec.ToString();
+            _metaContainer = container.ToString();
+            _metaWidth = dstW;
+            _metaHeight = dstH;
+            _metaFps = fps;
 
             bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
             string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
@@ -487,6 +502,14 @@ public sealed class RecordingCoordinator : IDisposable
                     "The .recording.mkv file is playable and can be converted manually.");
                 result = result with { OutputPath = _recordingPath };
             }
+        }
+
+        if (result.Success && result.OutputPath.Length > 0)
+        {
+            double duration = _metaFps > 0 ? (double)result.FramesWritten / _metaFps : 0;
+            _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
+                Path.GetFileName(result.OutputPath), _metaSource, _metaCodec, _metaContainer,
+                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now));
         }
 
         Log.Information("Recording finalized: success={Success} frames={Frames} -> {Path}",

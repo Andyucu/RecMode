@@ -24,12 +24,14 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
     private readonly IAppPaths _paths;
     private readonly IErrorReporter _errors;
+    private readonly RecMode.Core.Library.ILibraryIndex _index;
     private bool _showVideos = true;
 
-    public LibraryViewModel(IAppPaths paths, IErrorReporter errors)
+    public LibraryViewModel(IAppPaths paths, IErrorReporter errors, RecMode.Core.Library.ILibraryIndex index)
     {
         _paths = paths;
         _errors = errors;
+        _index = index;
 
         ShowVideosCommand = new RelayCommand(() => SetTab(videos: true));
         ShowScreenshotsCommand = new RelayCommand(() => SetTab(videos: false));
@@ -88,6 +90,9 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         if (Directory.Exists(dir))
         {
             string[] exts = _showVideos ? VideoExtensions : ImageExtensions;
+            IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =
+                _showVideos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();
+
             IEnumerable<FileInfo> files = new DirectoryInfo(dir).EnumerateFiles()
                 .Where(f => exts.Contains(f.Extension.ToLowerInvariant()))
                 .Where(f => !f.Name.EndsWith(".recording.mkv", StringComparison.OrdinalIgnoreCase)) // skip in-progress temp
@@ -99,7 +104,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
                 {
                     FilePath = f.FullName,
                     DisplayName = Path.GetFileNameWithoutExtension(f.Name),
-                    Meta = $"{FormatSize(f.Length)} · {FormatDate(f.LastWriteTime)}",
+                    Meta = BuildMeta(f, meta.GetValueOrDefault(f.Name)),
                     IsImage = !_showVideos,
                     Thumbnail = _showVideos ? null : TryLoadThumbnail(f.FullName),
                 });
@@ -189,6 +194,33 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         {
             return null; // unreadable/corrupt image — just skip the thumbnail
         }
+    }
+
+    /// <summary>"H.264 · 1920×1080 · 0:12 · 58 MB · Today 14:12" when indexed; "size · date" otherwise.</summary>
+    private static string BuildMeta(FileInfo f, RecMode.Core.Library.LibraryIndexEntry? entry)
+    {
+        string tail = $"{FormatSize(f.Length)} · {FormatDate(f.LastWriteTime)}";
+        if (entry is null)
+        {
+            return tail;
+        }
+
+        string codec = FriendlyCodec(entry.Codec);
+        return $"{codec} · {entry.Width}×{entry.Height} · {FormatDuration(entry.DurationSeconds)} · {tail}";
+    }
+
+    private static string FriendlyCodec(string codec) => codec switch
+    {
+        "H264" => "H.264",
+        "Hevc" => "HEVC",
+        "Av1" => "AV1",
+        _ => codec,
+    };
+
+    private static string FormatDuration(double seconds)
+    {
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
     }
 
     private static string FormatSize(long bytes) => bytes switch

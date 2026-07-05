@@ -8,6 +8,36 @@
 
 ---
 
+## Session 2026-07-05 — Library metadata index (Phase 5)
+
+**Goal:** "capture-source metadata in the library index from day one" — record metadata, show it in the Library.
+
+### What was built
+- **`LibraryIndexEntry`** (Core.Library): FileName/Source/Codec/Container/Width/Height/Fps/DurationSeconds/
+  CreatedAt (primitives → no enum coupling). **`ILibraryIndex`/`LibraryIndex`**: JSON array at
+  `AppPaths.LibraryIndexPath` (portable-safe), `Add` (replace-by-filename + cap 1000 + atomic temp-move),
+  `ByFileName()` (dict); corrupt/locked/missing → empty (non-fatal). Registered in Composition.
+- **Coordinator**: injects `ILibraryIndex`; snapshots metadata at Start (`_metaSource/_metaCodec/_metaContainer/
+  _metaWidth/_metaHeight/_metaFps`); on **successful** Finalize writes an entry (duration = frames/fps). Uses
+  the final (post-remux) path's file name.
+- **LibraryViewModel**: injects the index; `BuildMeta(file, entry?)` → "H.264 · 1920×1080 · 0:12 · size · date"
+  when indexed (FriendlyCodec + FormatDuration), else "size · date". Screenshots (images) skip the index.
+- Tests: 4 `LibraryIndexTests` (round-trip, replace-by-name, persist-across-instances, missing=empty) using a
+  portable `AppPaths` in a `TempDir`. Total **94**.
+
+### Verification (headless)
+- `--selftest-record` → `library.json` has 1 entry: Display / H264 / Mp4 / **4096×1152 / 60fps / 6s**. Accurate.
+  Best-effort write didn't affect the recording. 94 tests, 0 warnings.
+
+### Notes
+- UI enrichment (the richer Library meta line) not screenshot-verified this run (window-behind-IDE); the index
+  content is verified headlessly and BuildMeta is simple formatting.
+
+### Remaining (Library-pro §7)
+- Search/tags/collections; possible SQLite graduation; ffprobe backfill for un-indexed files.
+
+---
+
 ## Session 2026-07-05 — Remappable global hotkeys (Phase 9)
 
 **Goal:** Make the F9/F10/F11 hotkeys user-remappable (last read-only piece of Settings).
