@@ -55,6 +55,7 @@ internal static class Composition
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<ICountdownController, CountdownController>();
         services.AddSingleton<RecordingToolbar>();
+        services.AddSingleton<IStartupManager, StartupManager>();
 
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();

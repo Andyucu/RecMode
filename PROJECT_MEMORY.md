@@ -8,6 +8,44 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 1): full Settings screen
+
+**Goal:** Start Phase 6 (design fidelity) with the Settings page — from a 3-field stub to the design's full layout.
+
+### What was built
+- **`StartupManager`/`IStartupManager`** (App/Services): per-user HKCU `…\CurrentVersion\Run` value `RecMode`
+  = `"<exe>" --tray`. `IsEnabled` reads the key; `SetEnabled` writes/deletes it. Registry is the source of
+  truth for the toggle (not settings.json). The one deliberate write outside the portable folder (§3.5 opt-in).
+- **`SettingsViewModel`** rewritten: all design settings wired with a generic `Persist(ref field, value, apply)`
+  → each change writes `settings.Current.X` + `RequestSave()`. Props: theme/accent (live-apply), codec/
+  container/audio-codec/audio-bitrate (enum+int combos), output folder + browse, filename pattern,
+  countdown (bool↔CountdownSeconds 0/3), capture-cursor, highlight-clicks, start-with-windows (via
+  StartupManager), check-for-updates; read-only hotkey strings; `VersionInfo` via entry-assembly version.
+- **`SettingsView.xaml`** rebuilt to the design: `SectionHeader` + `SettingsCard` (title + desc + control)
+  grouped into Appearance / Encoding defaults / Output / Recording / Hotkeys (key-cap chips) / General.
+- **Styles** (Controls.xaml): `SectionHeader`, `SettingsCard`, `SettingsCardDesc`, and a real `AppTextBox`
+  (templated, accent focus border) — none existed before.
+- Strings: ~30 new `Settings_*` keys (resx + Strings.cs). `IStartupManager` registered in Composition.
+- `DOCS/DESIGN_NOTES.md`: logged Phase-6 Settings deviations (card icons omitted; theme/accent use combos not
+  segmented/swatches; enum labels via ToString; hotkeys read-only until Phase 9).
+
+### Verification (real GUI, UI-Automation)
+- All sections render correctly (two screenshots — top: Appearance/Encoding/Output; scrolled: Output/Recording
+  toggles/Hotkeys). Toggles show accent state (countdown+cursor on, clicks off = defaults).
+- Toggled Highlight-clicks + Start-with-Windows → `settings.json` shows `HighlightClicks=true`,
+  `StartWithWindows=true`; **registry Run key** = `"…\RecMode.exe" --tray` (removed on cleanup). 54 tests, 0 warnings.
+
+### Gotchas
+- No `AppTextBox` / `SectionHeader` styles existed — added them. No icon-geometry system yet → cards are
+  icon-less (design-notes deviation).
+- Registry is authoritative for start-with-Windows; the settings.json bool mirrors it (init reads registry).
+
+### Remaining for Phase 6
+- Fluent icon-geometry set + card icons; segmented theme + accent swatches; Schedule screen per design; topbar
+  + compact layouts; Library/Record polish + motion; friendly enum names.
+
+---
+
 ## Session 2026-07-05 — Phase 5 done: portable USB acceptance → 🏁 MVP 1.0-alpha
 
 **Goal:** The last Phase 5 item — verify the portable build is self-contained and folder-contained.

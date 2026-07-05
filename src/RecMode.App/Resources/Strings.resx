@@ -80,6 +80,37 @@
   <data name="Settings_Accent" xml:space="preserve"><value>Accent color</value></data>
   <data name="Settings_Output" xml:space="preserve"><value>Output folder</value></data>
   <data name="Settings_Browse" xml:space="preserve"><value>Browse…</value></data>
+  <data name="Settings_EncodingDefaults" xml:space="preserve"><value>Encoding defaults</value></data>
+  <data name="Settings_Recording" xml:space="preserve"><value>Recording</value></data>
+  <data name="Settings_Hotkeys" xml:space="preserve"><value>Hotkeys</value></data>
+  <data name="Settings_General" xml:space="preserve"><value>General</value></data>
+  <data name="Settings_ThemeDesc" xml:space="preserve"><value>Light and dark follow Fluent theme resources</value></data>
+  <data name="Settings_AccentDesc" xml:space="preserve"><value>Applies to selection, sliders and the record action</value></data>
+  <data name="Settings_Encoder" xml:space="preserve"><value>Video encoder</value></data>
+  <data name="Settings_EncoderDesc" xml:space="preserve"><value>AV1 gives the smallest files; H.264 is the most compatible</value></data>
+  <data name="Settings_Container" xml:space="preserve"><value>Container format</value></data>
+  <data name="Settings_ContainerDesc" xml:space="preserve"><value>MKV survives crashes; MP4 is best for sharing</value></data>
+  <data name="Settings_AudioFormat" xml:space="preserve"><value>Audio format</value></data>
+  <data name="Settings_AudioFormatDesc" xml:space="preserve"><value>Applied to every captured audio track</value></data>
+  <data name="Settings_AudioBitrate" xml:space="preserve"><value>Audio bitrate</value></data>
+  <data name="Settings_AudioBitrateDesc" xml:space="preserve"><value>Higher is better quality and a larger file</value></data>
+  <data name="Settings_SaveTo" xml:space="preserve"><value>Save recordings to</value></data>
+  <data name="Settings_Pattern" xml:space="preserve"><value>File name pattern</value></data>
+  <data name="Settings_PatternDesc" xml:space="preserve"><value>Tokens: {date} {time} {source}</value></data>
+  <data name="Settings_Countdown" xml:space="preserve"><value>Countdown before recording</value></data>
+  <data name="Settings_CountdownDesc" xml:space="preserve"><value>Show a countdown before recording starts</value></data>
+  <data name="Settings_Cursor" xml:space="preserve"><value>Capture mouse cursor</value></data>
+  <data name="Settings_CursorDesc" xml:space="preserve"><value>Include the pointer in recordings and screenshots</value></data>
+  <data name="Settings_Clicks" xml:space="preserve"><value>Highlight mouse clicks</value></data>
+  <data name="Settings_ClicksDesc" xml:space="preserve"><value>Draw a ripple around each click</value></data>
+  <data name="Settings_KeyboardShortcuts" xml:space="preserve"><value>Keyboard shortcuts</value></data>
+  <data name="Settings_HotkeysDesc" xml:space="preserve"><value>Global — they work while any app has focus</value></data>
+  <data name="Settings_HkStartStop" xml:space="preserve"><value>Start / stop recording</value></data>
+  <data name="Settings_HkPauseResume" xml:space="preserve"><value>Pause / resume</value></data>
+  <data name="Settings_HkScreenshot" xml:space="preserve"><value>Screenshot</value></data>
+  <data name="Settings_Startup" xml:space="preserve"><value>Start with Windows</value></data>
+  <data name="Settings_StartupDesc" xml:space="preserve"><value>Launch minimized to the tray at sign-in</value></data>
+  <data name="Settings_Updates" xml:space="preserve"><value>Check for updates on launch</value></data>
 
   <data name="Library_Empty" xml:space="preserve"><value>Your recordings will appear here. Full library arrives in a later build.</value></data>
   <data name="Library_Videos" xml:space="preserve"><value>Videos</value></data>

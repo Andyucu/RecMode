@@ -2,6 +2,13 @@
 
 Intentional deviations from `DOCS/RecMode Screen Recording App/RecMode.dc.html` live here so the design file can remain the visual source of truth while the product plan captures practical engineering decisions.
 
+## Phase 6 — Settings screen (2026-07-05, part 1)
+
+- **Card icons omitted for now.** The design's settings cards carry a leading Fluent SVG icon (paint brush, video, timer, …). RecMode has no XAML icon-geometry system yet, so cards ship as title + description + control without the leading glyph. Structure, grouping, and controls match. **Follow-up:** add the Fluent System Icons geometry set (a Phase 6 item) and slot icons into the `SettingsCard`.
+- **Theme & accent use combo boxes, not a segmented control / colour swatches.** The design shows a segmented Light/Dark control and five accent colour circles; the app reuses the existing `AppComboBox` (as on the Record screen) for consistency and lower risk. **Follow-up:** segmented theme control + accent swatch row.
+- **Enum labels come from `ToString()`** (e.g. `Av1`, `Mp4`, `WebM`, `Aac`) rather than the design's polished casing (`AV1`, `MP4`, `AAC`). **Follow-up:** friendly-name converters when the codec matrix lands (Phase 7).
+- **Hotkeys are read-only key caps.** The design has a per-shortcut "Change" affordance; remapping is Phase 9.
+
 ## Known Deviations
 
 - Portable-first distribution: settings/logs/library state live in `.\Data`, and portable recordings default to `.\Recordings`.
