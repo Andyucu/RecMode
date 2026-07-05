@@ -36,8 +36,17 @@
                         <TextBlock Text="{x:Static res:Strings.Settings_Theme}" Style="{StaticResource BodyStrongText}" />
                         <TextBlock Text="{x:Static res:Strings.Settings_ThemeDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
-                    <ComboBox Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              HorizontalAlignment="Right" ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}" />
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Center" Background="{DynamicResource SurfaceInputBrush}"
+                            BorderBrush="{DynamicResource StrokeControlBrush}" BorderThickness="1" CornerRadius="5" Padding="2">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="System"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=System}" />
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="Light"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Light}" />
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="Dark"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Dark}" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsCard}">
@@ -46,8 +55,18 @@
                         <TextBlock Text="{x:Static res:Strings.Settings_Accent}" Style="{StaticResource BodyStrongText}" />
                         <TextBlock Text="{x:Static res:Strings.Settings_AccentDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
-                    <ComboBox Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              HorizontalAlignment="Right" ItemsSource="{Binding Accents}" SelectedItem="{Binding SelectedAccent}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0078D4"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Blue}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#D13438"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Red}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#8B6CCB"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Purple}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0F7B7B"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Teal}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#CA5010" Margin="0"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Orange}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 

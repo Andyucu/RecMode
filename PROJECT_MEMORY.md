@@ -8,6 +8,38 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 3): Appearance controls (segmented theme + accent swatches)
+
+**Goal:** Replace the Appearance combos with the design's segmented theme selector + accent colour swatches.
+
+### What was built
+- **`EnumToBoolConverter`** (Themes): two-way `IValueConverter` — `Convert` = `value.ToString()==param`;
+  `ConvertBack` returns `Enum.Parse(targetType, param)` only when checked, else `Binding.DoNothing` (so the
+  unchecked RadioButton in a group doesn't clobber selection). Registered in Controls.xaml as `EnumToBool`.
+- **Styles** (Controls.xaml): `SegmentedButton` (RadioButton pill — accent fill + on-accent text when checked,
+  subtle hover) and `AccentSwatch` (26px RadioButton — colour circle from `Background`, ring in TextPrimary
+  when checked / StrokeControl on hover).
+- **SettingsView Appearance**: theme card → 3 `SegmentedButton`s (System/Light/Dark, GroupName=theme) in a
+  bordered SurfaceInput container; accent card → 5 `AccentSwatch`es (hardcoded hexes #0078D4/#D13438/#8B6CCB/
+  #0F7B7B/#CA5010, GroupName=accent). Each `IsChecked="{Binding SelectedTheme/Accent, Converter=EnumToBool,
+  ConverterParameter=<member>}"`.
+
+### Verification (real GUI, UI-Automation)
+- Screenshot: segmented System|Light|Dark (Light selected, accent-filled) + 5 swatches (selected has ring) —
+  matches design. Clicking Light switched whole app to light theme.
+- Two-way binding works: theme System→Light persisted (`Theme=Light`); teal swatch → accent recoloured live
+  (segment fill + ring went teal) and persisted (`Accent=Teal`). 54 tests, 0 warnings.
+
+### Gotchas
+- Accent swatch RadioButtons have no Content/Name → not findable by UI-Automation name; click by screen
+  position (window origin + offset). Theme segments have Content ("Light") so they're name-clickable.
+
+### Remaining for Phase 6
+- Fluent icon-geometry set + card/nav icons; per-schedule editor; topbar + compact layouts; Library/Record
+  polish + motion; friendly enum names (Av1→AV1 etc.).
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 2): Schedule screen
 
 **Goal:** Turn the Schedule stub into the design's screen with a persisted data model (firing engine = Phase 8).
