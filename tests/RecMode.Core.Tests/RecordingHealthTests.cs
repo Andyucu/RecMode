@@ -34,4 +34,18 @@ public class RecordingHealthTests
         // 10 s at 60 fps, 550 written = 50 frames behind (< 1 s) → still healthy.
         Assert.False(RecordingHealth.IsBehindRealtime(10.0, 550, 60));
     }
+
+    [Fact]
+    public void DiskCritical_BelowThreshold()
+    {
+        Assert.True(RecordingHealth.IsDiskCritical(100L * 1024 * 1024));   // 100 MB < 500 MB
+        Assert.True(RecordingHealth.IsDiskCritical(0));
+    }
+
+    [Fact]
+    public void DiskCritical_AboveThreshold_OrUnknown()
+    {
+        Assert.False(RecordingHealth.IsDiskCritical(2L * 1024 * 1024 * 1024)); // 2 GB free
+        Assert.False(RecordingHealth.IsDiskCritical(-1));                       // unknown reading ignored
+    }
 }

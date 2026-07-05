@@ -8,6 +8,28 @@
 
 ---
 
+## Session 2026-07-05 — Mid-recording disk-space guard (§3.6)
+
+**Goal:** Stop a recording gracefully before a full disk corrupts the finish (long-recording robustness).
+
+### What was built
+- **`RecordingHealth.IsDiskCritical(freeBytes)`** (Core, tested): `free >= 0 && free < DiskCriticalBytes`
+  (500 MB); ignores unknown/negative readings.
+- **Coordinator**: `_outputRoot` captured at Start (drive root); pacer checks `IsDiskCriticallyLow()` every ~2s;
+  when critical → `_errors.Warn("record.disk-critical", …)` + `Task.Run(Stop)` + `return` (breaks the pacer
+  loop). **Stop() joins the pacer, so it must run off-thread, never inline.** `IsDiskCriticallyLow` = DriveInfo
+  free-space probe (best-effort; failure never stops a recording).
+- Tests: `DiskCritical_BelowThreshold` / `_AboveThreshold_OrUnknown`. Total **96**.
+
+### Verification
+- E: 691 GB free → `--selftest-record` completes (360 frames), **0** disk-critical warnings (no false positive).
+  Can't force a truly-full disk headlessly; the stop path is code-reviewed (off-thread Stop, no self-join deadlock).
+
+### Notes
+- Complements the under-2 GB pre-flight warning: pre-flight warns before starting, this stops cleanly mid-way.
+
+---
+
 ## Session 2026-07-05 — Correctness review: orphan-recovery race fix
 
 **Goal:** Self-review recent engine changes; fix a real bug found in orphan recovery.

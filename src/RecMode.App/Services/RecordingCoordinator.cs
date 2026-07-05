@@ -124,6 +124,7 @@ public sealed class RecordingCoordinator : IDisposable
         try
         {
             string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
+            _outputRoot = root;
             if (root is not null)
             {
                 var drive = new DriveInfo(root);
@@ -329,6 +330,7 @@ public sealed class RecordingCoordinator : IDisposable
         bool blackWarned = false;
         long behindSince = 0;
         bool degradeWarned = false;
+        long lastDiskCheck = Stopwatch.GetTimestamp();
 
         _ = timeBeginPeriod(1);
         try
@@ -418,6 +420,20 @@ public sealed class RecordingCoordinator : IDisposable
                 {
                     behindSince = 0;
                     _encoderBehind = false;
+                }
+
+                // Mid-recording disk guard (§3.6): stop gracefully before a full disk corrupts the finish.
+                if (now - lastDiskCheck >= 2 * Stopwatch.Frequency) // every ~2 s
+                {
+                    lastDiskCheck = now;
+                    if (IsDiskCriticallyLow())
+                    {
+                        _errors.Warn("record.disk-critical",
+                            "Stopping — the disk is nearly full.",
+                            "Free up space or choose another output folder before recording again.");
+                        System.Threading.Tasks.Task.Run(Stop); // Stop() joins this thread, so never call it inline
+                        return;
+                    }
                 }
 
                 if (now - lastReport >= Stopwatch.Frequency / 4) // ≤ 4 Hz
@@ -587,10 +603,29 @@ public sealed class RecordingCoordinator : IDisposable
         }
     }
 
+    private bool IsDiskCriticallyLow()
+    {
+        if (_outputRoot is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var drive = new DriveInfo(_outputRoot);
+            return drive.IsReady && RecordingHealth.IsDiskCritical(drive.AvailableFreeSpace);
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            return false; // best-effort — never stop a recording over a failed probe
+        }
+    }
+
     private long _lastSizeBytes;
     private long _lastSizeTicks;
     private int _targetFps;
     private volatile bool _encoderBehind; // health: the encoder can't keep up with real time
+    private string? _outputRoot;          // drive root for the mid-recording disk-space guard
 
     private void RaiseProgress()
     {
