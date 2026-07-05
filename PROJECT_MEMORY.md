@@ -8,6 +8,32 @@
 
 ---
 
+## Session 2026-07-05 — Recording health indicator (§3.6)
+
+**Goal:** Surface "the encoder can't keep up" (a promoted 1.0 feature) via the DegradedState channel.
+
+### What was built
+- **`RecordingHealth`** (Core, pure/tested): `FramesBehind(elapsedS, framesWritten, fps)` = `elapsedS·fps −
+  framesWritten`; `IsBehindRealtime` = `elapsedS>2 && FramesBehind>fps` (>1s behind after a 2s grace).
+- **Coordinator pacer**: computes health each report tick; sustained-behind for 3s → `_encoderBehind=true` +
+  one-time `_errors.Degrade("record.encoder-slow", …)`; clears when `FramesBehind ≤ fps/2`. `_targetFps`/
+  `_encoderBehind` fields reset in `Start`. `RecordingProgress` gains `bool IsHealthy` (passed `!_encoderBehind`).
+- **RecordViewModel**: `IsHealthy` property (reset true on finish); `OnProgress` prefixes StatsText with
+  "⚠ Can't keep up · " when unhealthy. **Toolbar** rec dot goes amber when `IsHealthy==False` (same trigger
+  style as paused).
+- Tests: `RecordingHealthTests` (4) — keeping-up healthy, >1s behind unhealthy, grace period, just-under-1s. Total **65**.
+
+### Verification
+- `--selftest-record` → success, 360 frames, **no** degrade warning (healthy on this AMD hw = no false positive).
+  The degraded UI path reuses the already-verified snackbar (Degrade→snackbar) + paused-amber-dot patterns.
+  65 tests, 0 warnings.
+
+### Notes
+- Health flag is a lightweight bool, deliberately NOT driving the state machine's `Degraded` state (kept for a
+  future hw→sw fallback) to avoid coupling/regressions.
+
+---
+
 ## Session 2026-07-05 — Snapshot-tested ffmpeg args matrix (Phase 3 §3.3)
 
 **Goal:** Lock the full ffmpeg command line so ffmpeg re-pins / careless edits can't silently change the encode.

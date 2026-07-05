@@ -205,6 +205,8 @@ public sealed class RecordingCoordinator : IDisposable
             _stopRequested = false;
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
+            _targetFps = fps;
+            _encoderBehind = false;
             _pacer = new Thread(() => PaceLoop(fps)) { IsBackground = true, Name = "recmode-pacer" };
             _pacer.Start();
 
@@ -298,6 +300,8 @@ public sealed class RecordingCoordinator : IDisposable
         long lastReport = Stopwatch.GetTimestamp();
         long blackSince = 0;
         bool blackWarned = false;
+        long behindSince = 0;
+        bool degradeWarned = false;
 
         _ = timeBeginPeriod(1);
         try
@@ -360,6 +364,33 @@ public sealed class RecordingCoordinator : IDisposable
                     {
                         blackSince = 0;
                     }
+                }
+
+                // Health (§3.6 recording health): if the encoder can't keep up, WriteFrame back-pressures and
+                // we fall > 1 s behind real time. Sustained for 3 s → Degraded (see RecordingHealth).
+                double elapsedS = _stateMachine.Elapsed.TotalSeconds;
+                if (RecordingHealth.IsBehindRealtime(elapsedS, framesWritten, fps))
+                {
+                    if (behindSince == 0)
+                    {
+                        behindSince = now;
+                    }
+                    else if (now - behindSince > 3 * Stopwatch.Frequency)
+                    {
+                        _encoderBehind = true;
+                        if (!degradeWarned)
+                        {
+                            degradeWarned = true;
+                            _errors.Degrade("record.encoder-slow",
+                                "The encoder can't keep up — the recording may run slow.",
+                                "Try a lower resolution or frame rate, or a hardware encoder.");
+                        }
+                    }
+                }
+                else if (RecordingHealth.FramesBehind(elapsedS, framesWritten, fps) <= fps / 2)
+                {
+                    behindSince = 0;
+                    _encoderBehind = false;
                 }
 
                 if (now - lastReport >= Stopwatch.Frequency / 4) // ≤ 4 Hz
@@ -523,6 +554,8 @@ public sealed class RecordingCoordinator : IDisposable
 
     private long _lastSizeBytes;
     private long _lastSizeTicks;
+    private int _targetFps;
+    private volatile bool _encoderBehind; // health: the encoder can't keep up with real time
 
     private void RaiseProgress()
     {
@@ -556,7 +589,8 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         ProgressChanged?.Invoke(new RecordingProgress(
-            _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0, mbps, size));
+            _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0, mbps, size,
+            IsHealthy: !_encoderBehind));
     }
 
     /// <summary>Cheap black-frame test: sample the NV12 luma plane; near-zero everywhere ≈ black.</summary>

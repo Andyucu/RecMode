@@ -16,6 +16,9 @@
                             <DataTrigger Binding="{Binding IsPaused}" Value="True">
                                 <Setter Property="Fill" Value="#F7A400" />
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding IsHealthy}" Value="False">
+                                <Setter Property="Fill" Value="#F7A400" />
+                            </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Ellipse.Style>

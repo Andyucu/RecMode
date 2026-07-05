@@ -293,6 +293,10 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
     public string PauseButtonText => IsPaused ? "Resume" : "Pause";
 
+    private bool _isHealthy = true;
+    /// <summary>False when the encoder can't keep up (recording health, §3.6) — drives the toolbar badge.</summary>
+    public bool IsHealthy { get => _isHealthy; private set => SetProperty(ref _isHealthy, value); }
+
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
     public string StatsText { get => _statsText; private set => SetProperty(ref _statsText, value); }
@@ -701,10 +705,10 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     {
         IsRecording = p.State is not Core.Recording.RecordingState.Idle and not Core.Recording.RecordingState.Finalizing;
         IsPaused = p.State == Core.Recording.RecordingState.Paused;
+        IsHealthy = p.IsHealthy;
         ElapsedText = FormatElapsed(p.Elapsed);
-        StatsText = IsPaused
-            ? "Paused"
-            : $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.Mbps.ToString("F1", CultureInfo.InvariantCulture)} Mbps · {FormatBytes(p.FileSizeBytes)}";
+        string stats = $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.Mbps.ToString("F1", CultureInfo.InvariantCulture)} Mbps · {FormatBytes(p.FileSizeBytes)}";
+        StatsText = IsPaused ? "Paused" : p.IsHealthy ? stats : $"⚠ Can't keep up · {stats}";
     });
 
     private static string FormatBytes(long bytes) => bytes switch
@@ -717,6 +721,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private void OnFinished(RecordingResult result) => Dispatch(() =>
     {
         IsRecording = false;
+        IsHealthy = true;
         ElapsedText = "00:00";
         StatusText = result.Success
             ? $"Saved {Path.GetFileName(result.OutputPath)}"
