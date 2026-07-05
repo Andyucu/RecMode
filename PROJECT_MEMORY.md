@@ -8,6 +8,37 @@
 
 ---
 
+## Session 2026-07-05 — Phase 5 done: portable USB acceptance → 🏁 MVP 1.0-alpha
+
+**Goal:** The last Phase 5 item — verify the portable build is self-contained and folder-contained.
+
+### What was done
+- Ran `publish-portable.ps1 -Version 0.1.0` → `artifacts\RecMode-0.1.0-portable-win-x64\` (self-contained
+  win-x64, R2R, bundled ffmpeg from `tools\ffmpeg`, `portable.marker`). Zip produced too.
+- **Relocated** the folder to a path outside the repo (scratchpad `RecModeUSB`) to simulate a USB drive.
+- Snapshotted the non-portable locations before: `%AppData%\RecMode`, `%LocalAppData%\RecMode`,
+  `%Videos%\RecMode` — all **absent** (dev/bin runs are portable, so nothing had leaked there).
+
+### Verification (all pass)
+- `--selftest-record` (exit 0) → `Recordings\RecMode ….mp4` (567 KB) — **bundled ffmpeg resolved from `.\ffmpeg\`**.
+- `--selftest-screenshot` (exit 0) → `Recordings\Screenshots\….png` (2 MB).
+- `Data\logs\*.log` written inside the folder.
+- Normal windowed launch boots the full R2R self-contained app (window shown).
+- Theme toggle → `Data\settings.json` written **inside** the portable folder (`Theme=Light` persisted).
+- **Non-portable locations stayed absent throughout** → nothing written outside the folder (§3.5 satisfied).
+
+### Result
+- **Phase 5 acceptance met → MVP 1.0-alpha reached.** MVP cut delivered: monitor+region, H.264 MP4/MKV,
+  system+mic audio, pause, screenshots, basic library, tray+hotkeys, CLI/single-instance, countdown +
+  recording toolbar, portable zip.
+- `artifacts/` is gitignored; no source changed this session (docs only).
+
+### Next
+- Phase 6 (full design fidelity) or start the §7 backlog. Vendor gate re-checks (NVENC/QSV on NVIDIA/Intel)
+  still outstanding. Consider wiring the library.json index + capture-source metadata when Library-pro lands.
+
+---
+
 ## Session 2026-07-05 — Phase 5 (part 4): basic Library
 
 **Goal:** Turn the Library stub into a working recordings + screenshots browser.
