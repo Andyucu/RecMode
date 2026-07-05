@@ -114,6 +114,7 @@ public partial class App : Application
         _host.Services.GetRequiredService<Services.HotkeyBindings>().Register();
         _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_shell);
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
+        _host.Services.GetRequiredService<Services.SchedulerService>().Start();
 
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();

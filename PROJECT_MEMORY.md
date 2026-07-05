@@ -8,6 +8,35 @@
 
 ---
 
+## Session 2026-07-05 — Scheduler engine (Phase 8)
+
+**Goal:** Fire the scheduled recordings whose UI + model landed in Phase 6.
+
+### What was built
+- **`ScheduleItem.LastFiredUtc`** (added, backward-compatible) — dedup + Once/Weekly tracking.
+- **`ScheduleEvaluator.IsDue(item, now)`** (Core, pure): enabled + valid HH:mm + `now.Hour/Minute==target` +
+  not-fired-within-90s + recurrence day match (Once = never fired; Daily = any; Weekdays = Mon–Fri; Weekly =
+  ≥7d-1h since last). **8 unit tests.**
+- **`SchedulerService`** (App): `DispatcherTimer` 20 s poll → `Tick`: stop a scheduled recording past its
+  duration (`_scheduledStopAt`); else if not recording, fire the first due schedule. `Fire`: stamp LastFiredUtc
+  (+ disable Once) → `RequestSave` → `record.EnsureDevicesLoaded()` + `StartRecordingFromCli()` → set
+  `_scheduledStopAt = now + DurationMinutes`. Never interrupts an active recording. Registered + `Start()`ed in
+  App.OnStartup.
+
+### Verification
+- 8 evaluator tests. **E2E:** set Daily @ next minute → app fired a real recording at that minute
+  (`.recording.mkv` appeared 23:15:14 for a 23:15 schedule) and stamped `LastFiredUtc=23:15:11`. 104 tests, 0 warnings.
+
+### Notes
+- Duration-stop verified by code review (Tick checks `_scheduledStopAt`), not the full 60 s wait.
+- Missed-while-closed windows aren't caught up (design: works while running / in tray). No day-of-week field for
+  Weekly (fires ~weekly from LastFired) — fine for MVP; add a day picker if needed later.
+
+### Remaining (Phase 8)
+- Annotation (draw-on-screen); click ripple/highlight.
+
+---
+
 ## Session 2026-07-05 — Mid-recording disk-space guard (§3.6)
 
 **Goal:** Stop a recording gracefully before a full disk corrupts the finish (long-recording robustness).

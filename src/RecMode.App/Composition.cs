@@ -60,6 +60,7 @@ internal static class Composition
         services.AddSingleton<OrphanRecoveryService>();
         services.AddSingleton<IPowerStatus, PowerStatus>();
         services.AddSingleton<RecMode.Core.Library.ILibraryIndex, RecMode.Core.Library.LibraryIndex>();
+        services.AddSingleton<SchedulerService>();
 
         // View models (singletons — one live page instance each, held by the shell).
         services.AddSingleton<RecordViewModel>();

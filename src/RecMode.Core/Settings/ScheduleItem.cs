@@ -25,4 +25,7 @@ public sealed class ScheduleItem
 
     public int DurationMinutes { get; set; } = 30;
     public bool Enabled { get; set; } = true;
+
+    /// <summary>When this schedule last fired (dedup + Once/Weekly tracking). Null = never fired.</summary>
+    public DateTimeOffset? LastFiredUtc { get; set; }
 }
