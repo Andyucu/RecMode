@@ -2,6 +2,10 @@
 
 Intentional deviations from `DOCS/RecMode Screen Recording App/RecMode.dc.html` live here so the design file can remain the visual source of truth while the product plan captures practical engineering decisions.
 
+## Phase 6 — Record audio mixer (2026-07-05)
+
+- **Per-source volume sliders added; mute = the enable toggle (no separate mute icon).** The design's mixer row has an explicit mute icon button alongside the volume slider. RecMode's model already has a per-source **enable** toggle (whether the source is in the mix), so the volume slider is added next to it and the enable toggle doubles as mute (drag to 0 also silences). A dedicated mute-that-preserves-volume button can come later; the mixer supports `Muted` independently.
+
 ## Phase 6 — Schedule screen (2026-07-05, part 2)
 
 - **Per-card Delete button added.** The design's schedule card shows only a name/description, state label, and an on/off toggle. RecMode adds a Delete action so schedules can be removed. (The design's "New schedule" also has no editor; see below.)

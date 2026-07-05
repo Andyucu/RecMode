@@ -52,6 +52,10 @@ public sealed class RecModeSettings
     public AudioCodec AudioCodec { get; set; } = AudioCodec.Aac;
     public int AudioBitrateKbps { get; set; } = 192;
 
+    /// <summary>Per-source capture volume, 0–100 (→ mixer gain). 100 = unity.</summary>
+    public int SystemVolume { get; set; } = 100;
+    public int MicVolume { get; set; } = 100;
+
     // Performance (bounds computed from hardware probe in Phase 3/9; 0 = auto)
     public int CpuThreadCap { get; set; }
     public bool BelowNormalEncoderPriority { get; set; } = true;

@@ -8,6 +8,35 @@
 
 ---
 
+## Session 2026-07-05 — Per-source audio volume (Phase 4 mixer UI)
+
+**Goal:** Per-source volume sliders on the Record audio card, applied live to metering + the recording.
+
+### What was built
+- **Settings:** `RecModeSettings.SystemVolume`/`MicVolume` (int 0–100, default 100; additive).
+- **Coordinator:** sets `_mixer.SystemGain/MicGain = volume/100` at mixer start; new
+  `SetAudioGains(sysGain, micGain)` mutates the live recording mixer (mid-recording propagation).
+- **RecordViewModel:** `SystemVolume`/`MicVolume` (double 0–100, persisted) + `SystemVolumeLabel`/`MicVolumeLabel`
+  ("NN%"); `ApplyGains()` sets meter-mixer gains **and** calls `_coordinator.SetAudioGains`. Meter mixer also
+  seeded with gains on start. Inits from settings.
+- **RecordView:** volume `Slider` (`AppSlider`, 0–100) + % label under each source's toggle/meter, wrapped in a
+  Grid `IsEnabled="{Binding <Source>Enabled}"` so it dims when the source is off.
+
+### Verification (real GUI, UI-Automation)
+- Audio card screenshot: System + Mic each show toggle · meter · volume slider · "100%"; mic slider dimmed
+  (mic off). 3 sliders total (quality/system/mic). Setting the system slider to 60 persisted `SystemVolume=60`.
+  55 tests, 0 warnings.
+
+### Notes
+- Mute = the existing enable toggle (drag-to-0 also silences); no separate mute icon (design deviation logged).
+  Mixer supports `Muted` independently for a future preserve-volume mute.
+- Resolves Phase 4 tails: per-source mute/gain UI + mid-recording gain propagation.
+
+### Remaining (audio)
+- Real-mic verification on hardware; FLAC path; caution meter colour >82%; ±40 ms soak sync test.
+
+---
+
 ## Session 2026-07-05 — Encoder resource controls (Phase 3 §3.3 / Phase 9 Performance)
 
 **Goal:** Wire the resource-efficiency levers (thread cap, encoder priority) that were modelled but unused.

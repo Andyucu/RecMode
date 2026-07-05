@@ -187,6 +187,8 @@ public sealed class RecordingCoordinator : IDisposable
             {
                 _mixer = _mixerFactory();
                 _mixer.Start(_settings.Current.SystemAudioEnabled, _settings.Current.MicrophoneEnabled);
+                _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
+                _mixer.MicGain = _settings.Current.MicVolume / 100f;
             }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
@@ -277,6 +279,16 @@ public sealed class RecordingCoordinator : IDisposable
     }
 
     public bool IsPaused => _stateMachine.State == RecordingState.Paused;
+
+    /// <summary>Applies per-source gains (0..1) to the live recording mixer, so volume changes take effect mid-recording.</summary>
+    public void SetAudioGains(float systemGain, float micGain)
+    {
+        if (_mixer is { } mixer)
+        {
+            mixer.SystemGain = systemGain;
+            mixer.MicGain = micGain;
+        }
+    }
 
     private void PaceLoop(int fps)
     {

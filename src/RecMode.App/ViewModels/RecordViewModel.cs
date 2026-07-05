@@ -70,6 +70,8 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _countdown = countdown;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
+        _systemVolume = settings.Current.SystemVolume;
+        _micVolume = settings.Current.MicVolume;
 
         if (settings.Current.RegionWidth > 0 && settings.Current.RegionHeight > 0)
         {
@@ -408,6 +410,8 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private bool _micEnabled;
     private double _systemMeter;
     private double _micMeter;
+    private double _systemVolume;
+    private double _micVolume;
 
     public bool SystemAudioEnabled
     {
@@ -441,6 +445,53 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     public double SystemMeter { get => _systemMeter; private set => SetProperty(ref _systemMeter, value); }
     public double MicMeter { get => _micMeter; private set => SetProperty(ref _micMeter, value); }
 
+    /// <summary>Per-source capture volume 0..100 (→ mixer gain). Applies live to metering and the active recording.</summary>
+    public double SystemVolume
+    {
+        get => _systemVolume;
+        set
+        {
+            if (SetProperty(ref _systemVolume, value))
+            {
+                _settings.Current.SystemVolume = (int)Math.Round(value);
+                _settings.RequestSave();
+                OnPropertyChanged(nameof(SystemVolumeLabel));
+                ApplyGains();
+            }
+        }
+    }
+
+    public double MicVolume
+    {
+        get => _micVolume;
+        set
+        {
+            if (SetProperty(ref _micVolume, value))
+            {
+                _settings.Current.MicVolume = (int)Math.Round(value);
+                _settings.RequestSave();
+                OnPropertyChanged(nameof(MicVolumeLabel));
+                ApplyGains();
+            }
+        }
+    }
+
+    public string SystemVolumeLabel => $"{(int)Math.Round(SystemVolume)}%";
+    public string MicVolumeLabel => $"{(int)Math.Round(MicVolume)}%";
+
+    private void ApplyGains()
+    {
+        float sysGain = (float)(SystemVolume / 100.0);
+        float micGain = (float)(MicVolume / 100.0);
+        if (_meterMixer is not null)
+        {
+            _meterMixer.SystemGain = sysGain;
+            _meterMixer.MicGain = micGain;
+        }
+
+        _coordinator.SetAudioGains(sysGain, micGain); // live propagation to an in-progress recording
+    }
+
     private void StartMetering()
     {
         if (_meterMixer is not null || !_isActivePage)
@@ -457,6 +508,8 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         {
             RecMode.Audio.IAudioMixer mixer = _mixerFactory();
             mixer.Start(SystemAudioEnabled, MicEnabled);
+            mixer.SystemGain = (float)(SystemVolume / 100.0);
+            mixer.MicGain = (float)(MicVolume / 100.0);
             _meterMixer = mixer;
             _meterTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
             {

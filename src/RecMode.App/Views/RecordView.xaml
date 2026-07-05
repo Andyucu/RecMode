@@ -191,9 +191,18 @@
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
                                       IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}" />
                     </Grid>
-                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,14"
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
+                    <Grid Margin="0,0,0,14" IsEnabled="{Binding SystemAudioEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding SystemVolume}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding SystemVolumeLabel}" Style="{StaticResource CaptionText}"
+                                   MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
 
                     <!-- Microphone -->
                     <Grid Margin="0,0,0,6">
@@ -201,9 +210,18 @@
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
                                       IsChecked="{Binding MicEnabled, Mode=TwoWay}" />
                     </Grid>
-                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6"
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
+                    <Grid IsEnabled="{Binding MicEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding MicVolume}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
+                                   MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
                 </StackPanel>
             </Border>
             </StackPanel>
