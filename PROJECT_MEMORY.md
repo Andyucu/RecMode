@@ -8,6 +8,38 @@
 
 ---
 
+## Session 2026-07-05 — Phase 6 (part 5): schedule editor
+
+**Goal:** Make schedules editable (name/recurrence/time/duration), not just default-add.
+
+### What was built
+- **`ScheduleEditViewModel`** (edits a working copy; `IsValid` = non-empty name + `TimeOnly.TryParseExact`
+  "HH:mm"; `ApplyTo(item)` commits). Recurrences + Durations preset lists.
+- **`ScheduleEditWindow`** (modal, borderless card, DragMove on title, Esc=cancel): Name TextBox, Recurrence
+  combo, Start-time TextBox (HH:mm), Duration combo; Save validates via `IsValid` (else MessageBox), Cancel.
+- **`IScheduleEditor`/`ScheduleEditor`** (region-picker-style service): `Edit(item)` shows the dialog over a
+  working copy, `ApplyTo` on save, returns bool. Registered in Composition.
+- **ScheduleViewModel**: injects `IScheduleEditor`; `NewSchedule` opens the editor immediately (keep default on
+  cancel) then adds+persists; new `EditCommand` (per card) → `editor.Edit(row.Model)` → `row.RefreshDisplay()`
+  + persist. `ScheduleRowViewModel.RefreshDisplay()` raises Name/WhenText/Enabled/StateLabel. Edit button on card.
+- Strings: Schedule_Edit + ScheduleEdit_* (Title/Name/Recurrence/Time/Duration/Save/Cancel/InvalidTime).
+
+### Verification (real GUI, UI-Automation)
+- Dialog renders with all fields (full-screen screenshot: Edit schedule / New schedule / Once / 19:27 / 30 /
+  Cancel·Save). New schedule → set name "Morning standup" via ValuePattern → Save → settings.json has 1
+  schedule name="Morning standup" rec=Once dur=30. 54 tests, 0 warnings.
+
+### Gotchas
+- `Resources.Strings` in a Window code-behind collides with `Window.Resources` (ResourceDictionary) → must
+  fully-qualify `RecMode.App.Resources.Strings`.
+- Modal borderless `AllowsTransparency` dialogs have an empty automation Name → find them by a child element
+  (the "Save" button) across the process's window children, with a short retry, not by window name.
+
+### Remaining for Phase 6
+- Per-card leading icons (Settings/Schedule cards); topbar + compact layouts; Library/Record polish + motion.
+
+---
+
 ## Session 2026-07-05 — Phase 6 (part 4): nav icons + friendly enum labels
 
 **Goal:** Sidebar nav icons and design-cased enum labels (two logged deviations).

@@ -53,6 +53,10 @@
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0" />
                                         <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
                                                       IsChecked="{Binding Enabled, Mode=TwoWay}" />
+                                        <Button Content="{x:Static res:Strings.Schedule_Edit}"
+                                                Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
+                                                Height="28" Padding="12,0" Margin="12,0,0,0" />
                                         <Button Content="{x:Static res:Strings.Schedule_Delete}"
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"

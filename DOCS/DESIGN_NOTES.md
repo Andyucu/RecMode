@@ -5,7 +5,7 @@ Intentional deviations from `DOCS/RecMode Screen Recording App/RecMode.dc.html` 
 ## Phase 6 — Schedule screen (2026-07-05, part 2)
 
 - **Per-card Delete button added.** The design's schedule card shows only a name/description, state label, and an on/off toggle. RecMode adds a Delete action so schedules can be removed. (The design's "New schedule" also has no editor; see below.)
-- **No per-schedule editor yet.** "New schedule" adds a default once-off 30 minutes from now (matching the prototype, which likewise just appends a default). Editing name/recurrence/time/duration will land with the firing engine (Phase 8) or a dedicated edit dialog. The data model (`ScheduleItem`: recurrence, time, duration, enabled) already persists everything the engine will need.
+- ~~No per-schedule editor yet.~~ **Resolved 2026-07-05:** a modal edit dialog (`ScheduleEditWindow`/`IScheduleEditor`) edits name, recurrence, start time (HH:mm, validated), and duration. "New schedule" opens it immediately; each card also has an Edit button. (This is a functional addition beyond the prototype, which only appends a default.)
 - **Card icons omitted** — same as Settings; pending the Fluent icon-geometry set.
 
 ## Phase 6 — Settings screen (2026-07-05, part 1)

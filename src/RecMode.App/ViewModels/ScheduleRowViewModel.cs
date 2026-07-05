@@ -41,6 +41,15 @@ public sealed class ScheduleRowViewModel : ObservableObject
 
     public string StateLabel => Model.Enabled ? "On" : "Off";
 
+    /// <summary>Refreshes the derived text after the model was edited elsewhere (the edit dialog).</summary>
+    public void RefreshDisplay()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(WhenText));
+        OnPropertyChanged(nameof(Enabled));
+        OnPropertyChanged(nameof(StateLabel));
+    }
+
     private static string RecurrenceLabel(ScheduleRecurrence r) => r switch
     {
         ScheduleRecurrence.Once => "Once",

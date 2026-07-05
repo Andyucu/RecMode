@@ -1,0 +1,47 @@
+<Window x:Class="RecMode.App.Views.ScheduleEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:res="clr-namespace:RecMode.App.Resources"
+        xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" SizeToContent="Height"
+        Width="420" WindowStartupLocation="CenterOwner">
+    <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+            BorderThickness="1" CornerRadius="8">
+        <StackPanel Margin="20">
+            <TextBlock x:Name="TitleBar" Text="{x:Static res:Strings.ScheduleEdit_Title}" Style="{StaticResource SubtitleText}"
+                       Margin="0,0,0,16" />
+
+            <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Margin="0,0,0,12" />
+
+            <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Recurrence}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                      ItemsSource="{Binding Recurrences}" SelectedItem="{Binding SelectedRecurrence}" Margin="0,0,0,12" />
+
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Time}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding Time, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Duration}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Durations}" SelectedItem="{Binding DurationMinutes}" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"
+                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" />
+                <Button x:Name="SaveButton" Content="{x:Static res:Strings.ScheduleEdit_Save}" Click="OnSave"
+                        Style="{StaticResource AccentButton}" Width="90" Height="32" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
