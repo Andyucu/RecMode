@@ -40,6 +40,7 @@ public static class Strings
     public static string Record_Start => Get(nameof(Record_Start));
     public static string Record_Stop => Get(nameof(Record_Stop));
     public static string Record_Screenshot => Get(nameof(Record_Screenshot));
+    public static string Record_Annotate => Get(nameof(Record_Annotate));
     public static string Status_Ready => Get(nameof(Status_Ready));
     public static string Status_Recording => Get(nameof(Status_Recording));
 

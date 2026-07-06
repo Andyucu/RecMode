@@ -89,6 +89,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
         PauseResumeCommand = new RelayCommand(TogglePause);
         ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget() is not null);
+        ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
@@ -104,6 +105,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand ChangeRegionCommand { get; }
     public IRelayCommand PauseResumeCommand { get; }
     public IRelayCommand ScreenshotCommand { get; }
+    public IRelayCommand ToggleAnnotateCommand { get; }
 
     /// <summary>Captures a still of the current source (F11 / button). Runs on the UI thread.</summary>
     public void TakeScreenshot()
@@ -296,6 +298,13 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private bool _isHealthy = true;
     /// <summary>False when the encoder can't keep up (recording health, §3.6) — drives the toolbar badge.</summary>
     public bool IsHealthy { get => _isHealthy; private set => SetProperty(ref _isHealthy, value); }
+
+    private bool _isAnnotating;
+    /// <summary>True while draw-on-screen annotation is active (only meaningful during a recording, Phase 8).</summary>
+    public bool IsAnnotating { get => _isAnnotating; private set => SetProperty(ref _isAnnotating, value); }
+
+    /// <summary>Turns annotation off (called by the overlay on Esc and when the recording ends).</summary>
+    public void StopAnnotating() => IsAnnotating = false;
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
@@ -722,6 +731,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     {
         IsRecording = false;
         IsHealthy = true;
+        IsAnnotating = false;
         ElapsedText = "00:00";
         StatusText = result.Success
             ? $"Saved {Path.GetFileName(result.OutputPath)}"

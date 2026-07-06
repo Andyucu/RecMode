@@ -8,6 +8,38 @@
 
 ---
 
+## Session 2026-07-05 — Draw-on-screen annotation (Phase 8 complete)
+
+**Goal:** The last Phase 8 item — freehand draw-over-screen, captured in the recording.
+
+### What was built
+- **`AnnotationOverlay`** (Views): fullscreen `InkCanvas` (EditingMode=Ink) on the primary monitor, near-transparent
+  hit-testable background (`#01000000`), topmost, **NOT capture-excluded** (ink must be recorded). Accent pen
+  (width 4, FitToCurve). Esc → `onExit` callback; right-click → `Strokes.Clear()`. `Canvas` property exposes the
+  InkCanvas for the self-test.
+- **`AnnotationService`** (App): observes `RecordViewModel.IsAnnotating` → show/hide overlay; passes
+  `record.StopAnnotating` as the Esc callback. Registered + `Attach()`ed at startup.
+- **RecordViewModel**: `IsAnnotating` + `ToggleAnnotateCommand` (only toggles when recording) + `StopAnnotating`;
+  reset to false in `OnFinished`.
+- **Toolbar**: a **Draw** toggle button (accent foreground when `IsAnnotating`).
+- Temp `--selftest-annotate` hook: overlay + add a diagonal Stroke → WGC-capture → `annotate.png`.
+
+### Verification (WGC, headless)
+- `--selftest-annotate` → cropped region shows the blue accent **ink stroke** over the desktop content →
+  renders AND is captured (not excluded). 104 tests, 0 warnings.
+
+### Notes
+- Overlay covers the primary monitor; while active it captures input (drawing), so the app underneath isn't
+  clickable — Esc exits (the toolbar Draw button turns it on; z-order may cover it, so Esc is the reliable off).
+  Single fixed pen colour for MVP; palette/undo could come later.
+- **Phase 8 now fully done** (scheduler engine + click ripple + annotation).
+
+### Note (tooling)
+- The command-execution classifier was briefly unavailable between the ripple and annotation commits; the
+  annotation code was written + reviewed during the outage, then built/tested/verified/committed once it recovered.
+
+---
+
 ## Session 2026-07-05 — Click highlight ripple (Phase 8)
 
 **Goal:** Make "Highlight mouse clicks" real — draw a ripple at each click, captured in the recording.

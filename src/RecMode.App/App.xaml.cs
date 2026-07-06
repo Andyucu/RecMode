@@ -116,6 +116,7 @@ public partial class App : Application
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
         _host.Services.GetRequiredService<Services.SchedulerService>().Start();
         _host.Services.GetRequiredService<Services.ClickHighlightService>().Attach();
+        _host.Services.GetRequiredService<Services.AnnotationService>().Attach();
 
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();
@@ -248,6 +249,13 @@ public partial class App : Application
         if (mode == "ripple")
         {
             _ = RunRippleSelfTestAsync(paths);
+            return;
+        }
+
+        // Annotation verification: draw a stroke on the overlay and WGC-capture it (not excluded).
+        if (mode == "annotate")
+        {
+            _ = RunAnnotateSelfTestAsync(paths);
             return;
         }
 
@@ -408,6 +416,50 @@ public partial class App : Application
 
             overlay.Close();
             System.IO.File.WriteAllText(resultPath, $"success=true\nripple={path}\ncenter={mon.Width / 2},{mon.Height / 2}\n");
+            Shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(resultPath, $"success=false\nexception={ex}\n");
+            Shutdown(3);
+        }
+    }
+
+    private async System.Threading.Tasks.Task RunAnnotateSelfTestAsync(IAppPaths paths)
+    {
+        string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+        try
+        {
+            var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+            var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+
+            var overlay = new Views.AnnotationOverlay(() => { });
+            overlay.Show();
+            await System.Threading.Tasks.Task.Delay(200);
+
+            // Draw a diagonal stroke across the monitor centre (DIP coords).
+            var pts = new System.Windows.Input.StylusPointCollection();
+            for (int i = 0; i <= 20; i++)
+            {
+                pts.Add(new System.Windows.Input.StylusPoint(600 + i * 30, 400 + i * 15));
+            }
+            overlay.Canvas.Strokes.Add(new System.Windows.Ink.Stroke(pts, overlay.Canvas.DefaultDrawingAttributes));
+            await System.Threading.Tasks.Task.Delay(150);
+
+            var img = RecMode.Capture.ScreenshotCapturer.Capture(RecMode.Capture.CaptureTarget.FromMonitor(mon))!;
+            var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96,
+                System.Windows.Media.PixelFormats.Bgra32, null, img.Bgra, img.Stride);
+            bmp.Freeze();
+            string path = System.IO.Path.Combine(paths.DataDirectory, "annotate.png");
+            using (var fs = System.IO.File.Create(path))
+            {
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+                enc.Save(fs);
+            }
+
+            overlay.Close();
+            System.IO.File.WriteAllText(resultPath, $"success=true\nannotate={path}\nstrokes=1\n");
             Shutdown(0);
         }
         catch (Exception ex)
