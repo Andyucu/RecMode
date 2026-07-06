@@ -150,4 +150,12 @@
   <data name="ScheduleEdit_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ScheduleEdit_InvalidTime" xml:space="preserve"><value>Enter a name and a start time as HH:mm (24-hour), e.g. 09:30.</value></data>
   <data name="Schedule_NoItems" xml:space="preserve"><value>No schedules yet. Add one to record automatically.</value></data>
+  <data name="Record_Profile" xml:space="preserve"><value>Profile</value></data>
+  <data name="Profile_Custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Profile_SaveAs" xml:space="preserve"><value>Save as…</value></data>
+  <data name="Profile_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Profile_SaveTitle" xml:space="preserve"><value>Save profile</value></data>
+  <data name="Profile_Name" xml:space="preserve"><value>Profile name</value></data>
+  <data name="Profile_InvalidName" xml:space="preserve"><value>Enter a name for the profile.</value></data>
+  <data name="Profile_NameTaken" xml:space="preserve"><value>That name is already used by a built-in profile — pick another.</value></data>
 </root>

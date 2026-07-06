@@ -88,6 +88,11 @@ public sealed class RecModeSettings
     // Scheduled recordings (Phase 6 UI + data model; the firing engine is Phase 8).
     public List<ScheduleItem> Schedules { get; set; } = [];
 
+    // Recording profiles (plan §7 backlog #4, pulled forward): user-created presets alongside the built-in
+    // ones. Null/unknown SelectedProfileName means "Custom" — the Record screen's settings are edited directly.
+    public List<RecordingProfile> CustomProfiles { get; set; } = [];
+    public string? SelectedProfileName { get; set; }
+
     /// <summary>Deep copy for handing out immutable snapshots and detecting changes.</summary>
     public RecModeSettings Clone() => (RecModeSettings)MemberwiseClone();
 }

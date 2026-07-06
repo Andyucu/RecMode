@@ -454,7 +454,7 @@ Nothing here may creep into 1.0, but the architecture must not foreclose it — 
 1. **Replay buffer** — always keep the last 30 s / 1 min / 5 min as rolling encoded segments in `.\Data\temp`; hotkey stitches and saves retroactively. The biggest differentiator here; deserves its own phase.
 2. **Lossless trim** — cut start/end from a library card via ffmpeg stream copy. Cheapest high-value item.
 3. **GIF/WebP clip export** — short clips for bug reports/chat (palettegen pipeline).
-4. **Profiles/presets** — Tutorial / Gameplay / Meeting / Bug report / GIF clip / High-quality archive (incl. a near-lossless profile for editing), with export/import; pairs with the compact launcher and CLI. "OBS-style scenes, but simpler" is the explicit ceiling — RecMode never becomes a compositor.
+4. **Profiles/presets** — **core version shipped in 1.0 (2026-07-06, pulled forward from backlog):** a Profile selector on the Record screen with the named built-in presets (Tutorial/Gameplay/Meeting/Bug report/GIF clip/High-quality archive) applying container/frame rate/quality/audio (not the encoder itself — hw availability is machine-specific), plus user-saved custom profiles (save/delete). Still backlog: **export/import**, pairing with the compact launcher and CLI, and the true near-lossless/GIF-export encodes the "GIF clip"/"High-quality archive" presets currently only approximate with existing codecs (see items 3 and the near-lossless note above). "OBS-style scenes, but simpler" is the explicit ceiling — RecMode never becomes a compositor.
 
 **Editing suite** (grows outward from trim): convert/remux tool (MKV→MP4, H.264→HEVC/AV1), crop/resize clip export, timed blur/redact region, intro/outro and watermark.
 

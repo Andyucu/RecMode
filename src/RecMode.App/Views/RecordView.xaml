@@ -105,6 +105,23 @@
                 <StackPanel IsEnabled="{Binding CanEditSettings}">
                     <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
+                    <!-- Recording profile (plan §7 backlog #4, pulled forward): applies container/fps/quality/audio -->
+                    <TextBlock Text="{x:Static res:Strings.Record_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="{x:Static res:Strings.Profile_SaveAs}" Command="{Binding SaveProfileCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="{x:Static res:Strings.Profile_Delete}" Command="{Binding DeleteProfileCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0"
+                                Visibility="{Binding CanDeleteProfile, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+
                     <!-- Display picker (screen source) -->
                     <StackPanel>
                         <StackPanel.Style>

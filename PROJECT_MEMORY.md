@@ -8,6 +8,69 @@
 
 ---
 
+## Session 2026-07-06 — Recording profiles (plan §7 backlog #4, pulled forward at user request)
+
+**Goal:** user explicitly asked for a recording-profiles selector, noting it might already be in the plan. It
+was — but filed under §7 "post-1.0 backlog, nothing here may creep into 1.0." Flagged the conflict, then
+implemented a scoped-down version per the explicit ask (this is a deliberate, requested exception to that rule,
+not a unilateral scope change).
+
+### Scope decision
+Full backlog item #4 is "Tutorial/Gameplay/Meeting/Bug report/GIF clip/High-quality archive… with export/
+import; pairs with the compact launcher and CLI." Shipped: the preset selector + built-ins + custom save/
+delete. **Deferred** (still backlog): export/import (file-based sharing), CLI/compact-launcher integration,
+true animated-GIF export (separate backlog #3), true lossless x264/FFV1 video (the near-lossless note under #4).
+
+### Design
+- `RecordingProfile` (Core, plain POCO — `Name` defaults rather than `required`, matching `ScheduleItem`'s
+  style so JSON round-trips without the `required`-member deserialization gotcha) + `RecordingProfiles.BuiltIn`
+  (6 presets). Profiles apply **container/frame rate/quality/audio only** — deliberately not the encoder/codec,
+  since hw encoder availability is machine-specific; all built-in containers are MP4/MKV (compatible with any
+  codec) so no `MediaCompatibility` pre-flight conflict is possible regardless of what encoder is selected.
+  "GIF clip" (15fps/quality 50/MP4) and "High-quality archive" (60fps/quality 95/MKV+FLAC) are honest
+  approximations — no true GIF or lossless encoder exists yet.
+- `RecModeSettings.CustomProfiles` (list) + `SelectedProfileName` (string?, null = "Custom" sentinel).
+- `RecordViewModel`: `Profiles` (Custom sentinel + built-ins + custom, rebuilt by `LoadProfiles()`),
+  `SelectedProfile` (applies on set via `ApplyProfile` — sets `SelectedFormat`/`SelectedFrameRate`/`Quality`/
+  `SystemAudioEnabled`/`MicEnabled`/settings audio codec+bitrate), `SaveProfileCommand` (prompts via
+  `IProfileNamePrompt`, rejects a name colliding with a built-in), `DeleteProfileCommand` (custom-only,
+  `CanDeleteProfile` hides the button for built-ins).
+- `SaveProfileWindow`/`SaveProfileViewModel`/`IProfileNamePrompt`/`ProfileNamePrompt`: mirrors the existing
+  `ScheduleEditWindow`/`IScheduleEditor` modal pattern exactly.
+- `RecordingProfile.ToString() => Name` — required for the ComboBox to display correctly (the standing gotcha:
+  this custom ComboBox template ignores `DisplayMemberPath`).
+
+### Bug found + fixed during verification (real, not hypothetical)
+`LoadProfiles()` (called after Save/Delete) does `Profiles.Clear()` then re-adds. WPF's TwoWay `SelectedItem`
+binding briefly sets `SelectedItem = null` **during** `Clear()`, which round-trips back into the `SelectedProfile`
+setter — clobbering `_settings.Current.SelectedProfileName` (set to the new profile's name moments earlier)
+back to null via a debounced `RequestSave()`. Net effect: Save as… correctly created the custom profile in
+`CustomProfiles`, but the combo reverted to showing "Custom" instead of the new profile. **Fixed** with a
+`_loadingProfiles` guard flag set for the duration of `LoadProfiles()`; the setter early-returns (no settings
+write, no `ApplyProfile`) while the flag is set. Standard WPF pattern for this class of bug — worth remembering
+for any other Clear()-and-repopulate-bound-collection code in this app.
+
+### Verification
+- 16 new `RecordingProfilesTests` (built-in list matches the plan's names, unique, in-range quality/fps,
+  H.264-compatible containers, `ToString`). 140 tests total, 0 warnings.
+- **Live UI Automation verification** (not just unit tests) against the running app, using `PrintWindow` for
+  visual confirmation at each step:
+  1. Selected "Meeting" from Custom → Frame rate 60→30, Quality 70→60 (CRF 28) updated live and in
+     `settings.json` (`Container/FrameRate/Quality/SelectedProfileName` all correct).
+  2. Selected "Gameplay" → Frame rate 60, Quality 85 — confirmed in settings.json.
+  3. Save as… "Speedrun 1080p60" → **initially exposed the clobber bug** (combo showed Custom, but
+     `CustomProfiles` had the entry, `SelectedProfileName` was null). Fixed, re-verified: combo now shows
+     "Speedrun 1080p60", Delete button appears, `SelectedProfileName` correct in settings.json.
+  4. Delete → profile removed from `CustomProfiles`, combo reverts to Custom, Delete button disappears.
+- UIA technique note: a WPF ComboBox's dropdown `ListItem`s show up **twice** in `FindAll` (once real/
+  interactive, once a duplicate with the same bounding rect that doesn't support `SelectionItemPattern`) — must
+  try `TryGetCurrentPattern` on each candidate and use whichever succeeds, not just the first match.
+  Also: a modal `Window` with `WindowStyle="None"` and no explicit `Title` has an empty automation `Name`, so
+  finding it via `AutomationElement.RootElement.FindAll(Children, ProcessIdProperty)` can miss it — raw Win32
+  `EnumWindows` (matching PID, excluding the known main hwnd, filtering `IsWindowVisible`) reliably finds it.
+
+---
+
 ## Session 2026-07-06 — Mid-stream hw→sw Degraded fallback (Phase 3 §3.6 tail, closes Phase 3)
 
 **Goal:** The last real Phase 3 tail — when a hardware encoder can't keep up, actually recover instead of just

@@ -57,6 +57,7 @@ internal static class Composition
         services.AddSingleton<RecordingToolbar>();
         services.AddSingleton<IStartupManager, StartupManager>();
         services.AddSingleton<IScheduleEditor, ScheduleEditor>();
+        services.AddSingleton<IProfileNamePrompt, ProfileNamePrompt>();
         services.AddSingleton<OrphanRecoveryService>();
         services.AddSingleton<IPowerStatus, PowerStatus>();
         services.AddSingleton<RecMode.Core.Library.ILibraryIndex, RecMode.Core.Library.LibraryIndex>();

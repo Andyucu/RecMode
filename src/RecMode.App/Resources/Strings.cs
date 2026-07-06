@@ -118,4 +118,13 @@ public static class Strings
     public static string ScheduleEdit_Cancel => Get(nameof(ScheduleEdit_Cancel));
     public static string ScheduleEdit_InvalidTime => Get(nameof(ScheduleEdit_InvalidTime));
     public static string Schedule_NoItems => Get(nameof(Schedule_NoItems));
+
+    public static string Record_Profile => Get(nameof(Record_Profile));
+    public static string Profile_Custom => Get(nameof(Profile_Custom));
+    public static string Profile_SaveAs => Get(nameof(Profile_SaveAs));
+    public static string Profile_Delete => Get(nameof(Profile_Delete));
+    public static string Profile_SaveTitle => Get(nameof(Profile_SaveTitle));
+    public static string Profile_Name => Get(nameof(Profile_Name));
+    public static string Profile_InvalidName => Get(nameof(Profile_InvalidName));
+    public static string Profile_NameTaken => Get(nameof(Profile_NameTaken));
 }
