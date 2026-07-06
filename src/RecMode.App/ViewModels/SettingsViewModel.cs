@@ -64,7 +64,7 @@ public sealed class SettingsViewModel : ObservableObject
         _captureCursor = s.CaptureCursor;
         _highlightClicks = s.HighlightClicks;
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
-        _cpuThreadCap = s.CpuThreadCap;
+        _cpuThreadCap = ThreadCaps.Contains(s.CpuThreadCap) ? s.CpuThreadCap : 0; // clamp a value from a bigger machine
         _lowerEncoderPriority = s.BelowNormalEncoderPriority;
         _effort = s.Effort;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
@@ -82,7 +82,7 @@ public sealed class SettingsViewModel : ObservableObject
         [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
     public IReadOnlyList<AudioCodec> AudioCodecs { get; } = [AudioCodec.Aac, AudioCodec.Opus, AudioCodec.Flac];
     public IReadOnlyList<int> AudioBitrates { get; } = [128, 192, 256, 320];
-    public IReadOnlyList<int> ThreadCaps { get; } = [0, 2, 4, 6, 8, 12, 16];
+    public IReadOnlyList<int> ThreadCaps { get; } = PerformanceBounds.ThreadCapOptions(Environment.ProcessorCount);
     public IReadOnlyList<EncoderEffort> Efforts { get; } =
         [EncoderEffort.Fast, EncoderEffort.Balanced, EncoderEffort.Quality];
 

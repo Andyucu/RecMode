@@ -8,6 +8,24 @@
 
 ---
 
+## Session 2026-07-06 — Hardware-bounded CPU thread cap (Phase 9)
+
+**Goal:** The §3.3 "hardware-derived bounds" for the thread cap (last non-external Phase 9 item).
+
+### What was built
+- **`PerformanceBounds.ThreadCapOptions(logicalCores)`** (Core, pure/tested): `[0]` + candidate steps
+  `{2,4,6,8,12,16,24,32}` that are `< cores`, always appending `cores` itself. Never exceeds the CPU. On 16
+  threads → `0,2,4,6,8,12,16` (matches the old hardcoded list); 4-core → `0,2,4`; 1-core → `0`.
+- **SettingsViewModel**: `ThreadCaps = PerformanceBounds.ThreadCapOptions(Environment.ProcessorCount)`; init
+  clamps a stale `CpuThreadCap` not in the list → 0 (Auto).
+- 4 `PerformanceBoundsTests`. Total **116**. (Effort tiers Fast/Balanced/Quality need no hw bound.)
+
+### Notes
+- Phase 9 remaining is now just the real update mechanism (Velopack) — external infra, out of scope here.
+- CA1861: xUnit `Assert.Equal(new[]{…}, …)` inline arrays warn → moved expected arrays to `static readonly`.
+
+---
+
 ## Session 2026-07-06 — Release-readiness portable re-acceptance (Phase 10)
 
 **Goal:** Confirm the published R2R self-contained build still passes the portable acceptance with all post-MVP features.
