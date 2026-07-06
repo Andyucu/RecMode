@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RecMode.App.Views;
+using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Settings;
 using Serilog;
@@ -18,6 +19,24 @@ public partial class App : Application
     private ICrashReporter? _crash;
     private Services.SingleInstance? _singleInstance;
     private ShellWindow? _shell;
+
+    /// <summary>
+    /// Hand-written entry point (App.xaml is a Page, not an ApplicationDefinition, so this replaces the
+    /// usual WPF-generated <c>Main</c>) — needed so <c>VelopackApp.Build().Run()</c> can run before any WPF
+    /// startup cost, per Velopack's recommended integration for apps without an easily-editable Main. Safe
+    /// to call unconditionally: it's a no-op unless this process is a genuine Velopack-managed install
+    /// (portable/dev runs fall straight through), which is how the same code serves both distribution modes
+    /// (plan §3.5).
+    /// </summary>
+    [STAThread]
+    public static void Main()
+    {
+        Velopack.VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -121,6 +140,24 @@ public partial class App : Application
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();
         System.Threading.Tasks.Task.Run(recovery.RecoverOrphans);
+
+        // Launch-time update check (plan §3.5): notify only, never auto-apply without the user explicitly
+        // clicking "Update & restart" in Settings. Silent for NotConfigured/UpToDate/Failed — only a real
+        // available update is worth interrupting the user for.
+        if (settings.Current.CheckForUpdatesOnLaunch)
+        {
+            var updateChecker = _host.Services.GetRequiredService<Services.IUpdateChecker>();
+            var errors = _host.Services.GetRequiredService<RecMode.Core.Errors.IErrorReporter>();
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                Services.UpdateCheckResult result = await updateChecker.CheckAsync();
+                if (result.Status == Services.UpdateCheckStatus.UpdateAvailable)
+                {
+                    errors.Warn("app.update-available", $"RecMode {result.Version} is available.",
+                        "Open Settings to update.");
+                }
+            });
+        }
 
         // Run any startup automation action (e.g. --record / --screenshot), then listen for commands forwarded
         // by future launches (single-instance). Forwarded commands are marshalled to the UI thread.

@@ -408,19 +408,36 @@
                 </Grid>
             </Border>
             <Border Style="{StaticResource SettingsCard}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE895;" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
-                        <TextBlock x:Name="UpdatesLabel" Text="{x:Static res:Strings.Settings_Updates}" Style="{StaticResource BodyStrongText}" />
-                        <TextBlock Text="{Binding VersionInfo}" Style="{StaticResource SettingsCardDesc}" />
-                    </StackPanel>
-                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
-                                  IsChecked="{Binding CheckForUpdates, Mode=TwoWay}"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=UpdatesLabel}" />
-                </Grid>
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE895;" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock x:Name="UpdatesLabel" Text="{x:Static res:Strings.Settings_Updates}" Style="{StaticResource BodyStrongText}" />
+                            <TextBlock Text="{Binding VersionInfo}" Style="{StaticResource SettingsCardDesc}" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                      IsChecked="{Binding CheckForUpdates, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=UpdatesLabel}" />
+                    </Grid>
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding UpdateStatusText}" Style="{StaticResource SettingsCardDesc}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="View release" Style="{StaticResource SecondaryButton}"
+                                Click="OpenUpdateLink_Click" Margin="0,0,8,0"
+                                Visibility="{Binding HasUpdateLink, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Grid.Column="2" Content="Update &amp; restart" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding ApplyUpdateCommand}" Margin="0,0,8,0"
+                                Visibility="{Binding CanApplyUpdate, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Grid.Column="3" Content="Check now" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding CheckForUpdatesCommand}" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </StackPanel>
     </ScrollViewer>

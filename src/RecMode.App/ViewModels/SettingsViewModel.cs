@@ -23,7 +23,12 @@ public sealed class SettingsViewModel : ObservableObject
     private readonly IAppPaths _paths;
     private readonly IStartupManager _startup;
     private readonly Services.HotkeyBindings _hotkeys;
+    private readonly Services.IUpdateChecker _updateChecker;
     private string? _capturingHotkey;
+    private string _updateStatusText = "";
+    private string? _updateReleasesUrl;
+    private bool _canApplyUpdate;
+    private bool _checkingForUpdates;
 
     private AppTheme _selectedTheme;
     private AccentColor _selectedAccent;
@@ -46,13 +51,14 @@ public sealed class SettingsViewModel : ObservableObject
     private ShellLayout _layout;
 
     public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup,
-        Services.HotkeyBindings hotkeys)
+        Services.HotkeyBindings hotkeys, Services.IUpdateChecker updateChecker)
     {
         _settings = settings;
         _theme = theme;
         _paths = paths;
         _startup = startup;
         _hotkeys = hotkeys;
+        _updateChecker = updateChecker;
 
         RecModeSettings s = settings.Current;
         _selectedTheme = s.Theme;
@@ -78,6 +84,8 @@ public sealed class SettingsViewModel : ObservableObject
         BrowseCommand = new RelayCommand(BrowseFolder);
         ChangeHotkeyCommand = new RelayCommand<string>(BeginCapture);
         CancelHotkeyCommand = new RelayCommand(CancelCapture);
+        CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !_checkingForUpdates);
+        ApplyUpdateCommand = new AsyncRelayCommand(ApplyUpdateAsync, () => _canApplyUpdate);
     }
 
     public IReadOnlyList<ShellLayout> Layouts { get; } = [ShellLayout.Sidebar, ShellLayout.TopTab];
@@ -145,6 +153,58 @@ public sealed class SettingsViewModel : ObservableObject
             Version? v = Assembly.GetEntryAssembly()?.GetName().Version;
             string version = v is null ? "1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
             return $"RecMode {version} · .NET 10 · WPF";
+        }
+    }
+
+    // ---------- Updates (Phase 9/10 infrastructure — plan §3.5) ----------
+
+    public IAsyncRelayCommand CheckForUpdatesCommand { get; }
+    public IAsyncRelayCommand ApplyUpdateCommand { get; }
+
+    public string UpdateStatusText { get => _updateStatusText; private set => SetProperty(ref _updateStatusText, value); }
+    public bool HasUpdateLink => _updateReleasesUrl is not null;
+    public bool CanApplyUpdate => _canApplyUpdate;
+
+    private async Task CheckForUpdatesAsync()
+    {
+        _checkingForUpdates = true;
+        CheckForUpdatesCommand.NotifyCanExecuteChanged();
+        UpdateStatusText = "Checking…";
+        _updateReleasesUrl = null;
+        _canApplyUpdate = false;
+
+        Services.UpdateCheckResult result = await _updateChecker.CheckAsync();
+
+        UpdateStatusText = result.Status switch
+        {
+            Services.UpdateCheckStatus.NotConfigured => "No update channel configured yet.",
+            Services.UpdateCheckStatus.UpToDate => "You're up to date.",
+            Services.UpdateCheckStatus.UpdateAvailable => $"Update available: v{result.Version}",
+            Services.UpdateCheckStatus.Failed => $"Couldn't check for updates ({result.Error}).",
+            _ => "",
+        };
+        _updateReleasesUrl = result.ReleasesPageUrl;
+        _canApplyUpdate = result.CanApply;
+        OnPropertyChanged(nameof(HasUpdateLink));
+        OnPropertyChanged(nameof(CanApplyUpdate));
+        ApplyUpdateCommand.NotifyCanExecuteChanged();
+
+        _checkingForUpdates = false;
+        CheckForUpdatesCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task ApplyUpdateAsync()
+    {
+        UpdateStatusText = "Downloading update…";
+        await _updateChecker.ApplyAndRestartAsync();
+    }
+
+    /// <summary>Opens the portable-mode "view release" link in the default browser.</summary>
+    public void OpenUpdateLink()
+    {
+        if (_updateReleasesUrl is { } url)
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
         }
     }
 

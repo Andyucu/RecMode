@@ -8,6 +8,82 @@
 
 ---
 
+## Session 2026-07-06 — Update-check infrastructure (Phase 9/10): portable notify + Velopack installer
+
+**Goal:** after webcam (below) and the per-app-audio disable, picked up "what's next" — the plan (§3.5, §7 build
+log line 226/416) splits update-checking into two things: portable mode gets a lightweight "check a version,
+notify + link" (no auto-replace), while a full Velopack installer with real auto-update is an explicit Phase
+10 stretch goal needing distribution/signing decisions nobody's made yet. Asked the user how to scope this
+given there's no real release feed or signing cert; the answer: build the infrastructure for *both* now, so
+it's ready to flip on later, and verify it actually works even though nothing is hosted anywhere yet.
+
+### VelopackApp bootstrap needs a real Main — App.xaml had to stop being an ApplicationDefinition
+Velopack's docs are explicit: `VelopackApp.Build().Run()` must run at the very start of `Main`, before any
+other startup cost, and while it's technically callable from `OnStartup`, the docs recommend a real `Main` to
+avoid spinning up all of WPF just to run an install/uninstall/update hook and exit. WPF normally
+auto-generates `Main()` from whatever `.xaml` file is marked `ApplicationDefinition` (via the `x:Class`
+pointing at the `Application` subclass) — there's no way to inject code before that generated `Main` runs.
+Fix (the documented, standard trick): re-included `App.xaml` as a plain `Page` instead
+(`<ApplicationDefinition Remove="App.xaml" /><Page Include="App.xaml" .../>` in the csproj) and set
+`<StartupObject>RecMode.App.App</StartupObject>`, then hand-wrote `Main()` in `App.xaml.cs`:
+`VelopackApp.Build().Run(); var app = new App(); app.InitializeComponent(); app.Run();` — the exact sequence
+the auto-generated one used to do, with the Velopack call prepended. Verified this didn't break normal
+startup (built clean, launched, showed the main window) before going further, since this is the riskiest
+change in the whole session (get it wrong and the app doesn't start at all).
+
+### Design: two feeds, one abstraction, both blank until real hosting exists
+`RecMode.App/Services/UpdateChecker.cs` — `IUpdateChecker.CheckAsync()` tries the real Velopack feed first
+(`new UpdateManager(VelopackFeedUrl).CheckForUpdatesAsync()`); Velopack has no `IsInstalled` property, so
+"this is a portable/dev run, not a real install" is detected by catching `Velopack.Exceptions
+.NotInstalledException` specifically (confirmed via docs — this is the *documented* way, not a guess). On
+that exception, falls back to a tiny hand-rolled `{ "version", "releasesUrl" }` JSON manifest
+(`PortableManifestUrl`) that only ever notifies with a link, matching the plan's portable-mode behavior
+exactly — it never calls `DownloadUpdatesAsync`/`ApplyUpdatesAndRestart` since there's no installed copy to
+update in place. Both URL constants are blank by default: until real hosting/signing is decided, every check
+just returns `NotConfigured` and does nothing — no accidental phone-home, consistent with "no telemetry,
+ever." Settings → General has a working **Check now** button (`AsyncRelayCommand`) plus conditional "View
+release" (portable) / "Update & restart" (installed) buttons; app launch fires the same check in the
+background when `CheckForUpdatesOnLaunch` is on, but only ever *notifies* (`IErrorReporter.Warn`) — never
+auto-applies without the user clicking something, on launch or otherwise.
+
+### Verifying an unhosted feature: pack real local releases, install, upgrade, uninstall
+The only way to prove this actually works, given there's no real hosting, was to build the whole loop
+locally. New `publish-installer.ps1` (`dotnet publish` self-contained win-x64, same as `publish-portable.ps1`,
+then `vpk pack --packId --packVersion --packDir --mainExe --outputDir`) — `vpk` is a `dotnet tool install -g
+vpk` CLI. Sequence, with `VelopackFeedUrl` temporarily pointed at a local scratch folder (a plain file-system
+path is a valid Velopack update source — confirmed via the "Testing Updates" doc, no server needed):
+1. Packed v0.1.0 (PackId `RecModeTest`, deliberately different from any real product to make cleanup
+   unambiguous). `vpk`'s own log printed `Verified VelopackApp.Run() in
+   'System.Void RecMode.App.App::Main()'` — independent confirmation the Main-rewrite above was correct.
+2. **The safety classifier blocked running the generated `Setup.exe` outright** — correctly: installing a
+   test app leaves a Start Menu shortcut and an uninstall registry entry, a real footprint beyond "build the
+   infrastructure." Asked the user; they said to go ahead and verify for real.
+3. Ran `Setup.exe` → installed to `%LocalAppData%\RecModeTest`, auto-launched (Velopack's normal
+   post-install behavior). Settings → Check now → **"You're up to date."** — proves `NotInstalledException`
+   is correctly *not* thrown for a genuine install, and `CheckForUpdatesAsync` correctly finds nothing newer.
+4. Packed v0.1.1 into the *same* local feed folder (adds it alongside v0.1.0 in `releases.win.json`; vpk also
+   built a delta package automatically).
+5. Check now again (same running v0.1.0 instance) → **"Update available: v0.1.1"**, "Update & restart" button
+   appeared. Invoked it → the process restarted (new PID) and `packages\RecModeTest-0.1.1-full.nupkg` +
+   a refreshed `current\` folder appeared on disk with matching timestamps — genuine proof
+   `DownloadUpdatesAsync`+`ApplyUpdatesAndRestart` both work, not just that the check succeeds.
+6. Cleaned up: `Update.exe --uninstall --silent` (Velopack's own uninstaller — removed the install dir,
+   both shortcuts, and the uninstall registry key cleanly), deleted the local scratch releases folder and
+   the `artifacts/*-installer-stage-*` publish output, reverted `VelopackFeedUrl` back to blank.
+
+**Bug found and fixed along the way (packaging script, not the update mechanism):** the relaunched v0.1.1
+instance's own Settings screen still showed "RecMode 0.1.0" — `publish-installer.ps1`'s `dotnet publish` step
+never passed `-p:Version=$Version`, so the assembly's own embedded version never changed between packs even
+though Velopack's package metadata did. Fixed by adding `-p:Version=$Version` to the publish step. Doesn't
+undermine the verification above (the *package* version and file contents genuinely changed and were genuinely
+applied — confirmed via the nupkg file appearing on disk) — it was purely the app's own self-reported version
+string being stale.
+
+Build: 0 warnings. Tests: 154 passed (unchanged — none of this is unit-testable; the WinRT/Velopack plumbing
+was verified live instead, per this codebase's convention for that kind of code).
+
+---
+
 ## Session 2026-07-06 — Webcam picture-in-picture overlay (Phase 7)
 
 **Goal:** the other remaining Phase 7 item after per-app audio (disabled this same day, see below) — webcam

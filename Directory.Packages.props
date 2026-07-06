@@ -25,6 +25,10 @@
 
     <!-- Tray icon (Phase 5). -->
     <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.2.0" />
+
+    <!-- Update/installer infrastructure (Phase 9/10 — portable notify-only today; Velopack installer +
+         auto-update is a later add-on sharing this code, plan §3.5). -->
+    <PackageVersion Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <!-- Test stack -->

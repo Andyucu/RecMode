@@ -53,4 +53,12 @@ public partial class SettingsView : UserControl
         var chord = new HotkeyChord(mods, (uint)KeyInterop.VirtualKeyFromKey(key));
         vm.CompleteCapture(chord.ToString());
     }
+
+    private void OpenUpdateLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.OpenUpdateLink();
+        }
+    }
 }
