@@ -50,6 +50,7 @@ internal static class Composition
 
         // MVP UX services (Phase 5).
         services.AddSingleton<ScreenshotService>();
+        services.AddSingleton<IScreenshotFlash, ScreenshotFlash>();
         services.AddSingleton<GlobalHotkeys>();
         services.AddSingleton<HotkeyBindings>();
         services.AddSingleton<TrayIconService>();

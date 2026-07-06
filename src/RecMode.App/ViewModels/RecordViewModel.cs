@@ -53,6 +53,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private ImageSource? _previewImage;
 
     private readonly ScreenshotService _screenshots;
+    private readonly IScreenshotFlash _screenshotFlash;
     private readonly ICountdownController _countdown;
     private readonly IProfileNamePrompt _profilePrompt;
     private readonly RecordingProfile _customSentinel = new() { Name = Resources.Strings.Profile_Custom, IsBuiltIn = true };
@@ -61,7 +62,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
-        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots,
+        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots, IScreenshotFlash screenshotFlash,
         ICountdownController countdown, IProfileNamePrompt profilePrompt)
     {
         _coordinator = coordinator;
@@ -71,6 +72,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _regionPicker = regionPicker;
         _mixerFactory = mixerFactory;
         _screenshots = screenshots;
+        _screenshotFlash = screenshotFlash;
         _countdown = countdown;
         _profilePrompt = profilePrompt;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
@@ -126,6 +128,10 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         if (target is not null)
         {
             _screenshots.Capture(target);
+            if (SelectedMonitor is { } mon)
+            {
+                _screenshotFlash.Flash(mon);
+            }
         }
     }
 

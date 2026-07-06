@@ -52,6 +52,27 @@
                                     <DataTrigger Binding="{Binding Record.IsRecording}" Value="True">
                                         <Setter Property="Fill" Value="{DynamicResource CriticalBrush}" />
                                     </DataTrigger>
+                                    <!-- Recording pulse (design: rm-blink 1.2s infinite — opacity 1 → 0.25, stops while paused) -->
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding Record.IsRecording}" Value="True" />
+                                            <Condition Binding="{Binding Record.IsPaused}" Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <MultiDataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="TitleBarDotBlink">
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity">
+                                                        <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="1.0" />
+                                                        <DiscreteDoubleKeyFrame KeyTime="0:0:0.66" Value="0.25" />
+                                                        <DiscreteDoubleKeyFrame KeyTime="0:0:1.2" Value="0.25" />
+                                                    </DoubleAnimationUsingKeyFrames>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </MultiDataTrigger.EnterActions>
+                                        <MultiDataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="TitleBarDotBlink" />
+                                        </MultiDataTrigger.ExitActions>
+                                    </MultiDataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Ellipse.Style>

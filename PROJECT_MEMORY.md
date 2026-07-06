@@ -8,6 +8,67 @@
 
 ---
 
+## Session 2026-07-06 — Motion pass: recording pulse + screenshot flash (Phase 6)
+
+**Goal:** Phase 6's "motion" line item, still unstarted. Went to the design source (`RecMode.dc.html`) for
+concrete specs rather than guessing at what "polish" should look like.
+
+### What the design actually specifies (grep for `@keyframes`/`animation`/`transition`)
+- `rm-blink` (0%,55%→opacity 1; 56%,100%→opacity 0.25; 1.2s infinite): the rec dot, `recDotAnim: paused ?
+  "none" : "rm-blink..."`.
+- `rm-flash` (0.28s ease-out, opacity 0.85→0): a white full-viewport overlay, used for both the screenshot
+  shutter cue and (in the prototype) a recording-stop flash.
+- `rm-pop` (0.22s decelerate, translateY(10px)+fade): a toast/notification pop-in.
+- `rm-count` (1s ease-out, scale 1.4→1 + fade): the countdown digit pop — **already implemented** (found while
+  investigating: `CountdownWindow.xaml.cs`'s `Pop()` method, a scale+fade `DoubleAnimation` on tick, built back
+  in Phase 5 — not documented as matching this design keyframe explicitly, but it is).
+- `transition:width 0.14s linear` (meter bar) / `transition:opacity 0.15s` (thumbnail hover): lower-value,
+  skipped this pass — the meter already updates at ~30 Hz which reads reasonably smooth, and library-thumbnail
+  hover is minor polish.
+
+### What was built this session
+- **Rec-dot pulse**: a `DataTrigger`/`MultiDataTrigger` (`IsPaused == false`, resp. `IsRecording && !IsPaused`)
+  with `EnterActions`/`ExitActions` `BeginStoryboard`/`StopStoryboard` around a `DoubleAnimationUsingKeyFrames`
+  on `Opacity` (three `DiscreteDoubleKeyFrame`s: 0s→1.0, 0.66s→0.25, 1.2s→0.25, `RepeatBehavior="Forever"`) —
+  added to both `RecordingToolbarWindow.xaml`'s `RecDot` and `ShellWindow.xaml`'s title-bar status pill.
+- **Screenshot flash**: new `ScreenshotFlashWindow` (borderless, transparent, `Topmost`, `ShowActivated=False`,
+  positioned via `SetWindowPos` to the target monitor's exact bounds — same DPI-safe pattern as
+  `CountdownWindow`) + `IScreenshotFlash`/`ScreenshotFlash` service (mirrors the `IPowerStatus`/`ClickHighlightService`
+  pattern). `RecordViewModel.TakeScreenshot()` calls it right after `_screenshots.Capture(target)`, flashing
+  `SelectedMonitor`. **Deliberately excluded from capture** (`CaptureExclusion.Apply`) — it's app feedback, not
+  user content, same category as the toolbar/countdown (unlike click-ripple/annotation, which the user draws
+  and which ARE meant to appear in the recording).
+
+### Verification — a real methodology pitfall worth remembering
+First attempt: click "Screenshot" via UIA `InvokePattern.Invoke()`, then rapid-fire `CopyFromScreen` pixel
+captures looking for the white flash. **Found nothing across many attempts, extended windows, and even the
+CLI `--screenshot` forwarding path** — looked exactly like a broken feature. Diagnosed step by step:
+1. Confirmed the underlying `ScreenshotService.Capture()` mechanism works fine in isolation
+   (`--selftest-screenshot`, pre-existing hook, unaffected by this change).
+2. Added a temporary `Serilog.Log.Information` in `TakeScreenshot()` — confirmed `target`/`SelectedMonitor`
+   both resolve correctly and the screenshot file *does* save when triggered via CLI forwarding. So the code
+   path executes correctly, yet the pixel-capture verification still saw nothing.
+3. Realized why: **`WDA_EXCLUDEFROMCAPTURE` excludes a window from GDI `CopyFromScreen`/`BitBlt`-based
+   capture too, not just WGC** — it's a DWM composition-level exclusion covering "all forms of programmatic
+   capture" per Microsoft's docs, not a WGC-specific flag. I had correctly excluded the flash window from
+   capture (matching the toolbar/countdown precedent) — which meant my own pixel-based verification technique
+   could, by design, never see it. Not a bug in the feature; a gap in the test method.
+4. Switched to **window enumeration** (`EnumWindows` + `GetWindowRect`, filtered by PID) instead of pixel
+   capture — since exclusion only hides *rendered pixels*, not the window's existence/properties. This
+   immediately caught a new window at bounds `(0,0,5120,1440)` (the exact primary-monitor bounds) appearing
+   ~640 ms after the trigger and disappearing ~260 ms later — matching the intended 280 ms animation and
+   confirming positioning, lifecycle, and the capture-exclusion all work correctly together.
+- **Rec-dot pulse**: verified straightforwardly — `PrintWindow` samples of the title bar 250 ms apart across a
+  live recording showed bright → dim → bright, the expected repeating cycle (the title bar isn't excluded
+  from capture, so plain screenshots worked fine here).
+
+### Notes for next time
+If a future overlay is capture-excluded, **pixel-based screenshot verification will show nothing by design**
+— use window enumeration (or temporarily flip `excludeFromCapture` to false, mirroring how `--selftest-overlays`
+already does an on/off comparison for the toolbar/countdown) instead of concluding the feature is broken.
+
+---
+
 ## Session 2026-07-06 — Disk-speed pre-flight signal (feature-triage: last recording-health piece)
 
 **Goal:** CLAUDE.md's feature-triage bullet has tracked this as an explicit open item since 2026-07-03:
