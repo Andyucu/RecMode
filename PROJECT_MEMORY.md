@@ -8,6 +8,64 @@
 
 ---
 
+## Session 2026-07-06 — Per-app audio: re-investigated with web search now working, found the likely real cause, still inconclusive (no code changes)
+
+**Context:** the disabled per-app audio feature (see the 2026-07-06 "built, found broken, disabled" session
+below) was diagnosed under a real constraint — both `WebSearch` and `web_search_prime` were down that
+session, so the isolation bug was never actually root-caused against real docs, just reasoned about from
+memory. Web search started working again later this same day (confirmed while building the Velopack
+update-checker), so this was worth revisiting before moving to new work.
+
+### Ruled out via real docs (not memory) this time
+Fetched the actual, current Microsoft `ApplicationLoopback` C++ sample
+(`Samples/ApplicationLoopback/cpp/LoopbackCapture.cpp` on GitHub, via `gh api`) and the official
+`AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` reference page. Struct field order is `TargetProcessId` then
+`ProcessLoopbackMode` — **exactly** what `ProcessLoopbackCapture.cs`'s C# mirror already had. GUIDs, the
+`PROPVARIANT` blob layout, and the activation flow all check out. So the interop code itself was never
+provably wrong — worth stating plainly since last session's writeup left that ambiguous.
+
+### The likely real explanation: the original test's "leak" was probably the test harness, not the code
+Re-ran the original A/B methodology (`powershell.exe` vs `pwsh.exe`, both playing tones via
+`System.Media.SoundPlayer`) and checked process ancestry this time: **every console window spawned via
+`Start-Process powershell/pwsh` from this environment's tooling is hosted as a tab inside the exact same
+single `WindowsTerminal.exe` process** (confirmed empirically: spawned two independent `Start-Process
+powershell` calls, both showed up under one `WindowsTerminal` PID via `Win32_Process`). `EnumerateAudioProcesses()`
+correctly reports the WINDOW OWNER's process name for a console app, which is `WindowsTerminal`, not
+`powershell`/`pwsh` — so the original test's two "separate" tone players were, from Windows' perspective,
+both hosted by the *same* process, meaning `INCLUDE_TARGET_PROCESS_TREE` legitimately (and correctly) covered
+both. The original "isolation failure" now looks like a test-harness artifact, not a real interop bug.
+
+### Attempted a clean re-test with genuinely unrelated processes — inconclusive, new open question instead
+Needed two audio-producing processes guaranteed *not* to share a host. Console apps are out (all funnel
+through the one `WindowsTerminal.exe` here). Tried `mshta.exe` running a Windows Media Player ActiveX control
+(`CLSID:6BF52A52-...`) — confirmed via `EnumerateAudioProcesses()` that each `mshta.exe` instance really is
+its own separate, correctly-named process (not shared), and confirmed via **full-system loopback** that it
+genuinely produces audio (meter read ~0.044). But **targeting that exact PID specifically produced total
+silence (meter stayed at 0)** — activation itself didn't throw (a temporary diagnostic catch in
+`AudioMixer.cs` confirmed no exception), the capture just never saw any packets from a process that
+definitely was making sound. Two candidate explanations, not distinguished yet: (a) WMP's ActiveX control
+renders audio through some COM-surrogate/helper that isn't `mshta.exe`'s own PID from WASAPI's point of view
+(a quirk of *this specific test method*, not the interop code), or (b) a genuine, different bug where
+process-loopback capture silently misses certain audio sources even when correctly targeted. Also tried
+HTML5 `<audio>` in the same HTA (with `X-UA-Compatible IE=edge` to get a modern document mode) — that
+produced no audio at all, even in full-system capture, so it's not a usable test source here either.
+
+**This machine's environment (heavy shared Windows Terminal usage, RDP-flavored session) makes constructing
+a clean two-genuinely-independent-processes audio test surprisingly hard** — every convenient scripting
+approach either shares a host process or doesn't reliably route through WASAPI the way a "real" app would.
+All temporary code (a hardcoded test PID in `RecordViewModel.PerAppAudioTargetPid`, a diagnostic catch in
+`AudioMixer.cs`, a `--selftest-audioprocs` CLI hook) was reverted before finishing — working tree matches the
+last commit exactly, **no code changes this session**.
+
+**Recommendation for whoever picks this up next:** the feature is very possibly not actually broken — get a
+real, standalone GUI app (not console, not ActiveX-hosted) playing audio on a machine with a single Windows
+Terminal instance disabled/uninstalled (or explicitly target a non-terminal app in the picker, like an actual
+media player or game), and redo the A/B test from the original session. If that shows real isolation, just
+delete the "known limitation" disabling and re-enable the hidden UI — none of the underlying plumbing needs
+to change.
+
+---
+
 ## Session 2026-07-06 — Update-check infrastructure (Phase 9/10): portable notify + Velopack installer
 
 **Goal:** after webcam (below) and the per-app-audio disable, picked up "what's next" — the plan (§3.5, §7 build
