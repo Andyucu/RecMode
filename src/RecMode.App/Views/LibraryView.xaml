@@ -20,13 +20,13 @@
                 <StackPanel Orientation="Horizontal">
                     <StackPanel Margin="0,0,8,0">
                         <Button Content="{x:Static res:Strings.Library_Videos}" Command="{Binding ShowVideosCommand}"
-                                Style="{StaticResource SecondaryButton}" Height="30" Padding="14,0" />
+                                Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowVideos, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                     <StackPanel>
                         <Button Content="{x:Static res:Strings.Library_Screenshots}" Command="{Binding ShowScreenshotsCommand}"
-                                Style="{StaticResource SecondaryButton}" Height="30" Padding="14,0" />
+                                Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowScreenshots, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
@@ -35,9 +35,9 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                 <Button Content="{x:Static res:Strings.Library_OpenFolder}" Command="{Binding OpenFolderCommand}"
-                        Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" />
+                        Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                 <Button Content="{x:Static res:Strings.Library_Refresh}" Command="{Binding RefreshCommand}"
-                        Style="{StaticResource SecondaryButton}" Height="30" Padding="12,0" Margin="8,0,0,0" />
+                        Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" Margin="8,0,0,0" />
             </StackPanel>
         </Grid>
 
