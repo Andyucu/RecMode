@@ -20,12 +20,14 @@
                 <StackPanel Orientation="Horizontal">
                     <StackPanel Margin="0,0,8,0">
                         <Button Content="{x:Static res:Strings.Library_Videos}" Command="{Binding ShowVideosCommand}"
+                                ToolTip="Show recorded videos"
                                 Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowVideos, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                     <StackPanel>
                         <Button Content="{x:Static res:Strings.Library_Screenshots}" Command="{Binding ShowScreenshotsCommand}"
+                                ToolTip="Show saved screenshots"
                                 Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowScreenshots, Converter={StaticResource BoolToVisibility}}" />
@@ -35,8 +37,10 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                 <Button Content="{x:Static res:Strings.Library_OpenFolder}" Command="{Binding OpenFolderCommand}"
+                        ToolTip="Open this folder in File Explorer"
                         Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
                 <Button Content="{x:Static res:Strings.Library_Refresh}" Command="{Binding RefreshCommand}"
+                        ToolTip="Rescan the folder for new files"
                         Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" Margin="8,0,0,0" />
             </StackPanel>
         </Grid>
@@ -75,15 +79,18 @@
                                         <Button Content="{x:Static res:Strings.Library_Open}"
                                                 Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
+                                                ToolTip="{Binding DisplayName, StringFormat='Open {0}'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Open {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"
                                                 Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
+                                                ToolTip="{Binding DisplayName, StringFormat='Show {0} in folder'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Show {0} in folder'}" />
                                         <Button Content="{x:Static res:Strings.Library_Delete}"
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 Foreground="{DynamicResource CriticalBrush}"
+                                                ToolTip="{Binding DisplayName, StringFormat='Delete {0} (moves to Recycle Bin)'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Delete {0}'}" />
                                     </StackPanel>
                                 </Grid>

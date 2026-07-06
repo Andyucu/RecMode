@@ -64,19 +64,19 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0078D4"
-                                     AutomationProperties.Name="Blue accent"
+                                     ToolTip="Blue accent" AutomationProperties.Name="Blue accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Blue}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#D13438"
-                                     AutomationProperties.Name="Red accent"
+                                     ToolTip="Red accent" AutomationProperties.Name="Red accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Red}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#8B6CCB"
-                                     AutomationProperties.Name="Purple accent"
+                                     ToolTip="Purple accent" AutomationProperties.Name="Purple accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Purple}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0F7B7B"
-                                     AutomationProperties.Name="Teal accent"
+                                     ToolTip="Teal accent" AutomationProperties.Name="Teal accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Teal}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#CA5010" Margin="0"
-                                     AutomationProperties.Name="Orange accent"
+                                     ToolTip="Orange accent" AutomationProperties.Name="Orange accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Orange}" />
                     </StackPanel>
                 </Grid>
@@ -182,6 +182,7 @@
                         <TextBlock Text="{Binding OutputFolder}" Style="{StaticResource SettingsCardDesc}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <Button Grid.Column="2" Content="{x:Static res:Strings.Settings_Browse}" Command="{Binding BrowseCommand}"
+                            ToolTip="Choose a different folder for recordings"
                             Style="{StaticResource SecondaryButton}" VerticalAlignment="Center" />
                 </Grid>
             </Border>
@@ -193,10 +194,12 @@
                     <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE8AC;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
                         <TextBlock x:Name="PatternLabel" Text="{x:Static res:Strings.Settings_Pattern}" Style="{StaticResource BodyStrongText}" />
-                        <TextBlock Text="{x:Static res:Strings.Settings_PatternDesc}" Style="{StaticResource SettingsCardDesc}" />
+                        <TextBlock Text="{Binding FilenamePatternPreview}" Style="{StaticResource SettingsCardDesc}"
+                                   TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <TextBox Grid.Column="2" Text="{Binding FilenamePattern, UpdateSourceTrigger=LostFocus}" Width="240"
                              Style="{StaticResource AppTextBox}" VerticalAlignment="Center"
+                             ToolTip="{x:Static res:Strings.Settings_PatternDesc}"
                              AutomationProperties.LabeledBy="{Binding ElementName=PatternLabel}" />
                 </Grid>
             </Border>
@@ -343,6 +346,7 @@
                                            TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="startstop" Click="OnChangeHotkey"
+                                    ToolTip="Change the start/stop shortcut"
                                     AutomationProperties.Name="Change start/stop shortcut"
                                     Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
@@ -357,6 +361,7 @@
                                            TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="pause" Click="OnChangeHotkey"
+                                    ToolTip="Change the pause/resume shortcut"
                                     AutomationProperties.Name="Change pause/resume shortcut"
                                     Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
@@ -371,6 +376,7 @@
                                            TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>
                             <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="screenshot" Click="OnChangeHotkey"
+                                    ToolTip="Change the screenshot shortcut"
                                     AutomationProperties.Name="Change screenshot shortcut"
                                     Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
@@ -429,12 +435,15 @@
                         <TextBlock Grid.Column="0" Text="{Binding UpdateStatusText}" Style="{StaticResource SettingsCardDesc}"
                                    VerticalAlignment="Center" />
                         <Button Grid.Column="1" Content="View release" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Open the release page in your browser"
                                 Click="OpenUpdateLink_Click" Margin="0,0,8,0"
                                 Visibility="{Binding HasUpdateLink, Converter={StaticResource BoolToVisibility}}" />
                         <Button Grid.Column="2" Content="Update &amp; restart" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Download and install the update, then restart RecMode"
                                 Command="{Binding ApplyUpdateCommand}" Margin="0,0,8,0"
                                 Visibility="{Binding CanApplyUpdate, Converter={StaticResource BoolToVisibility}}" />
                         <Button Grid.Column="3" Content="Check now" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Check for a newer version of RecMode"
                                 Command="{Binding CheckForUpdatesCommand}" />
                     </Grid>
                 </StackPanel>

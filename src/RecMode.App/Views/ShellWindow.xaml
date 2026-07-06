@@ -6,6 +6,7 @@
         xmlns:views="clr-namespace:RecMode.App.Views"
         xmlns:res="clr-namespace:RecMode.App.Resources"
         Title="RecMode" Height="720" Width="1120" MinHeight="520" MinWidth="880"
+        Icon="pack://application:,,,/Assets/AppIcon.ico"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
@@ -38,8 +39,12 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="RecMode" Style="{StaticResource BodyStrongText}"
-                       VerticalAlignment="Center" Margin="16,0,0,0" />
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <Image Source="pack://application:,,,/Assets/AppIcon.ico" Width="20" Height="20"
+                       RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" />
+                <TextBlock Text="RecMode" Style="{StaticResource BodyStrongText}"
+                           VerticalAlignment="Center" Margin="8,0,0,0" />
+            </StackPanel>
 
             <Border Grid.Column="1" Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
                     BorderThickness="1" CornerRadius="10" Padding="10,3" VerticalAlignment="Center" Margin="12,0,0,0">
@@ -89,9 +94,15 @@
                     Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" />
 
             <StackPanel Grid.Column="4" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
-                <Button x:Name="MinButton" Content="&#xE921;" Click="OnMinimize" AutomationProperties.Name="Minimize" Style="{StaticResource CaptionButton}" />
-                <Button x:Name="MaxButton" Content="&#xE922;" Click="OnMaximizeRestore" AutomationProperties.Name="Maximize" Style="{StaticResource CaptionButton}" />
-                <Button x:Name="CloseButton" Content="&#xE8BB;" Click="OnClose" AutomationProperties.Name="Close" Style="{StaticResource CaptionCloseButton}" />
+                <Button x:Name="MinButton" Click="OnMinimize" AutomationProperties.Name="Minimize" ToolTip="Minimize" Style="{StaticResource CaptionButton}">
+                    <Path Data="{StaticResource IconMinimizeGeometry}" Style="{StaticResource CaptionButtonIcon}" />
+                </Button>
+                <Button x:Name="MaxButton" Click="OnMaximizeRestore" AutomationProperties.Name="Maximize" ToolTip="Maximize" Style="{StaticResource CaptionButton}">
+                    <Path x:Name="MaxButtonIcon" Data="{StaticResource IconMaximizeGeometry}" Style="{StaticResource CaptionButtonIcon}" />
+                </Button>
+                <Button x:Name="CloseButton" Click="OnClose" AutomationProperties.Name="Close" ToolTip="Close" Style="{StaticResource CaptionCloseButton}">
+                    <Path Data="{StaticResource IconCloseGeometry}" Style="{StaticResource CaptionButtonIcon}" />
+                </Button>
             </StackPanel>
         </Grid>
 

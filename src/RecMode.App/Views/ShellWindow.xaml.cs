@@ -30,6 +30,11 @@ public partial class ShellWindow : Window
         {
             shell.Record.SetWindowMinimized(WindowState == WindowState.Minimized);
         }
+
+        bool maximized = WindowState == WindowState.Maximized;
+        MaxButtonIcon.Data = (System.Windows.Media.Geometry)FindResource(maximized ? "IconRestoreGeometry" : "IconMaximizeGeometry");
+        MaxButton.ToolTip = maximized ? "Restore" : "Maximize";
+        System.Windows.Automation.AutomationProperties.SetName(MaxButton, maximized ? "Restore" : "Maximize");
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) => ApplyBackdrop();

@@ -18,6 +18,7 @@
         <Grid Grid.Row="0" Width="760" HorizontalAlignment="Left">
             <TextBlock Text="{x:Static res:Strings.Schedule_Title}" Style="{StaticResource TitleText}" VerticalAlignment="Center" />
             <Button Content="{x:Static res:Strings.Schedule_New}" Command="{Binding NewScheduleCommand}"
+                    ToolTip="Create a new scheduled recording"
                     Style="{StaticResource AccentButton}" HorizontalAlignment="Right" VerticalAlignment="Center"
                     Height="32" Padding="14,0" />
         </Grid>
@@ -56,17 +57,20 @@
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0" />
                                         <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
                                                       IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                                      ToolTip="{Binding Name, StringFormat='Enable or disable {0}'}"
                                                       AutomationProperties.Name="{Binding Name, StringFormat='Enable {0}'}" />
                                         <Button Content="{x:Static res:Strings.Schedule_Edit}"
                                                 Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
                                                 Height="28" Padding="12,0" Margin="12,0,0,0"
+                                                ToolTip="{Binding Name, StringFormat='Edit {0}'}"
                                                 AutomationProperties.Name="{Binding Name, StringFormat='Edit {0}'}" />
                                         <Button Content="{x:Static res:Strings.Schedule_Delete}"
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
                                                 Height="28" Padding="12,0" Margin="12,0,0,0"
                                                 Foreground="{DynamicResource CriticalBrush}"
+                                                ToolTip="{Binding Name, StringFormat='Delete {0}'}"
                                                 AutomationProperties.Name="{Binding Name, StringFormat='Delete {0}'}" />
                                     </StackPanel>
                                 </Grid>

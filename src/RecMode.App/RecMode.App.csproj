@@ -6,6 +6,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>RecMode</AssemblyName>
     <RootNamespace>RecMode.App</RootNamespace>
+    <!-- exe/taskbar icon — the design's adopted logo (RecMode Icon Options.dc.html, "Notch"). -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <!-- Portable-first: self-contained publish set in publish profile / publish-portable.ps1. -->
     <!-- Custom Main (App.xaml.cs) so VelopackApp.Build().Run() runs before any WPF startup cost — the
          Velopack-recommended pattern, since App.xaml's auto-generated Main can't run code first. -->
@@ -36,6 +38,12 @@
   <ItemGroup>
     <!-- Portable by default in dev + publish: marker ships next to the exe (§3.5). -->
     <None Update="portable.marker" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded so Window.Icon (pack URI) and the title-bar logo can reference it; TrayIconService loads
+         the same bytes via GetResourceStream rather than duplicating the asset as a loose file. -->
+    <Resource Include="Assets\AppIcon.ico" />
   </ItemGroup>
 
   <ItemGroup>

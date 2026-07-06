@@ -58,14 +58,16 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private readonly IScreenshotFlash _screenshotFlash;
     private readonly ICountdownController _countdown;
     private readonly IProfileNamePrompt _profilePrompt;
+    private readonly RecMode.Core.Infrastructure.IAppPaths _paths;
     private readonly RecordingProfile _customSentinel = new() { Name = Resources.Strings.Profile_Custom, IsBuiltIn = true };
     private RecordingProfile? _selectedProfile;
     private bool _loadingProfiles;
+    private string _diskSpaceText = "";
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
         Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots, IScreenshotFlash screenshotFlash,
-        ICountdownController countdown, IProfileNamePrompt profilePrompt)
+        ICountdownController countdown, IProfileNamePrompt profilePrompt, RecMode.Core.Infrastructure.IAppPaths paths)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
@@ -77,6 +79,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         _screenshotFlash = screenshotFlash;
         _countdown = countdown;
         _profilePrompt = profilePrompt;
+        _paths = paths;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
         _systemVolume = settings.Current.SystemVolume;
@@ -465,6 +468,40 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
     public string StatsText { get => _statsText; private set => SetProperty(ref _statsText, value); }
 
+    /// <summary>How much room is left on the output drive — "{used} of {total}" while recording, "{free} free of {total}" at rest.</summary>
+    public string DiskSpaceText { get => _diskSpaceText; private set => SetProperty(ref _diskSpaceText, value); }
+
+    /// <summary>Refreshes <see cref="DiskSpaceText"/> against the output folder's drive. Best-effort — a bad path or unready drive just clears the text.</summary>
+    private void UpdateDiskSpaceText(long recordingBytes = 0)
+    {
+        try
+        {
+            string outputDir = _settings.Current.OutputFolder ?? _paths.RecordingsDirectory;
+            string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
+            if (root is null)
+            {
+                DiskSpaceText = "";
+                return;
+            }
+
+            var drive = new DriveInfo(root);
+            if (!drive.IsReady)
+            {
+                DiskSpaceText = "";
+                return;
+            }
+
+            string total = FormatBytes(drive.TotalSize);
+            DiskSpaceText = recordingBytes > 0
+                ? $"{FormatBytes(recordingBytes)} of {total}"
+                : $"{FormatBytes(drive.AvailableFreeSpace)} free of {total}";
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            DiskSpaceText = "";
+        }
+    }
+
     public void OnNavigatedTo()
     {
         _isActivePage = true;
@@ -473,6 +510,10 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         LoadWebcamDevices();
         StartPreview();
         StartMetering();
+        if (!IsRecording)
+        {
+            UpdateDiskSpaceText();
+        }
     }
 
     /// <summary>
@@ -1108,6 +1149,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         ElapsedText = FormatElapsed(p.Elapsed);
         string stats = $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.Mbps.ToString("F1", CultureInfo.InvariantCulture)} Mbps · {FormatBytes(p.FileSizeBytes)}";
         StatsText = IsPaused ? "Paused" : p.IsHealthy ? stats : $"⚠ Can't keep up · {stats}";
+        UpdateDiskSpaceText(p.FileSizeBytes);
     });
 
     private static string FormatBytes(long bytes) => bytes switch
@@ -1127,6 +1169,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
             ? $"Saved {Path.GetFileName(result.OutputPath)}"
             : "Recording ended — check the log";
         StatsText = "";
+        UpdateDiskSpaceText(); // back to the "free of total" idle view
         StartPreview(); // resume the live preview
     });
 

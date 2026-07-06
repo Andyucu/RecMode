@@ -283,7 +283,22 @@ public sealed class SettingsViewModel : ObservableObject
     public string FilenamePattern
     {
         get => _filenamePattern;
-        set => Persist(ref _filenamePattern, value, v => _settings.Current.FilenamePattern = v);
+        set
+        {
+            Persist(ref _filenamePattern, value, v => _settings.Current.FilenamePattern = v);
+            OnPropertyChanged(nameof(FilenamePatternPreview));
+        }
+    }
+
+    /// <summary>Live example of the current pattern resolved against "now" — e.g. "RecMode {date} {time} → RecMode 2026-07-03 14-22-05.mp4".</summary>
+    public string FilenamePatternPreview
+    {
+        get
+        {
+            string example = RecMode.Core.Recording.FilenameBuilder.BuildFileName(
+                FilenamePattern, DateTimeOffset.Now, "Display", "H264", "mp4");
+            return $"{FilenamePattern} → {example}";
+        }
     }
 
     public bool CountdownEnabled

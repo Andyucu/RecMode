@@ -23,14 +23,18 @@
                 <StackPanel Orientation="Horizontal">
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE7F4;"
                                  IsChecked="{Binding IsScreenSource, Mode=TwoWay}"
+                                 ToolTip="Record the entire display"
                                  Content="{x:Static res:Strings.Source_Screen}" Margin="0,0,10,0" />
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE737;"
                                  IsChecked="{Binding IsWindowSource, Mode=TwoWay}"
+                                 ToolTip="Record a single application window"
                                  Content="{x:Static res:Strings.Source_Window}" Margin="0,0,10,0" />
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xEF20;"
                                  IsChecked="{Binding IsRegionSource, Mode=TwoWay}"
+                                 ToolTip="Record a custom rectangular area"
                                  Content="{x:Static res:Strings.Source_Region}" Margin="0,0,10,0" />
                     <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xE960;"
+                                 ToolTip="Coming soon — record from a webcam as the source"
                                  Content="{x:Static res:Strings.Source_Webcam}" />
                 </StackPanel>
             </StackPanel>
@@ -81,19 +85,27 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Orientation="Horizontal">
                             <Button Command="{Binding RecordCommand}" Content="{Binding RecordButtonText}"
+                                    ToolTip="Start or stop recording (F9)"
                                     Style="{StaticResource AccentButton}" Width="120" Height="36" />
                             <Button Command="{Binding PauseResumeCommand}" Content="{Binding PauseButtonText}"
+                                    ToolTip="Pause or resume the recording (F10)"
                                     Style="{StaticResource SecondaryButton}" Width="96" Height="36" Margin="8,0,0,0"
                                     Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
                             <Button Command="{Binding ScreenshotCommand}" Content="{x:Static res:Strings.Record_Screenshot}"
+                                    ToolTip="Save a still image of the current source (F11)"
                                     Style="{StaticResource SecondaryButton}" Width="112" Height="36" Margin="8,0,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                             <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />
                             <TextBlock Text="{Binding StatsText}" Style="{StaticResource CaptionText}" />
                         </StackPanel>
-                        <TextBlock Grid.Column="2" Text="{Binding ElapsedText}" Style="{StaticResource MonoText}"
-                                   FontSize="22" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource MonoText}"
+                                       FontSize="22" HorizontalAlignment="Right" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding DiskSpaceText}" Style="{StaticResource CaptionText}"
+                                       HorizontalAlignment="Right"
+                                       ToolTip="Free space on the drive where recordings are saved" />
+                        </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
@@ -115,10 +127,13 @@
                         </Grid.ColumnDefinitions>
                         <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                                   ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" Margin="0,0,8,0"
+                                  ToolTip="Presets that set format, frame rate, quality, and audio together"
                                   AutomationProperties.LabeledBy="{Binding ElementName=ProfileLabel}" />
                         <Button Grid.Column="1" Content="{x:Static res:Strings.Profile_SaveAs}" Command="{Binding SaveProfileCommand}"
+                                ToolTip="Save the current settings as a new custom profile"
                                 Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="0,0,8,0" />
                         <Button Grid.Column="2" Content="{x:Static res:Strings.Profile_Delete}" Command="{Binding DeleteProfileCommand}"
+                                ToolTip="Delete this custom profile"
                                 Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0"
                                 Visibility="{Binding CanDeleteProfile, Converter={StaticResource BoolToVisibility}}" />
                     </Grid>
@@ -137,6 +152,7 @@
                         <TextBlock x:Name="DisplayLabel" Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                                   ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12"
+                                  ToolTip="Which monitor to record"
                                   AutomationProperties.LabeledBy="{Binding ElementName=DisplayLabel}" />
                     </StackPanel>
 
@@ -154,6 +170,7 @@
                         <TextBlock x:Name="WindowLabel" Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                                   ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12"
+                                  ToolTip="Which open window to record"
                                   AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
                     </StackPanel>
 
@@ -172,6 +189,7 @@
                         <Grid Margin="0,0,0,12">
                             <TextBlock Text="{Binding RegionLabel}" VerticalAlignment="Center" />
                             <Button Content="Change…" Command="{Binding ChangeRegionCommand}"
+                                    ToolTip="Pick a new region to record"
                                     Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" />
                         </Grid>
                     </StackPanel>
@@ -179,6 +197,7 @@
                     <TextBlock x:Name="EncoderLabel" Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding Encoders}" SelectedItem="{Binding SelectedEncoder}" Margin="0,0,0,4"
+                              ToolTip="Video codec and hardware/software backend used to encode"
                               AutomationProperties.LabeledBy="{Binding ElementName=EncoderLabel}" />
                     <TextBlock Text="{Binding HardwareBadge}" Style="{StaticResource CaptionText}"
                                Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,12" />
@@ -187,11 +206,13 @@
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Margin="0,0,0,12"
                               ItemTemplate="{StaticResource EnumItemTemplate}"
+                              ToolTip="Container file format for the output"
                               AutomationProperties.LabeledBy="{Binding ElementName=FormatLabel}" />
 
                     <TextBlock x:Name="FrameRateLabel" Text="{x:Static res:Strings.Record_FrameRate}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding FrameRates}" SelectedItem="{Binding SelectedFrameRate}" Margin="0,0,0,12"
+                              ToolTip="Frames captured per second"
                               AutomationProperties.LabeledBy="{Binding ElementName=FrameRateLabel}" />
 
                     <Grid Margin="0,0,0,2">
@@ -200,6 +221,7 @@
                     </Grid>
                     <Slider Style="{StaticResource AppSlider}" Minimum="0" Maximum="100" Value="{Binding Quality}"
                             AutomationProperties.LabeledBy="{Binding ElementName=QualityLabelText}"
+                            ToolTip="Higher quality means larger files"
                             IsSnapToTickEnabled="True" TickFrequency="1" />
                 </StackPanel>
             </Border>
@@ -210,7 +232,7 @@
                     <TextBlock Text="Audio" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
                     <!-- System audio -->
-                    <Grid Margin="0,0,0,6">
+                    <Grid Margin="0,0,0,6" ToolTip="Include what your computer is playing">
                         <TextBlock x:Name="SystemAudioLabel" Text="System audio" VerticalAlignment="Center" />
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
                                       IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}"
@@ -241,13 +263,14 @@
                         </Grid.ColumnDefinitions>
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                                 Value="{Binding SystemVolume}" VerticalAlignment="Center"
+                                ToolTip="Adjust the system audio level in the recording"
                                 AutomationProperties.Name="System audio volume" />
                         <TextBlock Grid.Column="1" Text="{Binding SystemVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>
 
                     <!-- Microphone -->
-                    <Grid Margin="0,0,0,6">
+                    <Grid Margin="0,0,0,6" ToolTip="Include your microphone">
                         <TextBlock x:Name="MicLabel" Text="Microphone" VerticalAlignment="Center" />
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
                                       IsChecked="{Binding MicEnabled, Mode=TwoWay}"
@@ -264,6 +287,7 @@
                         </Grid.ColumnDefinitions>
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                                 Value="{Binding MicVolume}" VerticalAlignment="Center"
+                                ToolTip="Adjust the microphone level in the recording"
                                 AutomationProperties.Name="Microphone volume" />
                         <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
@@ -276,7 +300,7 @@
                 <StackPanel>
                     <TextBlock Text="Webcam" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
-                    <Grid Margin="0,0,0,10">
+                    <Grid Margin="0,0,0,10" ToolTip="Overlay your camera as a picture-in-picture box on the recording">
                         <TextBlock x:Name="WebcamLabel" Text="Show webcam" VerticalAlignment="Center" />
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
                                       IsChecked="{Binding WebcamEnabled, Mode=TwoWay}"
@@ -291,6 +315,7 @@
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding WebcamDevices}" SelectedItem="{Binding SelectedWebcamDevice}"
                               IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
+                              ToolTip="Which camera to use"
                               AutomationProperties.LabeledBy="{Binding ElementName=WebcamDeviceLabel}" />
 
                     <TextBlock x:Name="WebcamPositionLabel" Text="Position" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
@@ -299,6 +324,7 @@
                               ItemsSource="{Binding WebcamPositions}" SelectedItem="{Binding WebcamPosition}"
                               IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
                               ItemTemplate="{StaticResource EnumItemTemplate}"
+                              ToolTip="Corner of the screen for the camera overlay"
                               AutomationProperties.LabeledBy="{Binding ElementName=WebcamPositionLabel}" />
 
                     <Grid Margin="0,0,0,2" IsEnabled="{Binding WebcamEnabled}">
@@ -306,6 +332,7 @@
                     </Grid>
                     <Slider Style="{StaticResource AppSlider}" Minimum="10" Maximum="50" Value="{Binding WebcamSizePercent}"
                             IsEnabled="{Binding WebcamEnabled}"
+                            ToolTip="Size of the camera overlay"
                             AutomationProperties.LabeledBy="{Binding ElementName=WebcamSizeLabel}" />
                 </StackPanel>
             </Border>

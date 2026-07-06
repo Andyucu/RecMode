@@ -8,6 +8,99 @@
 
 ---
 
+## Session 2026-07-07 — UI polish pass (app icon, caption buttons, scrollbar, disk space, tooltips)
+
+**Goal:** the user gave a direct, concrete list of visual/UX complaints rather than a phase item: tooltips
+everywhere, verify the app matches its own design docs, check the app icon is real, fix the
+minimize/maximize/close buttons, theme the right-side scrollbar, and show recording time + disk space used
+on the recordings drive. Worked each item in turn, verifying live against the running app (UIA + PrintWindow
+screenshots) rather than trusting a build-succeeds signal, per this codebase's established convention for
+XAML/glue changes.
+
+### App icon: built for real, no external tools
+`recmode-logo.svg` (`DOCS/RecMode Screen Recording App/assets/`) is the adopted logo — confirmed it matches
+concept "1b — Notch" in `RecMode Icon Options.dc.html` exactly (same path data). Built a temporary
+`--selftest-buildicon` hook in `App.xaml.cs` that rasterized it via WPF `DrawingVisual`/`RenderTargetBitmap`/
+`PngBitmapEncoder` at 16/24/32/48/64/128/256px, then hand-wrote a valid multi-size ICO container
+(`ICONDIR`+`ICONDIRENTRY[]`+ back-to-back PNG blobs — modern Windows accepts PNG-compressed entries at every
+size, not just 256). Wrote the result to `src/RecMode.App/Assets/AppIcon.ico`, then fully removed the
+temporary hook (verified clean removal by re-reading the surrounding code). Wired via
+`<ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>` (exe icon) + `<Resource Include="Assets\AppIcon.ico">`
+(WPF pack-URI embed) in `RecMode.App.csproj`. Consumers: `ShellWindow.xaml`'s `Window.Icon` and a new
+title-bar `<Image>` next to "RecMode", and `TrayIconService.BuildIcon()` (was a generated placeholder
+blue-circle icon; now loads the real ICO via `Application.GetResourceStream` → `new Icon(stream, 32, 32)`,
+falling back to the placeholder only if resource resolution somehow fails).
+**Verification gotcha:** `System.Drawing.Icon.ToBitmap()` rendered the generated ICO as garbled noise — a
+false alarm from that legacy GDI-era API mishandling modern PNG-compressed multi-size ICOs, not a real bug.
+Verified correctly instead by extracting the raw PNG bytes directly from the ICO's own byte offsets (which
+also cross-checked byte-exact against the file's total length) — showed the exact expected blue-gradient
+tile + white notch (`CombinedGeometry`/`Exclude` for the circular cutout) + red dot.
+
+### Caption buttons: tofu boxes → vector paths
+Minimize/Maximize/Close were rendering as empty boxes. Both `Segoe Fluent Icons` and `Segoe MDL2 Assets` are
+installed (checked via `InstalledFontCollection`), and other icon-font glyphs elsewhere in the app render
+fine, so the specific codepoint failure (E921/E922/E8BB) was never conclusively root-caused. Sidestepped it
+entirely: replaced with hand-drawn `Geometry` resources (`IconMinimizeGeometry`/`IconMaximizeGeometry`/
+`IconRestoreGeometry`/`IconCloseGeometry`) rendered via a `Path` + new `CaptionButtonIcon` style in
+`Themes/Controls.xaml`, bound to the button's `Foreground` so hover-state color changes still work through a
+`ControlTemplate.Trigger` setter with no `TargetName` (a setter without `TargetName` inside
+`ControlTemplate.Triggers` applies to the templated control itself — used to flip `Button.Foreground` on
+hover, which the bound `Path.Stroke` picks up automatically). This is also the objectively correct fix, not
+just a workaround — the design prototype (`RecMode.dc.html`) uses FluentUI SVG icons for these exact buttons
+(`subtract_16_regular.svg`, `maximize_16_regular.svg`, `dismiss_16_regular.svg`), not a system icon font.
+`ShellWindow.xaml.cs`'s `OnStateChanged` now also swaps the Maximize button's icon/tooltip/
+`AutomationProperties.Name` between Maximize/Restore based on live `WindowState`.
+
+### Scrollbar: one global style, matches `_ds/tokens/base.css`'s `.mr-scroll` spec exactly
+Added `x:Key="{x:Type ScrollBar}"` to `Themes/Controls.xaml` — a full vertical+horizontal `ControlTemplate`
+(`Track`/`Thumb`/`RepeatButton`, 12px, transparent track, rounded-pill thumb, no arrow buttons) that
+re-skins every `ScrollBar` app-wide, including ones inside default `ScrollViewer` templates, with zero
+per-usage XAML changes. Matches the design's thin-scrollbar CSS spec (`scrollbar-width: thin`,
+`scrollbar-color: var(--stroke-control-strong) transparent`).
+
+### Disk-space + recording-time indicator
+`RecordViewModel` gained a `DiskSpaceText` property (constructor now also takes `IAppPaths paths` — DI
+resolved this automatically, no `Composition.cs` change needed) backed by `DriveInfo` on the output folder's
+drive: "*free of total*" when idle, "*used of total*" once `FileSizeBytes > 0` mid-recording. Wired into the
+same lifecycle points as the existing stats text (`OnNavigatedTo`, `OnProgress`, `OnFinished`).
+`RecordView.xaml`'s bottom bar now shows it next to the elapsed-time text. **Verification note:** a
+single-snapshot UIA check right after starting a recording misleadingly suggested it wasn't updating (ffmpeg
+hadn't flushed any bytes yet); a tick-by-tick check confirmed it correctly transitions from the idle
+"free/total" text to "used/total" a few seconds in, then back to idle text after Stop.
+
+### Tooltips
+Added across Record (source tiles, Record/Pause/Screenshot, Profile+Save/Delete, Display/Encoder/Format/
+Frame-rate combos, Quality slider, audio toggles/sliders, the whole Webcam card), Library (tab buttons,
+Open-folder, Refresh, per-item Open/Reveal/Delete), Schedule (New-schedule, per-row Enable/Edit/Delete), the
+floating recording toolbar (Pause/Screenshot/Draw/Stop, each noting its hotkey), and Settings (accent
+swatches, hotkey Change buttons, output-folder Browse, update-check buttons). Deliberately skipped controls
+that already carry a self-explanatory visible label (sidebar/top nav, Settings cards with inline description
+captions already under the caption) to avoid redundant tooltip noise.
+
+### Design-fidelity pass: one real gap found
+Opened `RecMode.dc.html` in a fresh Edge window next to the running app for direct pixel comparison (per
+`CLAUDE.md`'s own working note). Found one genuine, undocumented gap: Settings' "File name pattern" row
+showed only a static "Tokens: {date} {time} {source}" hint, while the design shows a live resolved example.
+Added `SettingsViewModel.FilenamePatternPreview` (`{pattern} → {resolved example}`, reusing the existing pure
+`FilenameBuilder.BuildFileName`), bound in place of the static hint; moved the old static tokens text to the
+pattern textbox's `ToolTip` instead. Verified live via UIA (found the exact live text
+`'RecMode {date} {time} → RecMode 2026-07-07 00-38-33.mp4'` in the running app's automation tree).
+**Scoping call:** noticed several other prototype-vs-app differences (a separate "Hardware encoding" toggle
+row, richer per-app audio-mixer rows, inline hotkey chips on Record/Screenshot buttons, size/bitrate hints
+under the Quality slider) but deliberately did not chase them further — most correspond to the already-
+disabled per-app-audio feature (a known, documented deviation from a prior session), and the prototype itself
+contains placeholder data (a fake "NVENC" GPU label on this AMD dev box's design mockup, a fictional
+"Discord" per-app-audio row) that isn't a real target to match pixel-for-pixel.
+
+### Verification
+Live theme check: switched the running app to Light via UIA (`SelectionItemPattern.Select()` — works fine
+for this plain `IsChecked`-bound RadioButton, unlike the Command-bound sidebar-nav RadioButtons noted in the
+2026-07-06 a11y session), screenshotted, confirmed icon/caption-buttons/scrollbar all render correctly in
+Light too, then switched back to System. Final `./build.ps1`: 0 warnings, 154/154 tests pass (no new unit
+tests this session — everything is UI/XAML/glue, verified live per convention).
+
+---
+
 ## Session 2026-07-06 — Final hardening pass (Phase 10)
 
 **Goal:** after the per-app-audio re-investigation came up inconclusive, the user asked for a general

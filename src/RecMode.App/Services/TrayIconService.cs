@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Resources;
 using H.NotifyIcon;
 using RecMode.App.ViewModels;
 
@@ -75,6 +76,19 @@ public sealed class TrayIconService : IDisposable
 
     private static Icon BuildIcon()
     {
+        // The real app icon (Assets/AppIcon.ico, embedded as a WPF resource) — loaded via GetResourceStream
+        // rather than duplicating the asset as a loose file on disk.
+        var uri = new Uri("pack://application:,,,/Assets/AppIcon.ico");
+        StreamResourceInfo? info = Application.GetResourceStream(uri);
+        if (info is not null)
+        {
+            using (info.Stream)
+            {
+                return new Icon(info.Stream, 32, 32);
+            }
+        }
+
+        // Fallback placeholder, in case the packed resource can't be resolved for some reason.
         using var bmp = new Bitmap(32, 32);
         using (Graphics g = Graphics.FromImage(bmp))
         {
