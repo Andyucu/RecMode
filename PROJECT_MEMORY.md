@@ -8,6 +8,53 @@
 
 ---
 
+## Session 2026-07-06 — Auto-split large recordings (Phase 3 §3.3 tail)
+
+**Goal:** Close the last open Phase 3 tail — segment rollover so a long recording doesn't grow one unbounded
+file (FAT32's 4 GB single-file cap was the original motivation).
+
+### Design
+- `RecModeSettings.AutoSplitEnabled` (bool, off) + `AutoSplitSizeMb` (int, default 3900 ≈ 3.9 GB — safely
+  under FAT32's 4 GB limit). Settings → Recording gets a toggle + a size combo (1024/2048/3900/8000 MB,
+  `AutoSplitSizeConverter` renders "~X GB").
+- `RecordingCoordinator` captures at `Start()`: `_outputDir`, `_baseFileName` (pre-uniquify), `_encoderChain`
+  (the fallback chain from `BuildFallbackChain`), `_jobTemplate` (the `FfmpegJob` record, reused via `with`),
+  `_autoSplitThresholdBytes` (MB setting floored at 100 MB — a safety floor against thrashing, not just the
+  raw setting).
+- The pacer thread (`PaceLoop`) checks the current segment's file size ~1 Hz (same cadence pattern as the
+  existing disk-space guard) via `TryGetSegmentSize`; crossing the threshold calls `RotateSegment()` inline
+  (blocking briefly on the pacer thread — the CFR pacer's elapsed-driven catch-up absorbs the gap, same as any
+  other stall).
+- `RotateSegment()`: cancels+joins the audio thread, `StopAndFinalize`s the current ffmpeg session, safe-remuxes
+  it to MP4 if `_safeRemux`, adds a library-index entry for it, then builds the next segment's paths via a new
+  pure `FilenameBuilder.SegmentFileName(baseFileName, index)` (segment 1 unchanged; segment N≥2 → `Name_partN.ext`),
+  starts a fresh `FfmpegRecordingSession` from `_jobTemplate with { OutputPath, new pipe names }`, and — if audio
+  is enabled — restarts the audio pump thread against the new session's audio pipe (captures `_audioStop` in a
+  local so the closure can't race a later cancel). On total encoder-start failure mid-recording, reports Fatal
+  and stops gracefully (previous segments are already safe on disk).
+- `Finalize()` (normal Stop) is unchanged — it always operates on whatever the *current* segment's fields are,
+  so the last segment finalizes exactly like a non-split recording already did.
+
+### Verification
+- 5 new tests for `FilenameBuilder.SegmentFileName` (segment 1 passthrough, part2/part3/part10 suffixing,
+  extension preserved for non-mp4). 121 tests total, 0 warnings.
+- **E2E** via a new temporary `--selftest-split` hook (forces `AutoSplitEnabled=true`, `AutoSplitSizeMb=100` —
+  the floor — and quality=100 for a faster bitrate ramp): a static desktop compresses hard even at max quality
+  (~0.39 MB/s at 4096×1152@60 h264_amf), so the hook runs ~4.7 min to reliably cross 100 MB. Result: **2
+  segments** — `Name.mp4` (107 MB, 264.4 s) rotated to `Name_part2.mp4` (6.3 MB, 15.6 s) — both ffprobe-clean
+  (h264 4096×1152 + aac), both remuxed from their own safe-recording MKV, both present as separate entries in
+  `library.json`. Confirms rotation, safe-remux-per-segment, audio-pipe continuity, and library indexing all
+  work together.
+- **Closes the last Phase 3 tail** (mid-stream hw→sw Degraded fallback remains a separate, harder item —
+  restarting ffmpeg mid-segment for a *codec* change rather than a file rollover).
+
+### Notes for next time
+- The 100 MB floor exists only to stop someone from picking an absurdly small size and thrashing files; it also
+  means a fast E2E verification needs either real motion on screen (higher bitrate, faster test) or patience —
+  static-desktop self-tests are the slow path.
+
+---
+
 ## Session 2026-07-06 — Top-bar navigation layout (Phase 6)
 
 **Goal:** The design's alternate shell layout (Sidebar ↔ Top bar) + regain visual verification.

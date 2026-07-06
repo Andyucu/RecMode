@@ -277,14 +277,30 @@ public partial class App : Application
             var s = _host!.Services.GetRequiredService<ISettingsService>();
             s.Current.SystemAudioEnabled = true;
         }
+        // "split" mode: force the smallest allowed auto-split threshold and a high-bitrate quality so a
+        // rollover happens quickly, to verify the segment rotation end-to-end.
+        if (mode == "split")
+        {
+            var s = _host!.Services.GetRequiredService<ISettingsService>();
+            s.Current.AutoSplitEnabled = true;
+            s.Current.AutoSplitSizeMb = 100;
+        }
         var coordinator = _host!.Services.GetRequiredService<Services.RecordingCoordinator>();
         var probe = _host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
 
         coordinator.Finished += result =>
         {
+            string extra = "";
+            if (mode == "split")
+            {
+                string dir = System.IO.Path.GetDirectoryName(result.OutputPath) ?? paths.RecordingsDirectory;
+                string stem = System.IO.Path.GetFileNameWithoutExtension(result.OutputPath).Split("_part")[0];
+                int segments = System.IO.Directory.GetFiles(dir, $"{stem}*.mp4").Length;
+                extra = $"segments={segments}\n";
+            }
             System.IO.File.WriteAllText(resultPath,
-                $"success={result.Success}\nexit={result.ExitCode}\nframes={result.FramesWritten}\npath={result.OutputPath}\n");
+                $"success={result.Success}\nexit={result.ExitCode}\nframes={result.FramesWritten}\npath={result.OutputPath}\n{extra}");
             Log.Information("Self-test finished: {@Result}", result);
             Dispatcher.BeginInvoke(() => Shutdown(result.Success ? 0 : 3));
         };
@@ -302,7 +318,8 @@ public partial class App : Application
                 var target = region
                     ? RecMode.Capture.CaptureTarget.FromRegion(monitor, new RecMode.Capture.RegionRect(100, 100, 1280, 720))
                     : RecMode.Capture.CaptureTarget.FromMonitor(monitor);
-                if (!coordinator.Start(target, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, 70))
+                int quality = mode == "split" ? 100 : 70;
+                if (!coordinator.Start(target, encoder, RecMode.Core.Settings.MediaContainer.Mp4, 60, quality))
                 {
                     System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
                     Dispatcher.BeginInvoke(() => Shutdown(3));
@@ -317,6 +334,10 @@ public partial class App : Application
                     System.Threading.Thread.Sleep(2000);
                     coordinator.Resume();
                     System.Threading.Thread.Sleep(3000);
+                }
+                else if (mode == "split")
+                {
+                    System.Threading.Thread.Sleep(280000); // static-desktop content compresses hard; needs real time to cross the 100 MB floor
                 }
                 else
                 {

@@ -240,6 +240,27 @@
                                   IsChecked="{Binding HighlightClicks, Mode=TwoWay}" />
                 </Grid>
             </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C1;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_AutoSplit}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AutoSplitDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ComboBox Style="{StaticResource CardCombo}" Width="110" Margin="0,0,10,0"
+                                  ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding AutoSplitSizes}" SelectedItem="{Binding AutoSplitSizeMb}"
+                                  ItemTemplate="{StaticResource AutoSplitSizeItemTemplate}"
+                                  IsEnabled="{Binding AutoSplitEnabled}" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                      IsChecked="{Binding AutoSplitEnabled, Mode=TwoWay}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
             <!-- ===== Performance ===== -->
             <TextBlock Text="{x:Static res:Strings.Settings_Performance}" Style="{StaticResource SectionHeader}" />

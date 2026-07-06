@@ -113,6 +113,8 @@
   <data name="Settings_CursorDesc" xml:space="preserve"><value>Include the pointer in recordings and screenshots</value></data>
   <data name="Settings_Clicks" xml:space="preserve"><value>Highlight mouse clicks</value></data>
   <data name="Settings_ClicksDesc" xml:space="preserve"><value>Draw a ripple around each click</value></data>
+  <data name="Settings_AutoSplit" xml:space="preserve"><value>Auto-split large recordings</value></data>
+  <data name="Settings_AutoSplitDesc" xml:space="preserve"><value>Start a new file when a segment reaches this size</value></data>
   <data name="Settings_KeyboardShortcuts" xml:space="preserve"><value>Keyboard shortcuts</value></data>
   <data name="Settings_HotkeysDesc" xml:space="preserve"><value>Global — they work while any app has focus</value></data>
   <data name="Hotkey_Change" xml:space="preserve"><value>Change</value></data>

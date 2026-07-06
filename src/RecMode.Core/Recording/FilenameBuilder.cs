@@ -20,6 +20,22 @@ public static class FilenameBuilder
         return $"{safe}.{extension.TrimStart('.')}";
     }
 
+    /// <summary>
+    /// Auto-split (plan §3.3): segment 1 keeps <paramref name="baseFileName"/> as-is; later segments get a
+    /// "_partN" suffix before the extension (e.g. "Recording.mp4" → "Recording_part2.mp4").
+    /// </summary>
+    public static string SegmentFileName(string baseFileName, int index)
+    {
+        if (index <= 1)
+        {
+            return baseFileName;
+        }
+
+        string stem = Path.GetFileNameWithoutExtension(baseFileName);
+        string ext = Path.GetExtension(baseFileName);
+        return $"{stem}_part{index}{ext}";
+    }
+
     /// <summary>Full path under <paramref name="directory"/>, suffixed if the file already exists.</summary>
     public static string BuildUniquePath(string directory, string fileName)
     {

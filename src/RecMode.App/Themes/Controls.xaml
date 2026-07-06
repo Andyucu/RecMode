@@ -16,6 +16,7 @@
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:EnumDisplayConverter x:Key="EnumDisplay" />
     <conv:ThreadCapConverter x:Key="ThreadCap" />
+    <conv:AutoSplitSizeConverter x:Key="AutoSplitSize" />
     <conv:EnumToVisibilityConverter x:Key="EnumToVisibility" />
 
     <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->
@@ -25,6 +26,10 @@
     <!-- Combo item display for the CPU thread cap (0 → "Auto") -->
     <DataTemplate x:Key="ThreadCapItemTemplate">
         <TextBlock Text="{Binding Converter={StaticResource ThreadCap}}" />
+    </DataTemplate>
+    <!-- Combo item display for auto-split segment size (MB → "~3.9 GB") -->
+    <DataTemplate x:Key="AutoSplitSizeItemTemplate">
+        <TextBlock Text="{Binding Converter={StaticResource AutoSplitSize}}" />
     </DataTemplate>
 
     <!-- ===================== Type ramp (design §2) ===================== -->

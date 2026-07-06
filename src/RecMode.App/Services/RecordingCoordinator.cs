@@ -56,6 +56,15 @@ public sealed class RecordingCoordinator : IDisposable
     private string _metaSource = "", _metaCodec = "", _metaContainer = "";
     private int _metaWidth, _metaHeight, _metaFps;
 
+    // Auto-split (§3.3 Phase 3 tail): roll to a new segment file once the current one hits the size threshold.
+    private bool _autoSplitEnabled;
+    private long _autoSplitThresholdBytes;
+    private int _segmentIndex = 1;
+    private string _outputDir = "";
+    private string _baseFileName = "";
+    private List<EncoderInfo>? _encoderChain;
+    private FfmpegJob? _jobTemplate;
+
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
         IFfmpegLocator ffmpeg,
@@ -189,6 +198,13 @@ public sealed class RecordingCoordinator : IDisposable
                 : _finalPath;
             _ffmpegPath = ff.FfmpegPath;
 
+            // Auto-split bookkeeping: remember enough to rebuild subsequent segment file names/paths.
+            _outputDir = outputDir;
+            _baseFileName = fileName;
+            _segmentIndex = 1;
+            _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
+            _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
+
             // Snapshot metadata for the library index (written on successful finalize).
             _metaSource = sourceLabel;
             _metaCodec = encoder.Codec.ToString();
@@ -227,7 +243,9 @@ public sealed class RecordingCoordinator : IDisposable
             }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
-            _session = TryStartAnyEncoder(BuildFallbackChain(encoder), job, _capture.Nv12ByteSize);
+            _encoderChain = BuildFallbackChain(encoder);
+            _jobTemplate = job;
+            _session = TryStartAnyEncoder(_encoderChain, job, _capture.Nv12ByteSize);
             if (_session is null)
             {
                 _errors.Block("record.no-encoder", "No video encoder could be started.",
@@ -338,6 +356,7 @@ public sealed class RecordingCoordinator : IDisposable
         long behindSince = 0;
         bool degradeWarned = false;
         long lastDiskCheck = Stopwatch.GetTimestamp();
+        long lastSplitCheck = Stopwatch.GetTimestamp();
 
         _ = timeBeginPeriod(1);
         try
@@ -443,6 +462,16 @@ public sealed class RecordingCoordinator : IDisposable
                     }
                 }
 
+                // Auto-split (§3.3): roll to a new segment file once the current one crosses the threshold.
+                if (_autoSplitEnabled && now - lastSplitCheck >= Stopwatch.Frequency) // ~1 Hz
+                {
+                    lastSplitCheck = now;
+                    if (TryGetSegmentSize(out long segSize) && segSize >= _autoSplitThresholdBytes)
+                    {
+                        RotateSegment();
+                    }
+                }
+
                 if (now - lastReport >= Stopwatch.Frequency / 4) // ≤ 4 Hz
                 {
                     lastReport = now;
@@ -538,6 +567,115 @@ public sealed class RecordingCoordinator : IDisposable
         Log.Information("Recording finalized: success={Success} frames={Frames} -> {Path}",
             result.Success, result.FramesWritten, result.OutputPath);
         return result;
+    }
+
+    /// <summary>Reads the live size of the segment currently being written, best-effort.</summary>
+    private bool TryGetSegmentSize(out long size)
+    {
+        size = 0;
+        try
+        {
+            if (_recordingPath.Length > 0 && File.Exists(_recordingPath))
+            {
+                size = new FileInfo(_recordingPath).Length;
+                return true;
+            }
+        }
+        catch (IOException)
+        {
+            // File momentarily locked; try again next tick.
+        }
+
+        return false;
+    }
+
+    private (string recordingPath, string finalPath) BuildSegmentPaths(int index)
+    {
+        string segFileName = FilenameBuilder.SegmentFileName(_baseFileName, index);
+        string finalPath = FilenameBuilder.BuildUniquePath(_outputDir, segFileName);
+        string recordingPath = _safeRemux
+            ? Path.Combine(_outputDir, Path.GetFileNameWithoutExtension(finalPath) + ".recording.mkv")
+            : finalPath;
+        return (recordingPath, finalPath);
+    }
+
+    /// <summary>
+    /// Closes out the current segment file (finalize + safe-remux + library-index entry, same as a normal
+    /// Stop) and immediately opens a new ffmpeg session for the next segment — capture, audio mixer, and the
+    /// state machine all keep running uninterrupted. Runs on the pacer thread; a rotation briefly pauses
+    /// frame writes but the pacer's Elapsed-driven catch-up (§3.3 CFR policy) absorbs the gap.
+    /// </summary>
+    private void RotateSegment()
+    {
+        _audioStop?.Cancel();
+        _audioThread?.Join(3000);
+        _audioThread = null;
+
+        string prevRecordingPath = _recordingPath;
+        string prevFinalPath = _finalPath;
+        RecordingResult segResult = _session?.StopAndFinalize(TimeSpan.FromSeconds(20)) ?? new RecordingResult(false, -1, "", 0);
+        _session?.Dispose();
+        _session = null;
+
+        if (segResult.Success && _safeRemux)
+        {
+            if (Remux(prevRecordingPath, prevFinalPath))
+            {
+                TryDelete(prevRecordingPath);
+            }
+            else
+            {
+                prevFinalPath = prevRecordingPath;
+            }
+        }
+
+        if (segResult.Success && prevFinalPath.Length > 0)
+        {
+            double duration = _targetFps > 0 ? (double)segResult.FramesWritten / _targetFps : 0;
+            _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
+                Path.GetFileName(prevFinalPath), _metaSource, _metaCodec, _metaContainer,
+                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now));
+        }
+
+        _segmentIndex++;
+        (_recordingPath, _finalPath) = BuildSegmentPaths(_segmentIndex);
+
+        var job = _jobTemplate! with
+        {
+            OutputPath = _recordingPath,
+            PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
+            AudioPipeName = _jobTemplate.AudioPipeName is null ? null : $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}",
+        };
+
+        _session = TryStartAnyEncoder(_encoderChain!, job, _capture!.Nv12ByteSize);
+        if (_session is null)
+        {
+            _errors.Fatal("record.split-failed", "Couldn't start the next recording segment; the recording was stopped.",
+                "The previous segments are safe on disk.");
+            System.Threading.Tasks.Task.Run(Stop); // Stop() joins the pacer thread, so never call it inline
+            return;
+        }
+
+        if (_mixer is not null && _session.AudioPipe is { } audioPipe)
+        {
+            _audioStop = new CancellationTokenSource();
+            var stopToken = _audioStop;
+            _audioThread = new Thread(() =>
+            {
+                try
+                {
+                    audioPipe.WaitForConnection();
+                    _mixer.PumpUntil(audioPipe, () => _stateMachine.Elapsed, stopToken.Token);
+                }
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                {
+                    Log.Warning(ex, "Audio pump ended");
+                }
+            }) { IsBackground = true, Name = "recmode-audio" };
+            _audioThread.Start();
+        }
+
+        Log.Information("Auto-split: started segment {Index} -> {Path}", _segmentIndex, _finalPath);
     }
 
     private List<EncoderInfo> BuildFallbackChain(EncoderInfo selected)

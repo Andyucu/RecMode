@@ -68,3 +68,13 @@ public sealed class ThreadCapConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;
 }
+
+/// <summary>Shows an auto-split size in MB as a friendly "~3.9 GB" label. One-way (the combo edits the int MB directly).</summary>
+public sealed class AutoSplitSizeConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is int mb ? $"~{mb / 1024.0:0.#} GB" : string.Empty;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}

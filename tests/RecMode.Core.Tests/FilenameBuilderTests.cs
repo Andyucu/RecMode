@@ -48,4 +48,25 @@ public class FilenameBuilderTests
         Assert.EndsWith("clip.mp4", first);
         Assert.EndsWith("clip (2).mp4", second);
     }
+
+    [Fact]
+    public void SegmentFileName_FirstSegmentIsUnchanged()
+    {
+        Assert.Equal("Recording.mp4", FilenameBuilder.SegmentFileName("Recording.mp4", 1));
+    }
+
+    [Theory]
+    [InlineData(2, "Recording_part2.mp4")]
+    [InlineData(3, "Recording_part3.mp4")]
+    [InlineData(10, "Recording_part10.mp4")]
+    public void SegmentFileName_LaterSegmentsGetPartSuffix(int index, string expected)
+    {
+        Assert.Equal(expected, FilenameBuilder.SegmentFileName("Recording.mp4", index));
+    }
+
+    [Fact]
+    public void SegmentFileName_PreservesExtensionForNonMp4Containers()
+    {
+        Assert.Equal("Clip_part2.mkv", FilenameBuilder.SegmentFileName("Clip.mkv", 2));
+    }
 }

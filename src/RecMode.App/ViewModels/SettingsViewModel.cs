@@ -36,6 +36,8 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _countdownEnabled;
     private bool _captureCursor;
     private bool _highlightClicks;
+    private bool _autoSplitEnabled;
+    private int _autoSplitSizeMb;
     private bool _startWithWindows;
     private bool _checkForUpdates;
     private int _cpuThreadCap;
@@ -64,6 +66,8 @@ public sealed class SettingsViewModel : ObservableObject
         _countdownEnabled = s.CountdownSeconds > 0;
         _captureCursor = s.CaptureCursor;
         _highlightClicks = s.HighlightClicks;
+        _autoSplitEnabled = s.AutoSplitEnabled;
+        _autoSplitSizeMb = AutoSplitSizes.Contains(s.AutoSplitSizeMb) ? s.AutoSplitSizeMb : 3900;
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
         _cpuThreadCap = ThreadCaps.Contains(s.CpuThreadCap) ? s.CpuThreadCap : 0; // clamp a value from a bigger machine
         _lowerEncoderPriority = s.BelowNormalEncoderPriority;
@@ -86,6 +90,7 @@ public sealed class SettingsViewModel : ObservableObject
     public IReadOnlyList<AudioCodec> AudioCodecs { get; } = [AudioCodec.Aac, AudioCodec.Opus, AudioCodec.Flac];
     public IReadOnlyList<int> AudioBitrates { get; } = [128, 192, 256, 320];
     public IReadOnlyList<int> ThreadCaps { get; } = PerformanceBounds.ThreadCapOptions(Environment.ProcessorCount);
+    public IReadOnlyList<int> AutoSplitSizes { get; } = [1024, 2048, 3900, 8000];
     public IReadOnlyList<EncoderEffort> Efforts { get; } =
         [EncoderEffort.Fast, EncoderEffort.Balanced, EncoderEffort.Quality];
 
@@ -237,6 +242,18 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get => _highlightClicks;
         set => Persist(ref _highlightClicks, value, v => _settings.Current.HighlightClicks = v);
+    }
+
+    public bool AutoSplitEnabled
+    {
+        get => _autoSplitEnabled;
+        set => Persist(ref _autoSplitEnabled, value, v => _settings.Current.AutoSplitEnabled = v);
+    }
+
+    public int AutoSplitSizeMb
+    {
+        get => _autoSplitSizeMb;
+        set => Persist(ref _autoSplitSizeMb, value, v => _settings.Current.AutoSplitSizeMb = v);
     }
 
     public bool CheckForUpdates

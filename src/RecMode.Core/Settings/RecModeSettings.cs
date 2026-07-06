@@ -46,6 +46,12 @@ public sealed class RecModeSettings
     /// <summary>Safe-recording: capture to MKV then auto-remux to MP4 on stop (plan §3, on by default).</summary>
     public bool SafeRecording { get; set; } = true;
 
+    /// <summary>Auto-split (plan §3.3 Phase 3 tail): roll over to a new file once a segment hits <see cref="AutoSplitSizeMb"/>.</summary>
+    public bool AutoSplitEnabled { get; set; }
+
+    /// <summary>Segment size threshold in MB. Default ~3.9 GB — safely under the FAT32 4 GB single-file limit.</summary>
+    public int AutoSplitSizeMb { get; set; } = 3900;
+
     // Audio defaults
     public bool SystemAudioEnabled { get; set; } = true;
     public bool MicrophoneEnabled { get; set; }

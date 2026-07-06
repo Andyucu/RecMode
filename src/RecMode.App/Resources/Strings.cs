@@ -81,6 +81,8 @@ public static class Strings
     public static string Settings_CursorDesc => Get(nameof(Settings_CursorDesc));
     public static string Settings_Clicks => Get(nameof(Settings_Clicks));
     public static string Settings_ClicksDesc => Get(nameof(Settings_ClicksDesc));
+    public static string Settings_AutoSplit => Get(nameof(Settings_AutoSplit));
+    public static string Settings_AutoSplitDesc => Get(nameof(Settings_AutoSplitDesc));
     public static string Settings_KeyboardShortcuts => Get(nameof(Settings_KeyboardShortcuts));
     public static string Settings_HotkeysDesc => Get(nameof(Settings_HotkeysDesc));
     public static string Hotkey_Change => Get(nameof(Hotkey_Change));
