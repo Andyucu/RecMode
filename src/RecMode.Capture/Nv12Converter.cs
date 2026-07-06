@@ -19,6 +19,12 @@ internal sealed class Nv12Converter : IDisposable
     private readonly ID3D11Texture2D _nv12Gpu;
     private readonly ID3D11Texture2D _nv12Staging;
 
+    // Allocation-free steady state (plan §3.9): WGC's frame pool cycles a small fixed set of physical
+    // textures for the capture session's lifetime, so the input view — keyed by the texture's native
+    // pointer — is created once per distinct texture and reused forever after, instead of once per frame.
+    private readonly Dictionary<IntPtr, ID3D11VideoProcessorInputView> _inputViewCache = [];
+    private readonly VideoProcessorStream[] _streamBuffer = new VideoProcessorStream[1];
+
     public int OutputWidth { get; }
     public int OutputHeight { get; }
 
@@ -85,19 +91,30 @@ internal sealed class Nv12Converter : IDisposable
     /// <summary>Converts <paramref name="src"/> to NV12 and copies tightly-packed bytes into <paramref name="dest"/>.</summary>
     public void Convert(ID3D11Texture2D src, byte[] dest)
     {
+        ID3D11VideoProcessorInputView inputView = GetOrCreateInputView(src);
+        _streamBuffer[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
+        _videoContext.VideoProcessorBlt(_processor, _outputView, 0, 1, _streamBuffer);
+
+        _context.CopyResource(_nv12Staging, _nv12Gpu);
+        ReadbackTightlyPacked(dest);
+    }
+
+    private ID3D11VideoProcessorInputView GetOrCreateInputView(ID3D11Texture2D src)
+    {
+        if (_inputViewCache.TryGetValue(src.NativePointer, out ID3D11VideoProcessorInputView? cached))
+        {
+            return cached;
+        }
+
         var inDesc = new VideoProcessorInputViewDescription
         {
             FourCC = 0,
             ViewDimension = VideoProcessorInputViewDimension.Texture2D,
             Texture2D = new Texture2DVideoProcessorInputView { MipSlice = 0, ArraySlice = 0 },
         };
-        using ID3D11VideoProcessorInputView inputView = _videoDevice.CreateVideoProcessorInputView(src, _enumerator, inDesc);
-
-        var stream = new VideoProcessorStream { Enable = true, InputSurface = inputView };
-        _videoContext.VideoProcessorBlt(_processor, _outputView, 0, 1, [stream]);
-
-        _context.CopyResource(_nv12Staging, _nv12Gpu);
-        ReadbackTightlyPacked(dest);
+        ID3D11VideoProcessorInputView view = _videoDevice.CreateVideoProcessorInputView(src, _enumerator, inDesc);
+        _inputViewCache[src.NativePointer] = view;
+        return view;
     }
 
     private unsafe void ReadbackTightlyPacked(byte[] dest)
@@ -132,6 +149,12 @@ internal sealed class Nv12Converter : IDisposable
 
     public void Dispose()
     {
+        foreach (ID3D11VideoProcessorInputView view in _inputViewCache.Values)
+        {
+            view.Dispose();
+        }
+        _inputViewCache.Clear();
+
         _outputView.Dispose();
         _nv12Staging.Dispose();
         _nv12Gpu.Dispose();

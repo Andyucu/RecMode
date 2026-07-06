@@ -8,6 +8,63 @@
 
 ---
 
+## Session 2026-07-06 — Allocation-free capture hot path (Phase 2 tail)
+
+**Goal:** the long-open Phase 2 tail item "allocation-free preview hot-path profiling" (noted since Phase 2:
+"preview is 31%/one-core — headroom to optimize"). Went looking for the actual cause via code inspection
+rather than a profiler tool.
+
+### What was found
+Both `Nv12Converter.Convert()` (`src/RecMode.Capture/Nv12Converter.cs` — the **recording** hot path, called up
+to 60×/s from `WgcCaptureEngine.OnFrameArrived`) and `BgraScaler.Scale()` (`BgraScaler.cs` — the **preview**
+hot path, ~30×/s) had the identical pattern:
+```csharp
+using ID3D11VideoProcessorInputView inputView = _videoDevice.CreateVideoProcessorInputView(src, _enumerator, inDesc);
+var stream = new VideoProcessorStream { Enable = true, InputSurface = inputView };
+_videoContext.VideoProcessorBlt(_processor, _outputView, 0, 1, [stream]);
+```
+`CreateVideoProcessorInputView` allocates a new managed COM-wrapper object every call (Vortice wraps every
+COM interface pointer in a new heap object), immediately disposed (`using`) after `VideoProcessorBlt` — real
+per-frame GC garbage, not just native/COM overhead. The `[stream]` collection-expression also heap-allocates
+a fresh one-element array every call. This is exactly the class of thing plan §3.9 calls a binding-rule
+violation ("allocation-free hot paths... verified with an allocation profiler").
+
+### The fix
+`Direct3D11CaptureFramePool.CreateFreeThreaded(..., 2, item.Size)` — both engines use a **2-buffer** frame
+pool, so only 2 distinct physical textures ever cycle through for a session's lifetime. D3D11 views hold
+their own internal reference to the resource they're created from (independent of whatever managed wrapper
+was used to create them), so caching the view by the texture's native pointer is safe even though the
+transient `ID3D11Texture2D` wrapper is disposed every frame:
+```csharp
+private readonly Dictionary<IntPtr, ID3D11VideoProcessorInputView> _inputViewCache = [];
+private readonly VideoProcessorStream[] _streamBuffer = new VideoProcessorStream[1];
+...
+ID3D11VideoProcessorInputView inputView = GetOrCreateInputView(src); // cache hit after the first ~2 frames
+_streamBuffer[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
+_videoContext.VideoProcessorBlt(_processor, _outputView, 0, 1, _streamBuffer);
+```
+Cached views are disposed in `Dispose()`. `src.NativePointer` (Vortice's `ComObject` base) is the stable
+identity key — confirmed compiling and correct (already used elsewhere in `CaptureInterop.cs` for the DXGI
+device interop). After the first couple of frames, steady state has **zero** further calls to
+`CreateVideoProcessorInputView` and **zero** further array allocations, in both the recording and preview
+paths.
+
+### Verification
+No external allocation profiler run (would need temporary invasive instrumentation in the hot path — traded
+off against risk for a fix whose correctness is provable by code inspection: the exact allocating calls are
+gone, replaced by a cache lookup and a preallocated array). Instead, full functional + visual verification:
+build clean, 140 tests pass, `--selftest-record` produced a valid 360-frame/6.0s H.264+AAC MP4 (ffprobe-
+confirmed), a frame extracted from mid-recording showed clean uncorrupted desktop content, and a live-preview
+screenshot likewise showed clean rendering — proving the view-caching change didn't introduce any GPU-state
+corruption (a real risk category for this kind of change, checked deliberately, not assumed away).
+
+### Notes for next time
+Remaining Phase 2 tail: all-displays capture (DXGI Desktop Duplication for multi-monitor — needs actual
+multi-monitor hardware to verify the combining behavior, though the DXGI Desktop Duplication engine itself
+could be built and unit/single-monitor-tested here), HDR→SDR tone-map (needs an HDR display to verify).
+
+---
+
 ## Session 2026-07-06 — Accessibility: LabeledBy + distinguishing button names (Phase 10)
 
 **Goal:** the CLAUDE.md Phase 10 remaining line named "LabeledBy/tab-order, screen-reader pass" as unstarted
