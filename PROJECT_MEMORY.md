@@ -8,6 +8,60 @@
 
 ---
 
+## Session 2026-07-06 — Final hardening pass (Phase 10)
+
+**Goal:** after the per-app-audio re-investigation came up inconclusive, the user asked for a general
+robustness review — error handling, resource cleanup, crash paths — rather than a specific checklist item.
+Scoped it as a manual audit of `RecordingCoordinator` and its disposable dependencies (the highest-stakes
+code in the app: it owns GPU textures, ffmpeg subprocesses, named pipes, WASAPI clients, and multiple
+background threads), rather than a mechanical sweep of every file.
+
+### The real find: PaceLoop's exception handling had a gap that could crash the whole app
+`RecordingCoordinator.PaceLoop` (the pacer thread — reads the latest captured frame ~60 times/sec and writes
+it to ffmpeg) only caught `EncoderPipeBrokenException` around the `WriteFrame` call; everything else in the
+per-iteration body (black-frame detection, health checks, `RotateSegment`/`AttemptDowngrade`, the disk-space
+check) had no exception coverage. This method runs on a plain `Thread` (`IsBackground = true`), not a `Task`
+— and that distinction matters: an exception unhandled on a `Task` is non-fatal by default since .NET 4.5 (the
+app's own `TaskScheduler.UnobservedTaskException` handler just logs it), but an exception unhandled on a
+plain `Thread` is a genuinely unhandled exception from the CLR's point of view, and **terminates the whole
+process immediately** — `IsBackground` only controls whether the thread keeps the process alive at normal
+shutdown, it does nothing for unhandled-exception behavior. So anything unexpected happening deep in that
+loop — a race with capture/session teardown on `Stop()`, a null-ref from an edge case in the health/downgrade
+logic, whatever — wouldn't just end the recording, it would crash the entire app while recording. Fixed by
+moving the `EncoderPipeBrokenException` catch to wrap the whole loop and adding a general `catch (Exception)`
+alongside it, both routing through a generalized `HandleFatalPipeBreak(Exception, message, suggestion)` that
+does the same graceful stop→finalize→report-failure teardown either way. The audio-pump thread had the exact
+same shape of bug (`catch (Exception ex) when (ex is IOException or ObjectDisposedException)` — anything else
+unhandled there crashes the app too) — widened to a plain `catch (Exception)` with a comment explaining why
+(losing audio mid-recording is a degraded outcome, not something worth ending the whole app over; the video
+pacer stays the source of truth for stopping).
+
+### Two smaller resource leaks found in the same file
+`SafeTeardown()` (the cleanup path when `Start()` itself throws partway through) was missing two things
+present in the normal `Finalize()` path: it never stopped `_webcamCapture` (a live camera device + WinRT
+`MediaCapture`/COM resources leaking if the webcam activated but something later in `Start()` failed) and
+never disposed `_audioStop` (a `CancellationTokenSource`, plus it wasn't nulled out either, so a *second*
+failed `Start()` would silently overwrite and orphan the first one without ever disposing it). Both are now
+handled the same way the success path already does.
+
+### Verification
+Existing self-tests exercise exactly the code paths touched by the refactor, so re-ran three of them after
+the change instead of writing new ones: `--selftest-record` (plain path, 360/360 frames), `--selftest-pause`
+(the `Paused` branch inside the same loop, 360 frames — confirms the loop restructuring didn't change the
+pause/resume behavior), `--selftest-downgrade` (forces `RotateSegment`/`AttemptDowngrade`, which are exactly
+the code now covered by the new outer catch — 2 segments, matching prior behavior). All three passed with the
+same frame/segment counts as before the change, which is the right signal: the refactor changed *only* what
+happens when something throws, not the normal control flow. 154 tests pass, zero warnings.
+
+**Scope note:** this was a manual audit of the highest-stakes file, not an exhaustive line-by-line pass over
+every subsystem — `RecMode.Capture`'s GPU-resource `Dispose()` implementations (`Nv12Converter`,
+`BgraScaler`, `WebcamOverlayCompositor`) and the various native-hook services (`GlobalMouseHook`,
+`GlobalHotkeys`) were spot-checked and looked correct (idempotent install/uninstall, no double-dispose
+issues), but weren't audited as deeply as `RecordingCoordinator`. Worth another pass later if time allows,
+but the two fixes above were the highest-value findings for the time spent.
+
+---
+
 ## Session 2026-07-06 — Per-app audio: re-investigated with web search now working, found the likely real cause, still inconclusive (no code changes)
 
 **Context:** the disabled per-app audio feature (see the 2026-07-06 "built, found broken, disabled" session

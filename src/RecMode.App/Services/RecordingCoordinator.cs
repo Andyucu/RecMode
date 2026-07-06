@@ -341,8 +341,12 @@ public sealed class RecordingCoordinator : IDisposable
                         audioPipe.WaitForConnection();
                         _mixer.PumpUntil(audioPipe, () => _stateMachine.Elapsed, _audioStop.Token);
                     }
-                    catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                    catch (Exception ex)
                     {
+                        // Runs on a dedicated background Thread: anything unhandled here is a genuinely
+                        // unhandled thread exception, which terminates the whole process (unlike Task
+                        // exceptions). The video pacer is the source of truth for stopping the recording;
+                        // losing audio mid-recording is degraded, not fatal, so just log and stop pumping.
                         Log.Warning(ex, "Audio pump ended");
                     }
                 }) { IsBackground = true, Name = "recmode-audio" };
@@ -451,15 +455,7 @@ public sealed class RecordingCoordinator : IDisposable
                     continue; // no first frame yet
                 }
 
-                try
-                {
-                    _session!.WriteFrame(frame, frame.Length);
-                }
-                catch (EncoderPipeBrokenException ex)
-                {
-                    HandleFatalPipeBreak(ex);
-                    return;
-                }
+                _session!.WriteFrame(frame, frame.Length);
                 framesWritten++;
 
                 long now = Stopwatch.GetTimestamp();
@@ -561,17 +557,31 @@ public sealed class RecordingCoordinator : IDisposable
                 }
             }
         }
+        catch (EncoderPipeBrokenException ex)
+        {
+            HandleFatalPipeBreak(ex, "The encoder stopped unexpectedly; the recording was ended.",
+                "A partial file may be recoverable if you recorded to MKV.");
+        }
+        catch (Exception ex)
+        {
+            // This loop runs on a dedicated background Thread (not a Task) — an exception that escapes it
+            // would otherwise be a genuinely unhandled thread exception, which terminates the whole process
+            // immediately (unlike Task exceptions, which are non-fatal by default). Treat anything
+            // unexpected here (a race with capture/session teardown, etc.) the same as a pipe break: end
+            // the recording gracefully instead of crashing the app.
+            HandleFatalPipeBreak(ex, "The recording stopped unexpectedly.",
+                "See the log for details. A partial file may be recoverable if you recorded to MKV.");
+        }
         finally
         {
             _ = timeEndPeriod(1);
         }
     }
 
-    private void HandleFatalPipeBreak(EncoderPipeBrokenException ex)
+    private void HandleFatalPipeBreak(Exception ex, string message, string suggestion)
     {
-        Log.Error(ex, "Encoder pipe broke mid-recording. ffmpeg stderr:\n{Stderr}", _session?.StandardError);
-        _errors.Fatal("record.encoder-died", "The encoder stopped unexpectedly; the recording was ended.",
-            "A partial file may be recoverable if you recorded to MKV.", ex);
+        Log.Error(ex, "Recording pacer loop failed. ffmpeg stderr:\n{Stderr}", _session?.StandardError);
+        _errors.Fatal("record.encoder-died", message, suggestion, ex);
 
         // Drive the machine to a clean Idle and report whatever the session managed to finalize.
         try
@@ -591,7 +601,7 @@ public sealed class RecordingCoordinator : IDisposable
         }
         catch (Exception teardownEx)
         {
-            Log.Error(teardownEx, "Teardown after pipe break failed");
+            Log.Error(teardownEx, "Teardown after pacer loop failure failed");
         }
     }
 
@@ -986,11 +996,15 @@ public sealed class RecordingCoordinator : IDisposable
         try { _audioThread?.Join(1000); } catch (Exception) { }
         try { _session?.Dispose(); } catch (Exception) { }
         try { _capture?.Dispose(); } catch (Exception) { }
+        try { _webcamCapture?.Stop(); } catch (Exception) { }
         try { _mixer?.Dispose(); } catch (Exception) { }
+        try { _audioStop?.Dispose(); } catch (Exception) { }
         _session = null;
         _capture = null;
+        _webcamCapture = null;
         _mixer = null;
         _audioThread = null;
+        _audioStop = null;
     }
 
     private static string ContainerExtension(MediaContainer c) => c switch
