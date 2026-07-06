@@ -8,6 +8,22 @@
 
 ---
 
+## Session 2026-07-06 — Release-readiness portable re-acceptance (Phase 10)
+
+**Goal:** Confirm the published R2R self-contained build still passes the portable acceptance with all post-MVP features.
+
+### What was done
+- `publish-portable.ps1 -Version 0.9.0` → `artifacts\RecMode-0.9.0-portable-win-x64\` (+ zip). Relocated outside
+  the repo; ran `--selftest-record` (360-frame MP4, 627 KB) + `--selftest-screenshot` (PNG). `%AppData%\RecMode`
+  and `%Videos%\RecMode` **absent before and after** → still fully folder-contained. No publish/R2R regressions.
+
+### Gotcha (tooling)
+- **Run `publish-portable.ps1` with `pwsh` (PowerShell 7), not Windows PowerShell 5.1.** Invoking it via
+  bash→`powershell` (5.1) mis-decodes the UTF-8 em-dashes in the script's strings → bogus "missing string
+  terminator / missing }" parse errors. The `PowerShell` tool (pwsh 7) runs it fine.
+
+---
+
 ## Session 2026-07-06 — Accessibility pass: accessible names (Phase 10)
 
 **Goal:** Start Phase 10 (toward 1.0) with a11y — give icon-only/nameless controls accessible names.
