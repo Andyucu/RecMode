@@ -65,6 +65,12 @@ public sealed class RecordingCoordinator : IDisposable
     private List<EncoderInfo>? _encoderChain;
     private FfmpegJob? _jobTemplate;
 
+    // Mid-stream hw→sw Degraded fallback (§3.6 / Phase 3 tail): the encoder actually in use for the current
+    // segment, and whether a downgrade has already been attempted this recording (once per recording).
+    private EncoderInfo? _activeEncoder;
+    private bool _downgradeAttempted;
+    private volatile bool _testForceDowngrade; // test-only seam for --selftest-downgrade; see AttemptDowngrade
+
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
         IFfmpegLocator ffmpeg,
@@ -204,6 +210,8 @@ public sealed class RecordingCoordinator : IDisposable
             _segmentIndex = 1;
             _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
             _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
+            _downgradeAttempted = false;
+            _testForceDowngrade = false;
 
             // Snapshot metadata for the library index (written on successful finalize).
             _metaSource = sourceLabel;
@@ -440,12 +448,28 @@ public sealed class RecordingCoordinator : IDisposable
                                 "The encoder can't keep up — the recording may run slow.",
                                 "Try a lower resolution or frame rate, or a hardware encoder.");
                         }
+
+                        // Mid-stream hw→sw fallback: still behind well past the Degraded threshold → switch
+                        // the hardware encoder out for a software one on a fresh segment (once per recording).
+                        double behindSeconds = (now - behindSince) / (double)Stopwatch.Frequency;
+                        if (RecordingHealth.ShouldDowngradeToSoftware(behindSeconds, _activeEncoder?.IsHardware ?? false))
+                        {
+                            AttemptDowngrade();
+                            behindSince = 0; // fresh grace period for the new encoder
+                        }
                     }
                 }
                 else if (RecordingHealth.FramesBehind(elapsedS, framesWritten, fps) <= fps / 2)
                 {
                     behindSince = 0;
                     _encoderBehind = false;
+                }
+
+                // Test-only seam (--selftest-downgrade): force the same rotation the health check would trigger.
+                if (_testForceDowngrade)
+                {
+                    _testForceDowngrade = false;
+                    AttemptDowngrade();
                 }
 
                 // Mid-recording disk guard (§3.6): stop gracefully before a full disk corrupts the finish.
@@ -605,7 +629,12 @@ public sealed class RecordingCoordinator : IDisposable
     /// state machine all keep running uninterrupted. Runs on the pacer thread; a rotation briefly pauses
     /// frame writes but the pacer's Elapsed-driven catch-up (§3.3 CFR policy) absorbs the gap.
     /// </summary>
-    private void RotateSegment()
+    /// <param name="forcedChain">
+    /// When set, the next segment tries only these encoders instead of the original fallback chain — used by
+    /// the mid-stream hw→sw Degraded downgrade to force a software encoder. The forced chain also becomes the
+    /// chain for any later rotation (a later auto-split split keeps using the downgraded encoder).
+    /// </param>
+    private void RotateSegment(List<EncoderInfo>? forcedChain = null)
     {
         _audioStop?.Cancel();
         _audioThread?.Join(3000);
@@ -647,13 +676,19 @@ public sealed class RecordingCoordinator : IDisposable
             AudioPipeName = _jobTemplate.AudioPipeName is null ? null : $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}",
         };
 
-        _session = TryStartAnyEncoder(_encoderChain!, job, _capture!.Nv12ByteSize);
+        List<EncoderInfo> chain = forcedChain ?? _encoderChain!;
+        _session = TryStartAnyEncoder(chain, job, _capture!.Nv12ByteSize);
         if (_session is null)
         {
             _errors.Fatal("record.split-failed", "Couldn't start the next recording segment; the recording was stopped.",
                 "The previous segments are safe on disk.");
             System.Threading.Tasks.Task.Run(Stop); // Stop() joins the pacer thread, so never call it inline
             return;
+        }
+
+        if (forcedChain is not null)
+        {
+            _encoderChain = forcedChain; // keep any later rotation (e.g. auto-split) on the downgraded encoder
         }
 
         if (_mixer is not null && _session.AudioPipe is { } audioPipe)
@@ -675,8 +710,62 @@ public sealed class RecordingCoordinator : IDisposable
             _audioThread.Start();
         }
 
-        Log.Information("Auto-split: started segment {Index} -> {Path}", _segmentIndex, _finalPath);
+        Log.Information("Segment rotation: started segment {Index} (encoder={Enc}) -> {Path}",
+            _segmentIndex, _activeEncoder?.FfmpegId, _finalPath);
     }
+
+    /// <summary>Builds a software-only fallback chain for the same codec (last resort: libx264), for the hw→sw downgrade.</summary>
+    private List<EncoderInfo> BuildSoftwareFallbackChain(EncoderInfo current)
+    {
+        IReadOnlyList<EncoderInfo> available = _encoderProbe.GetAvailableEncoders();
+        var chain = new List<EncoderInfo>();
+
+        void Add(EncoderInfo? e)
+        {
+            if (e is not null && !chain.Exists(c => c.FfmpegId == e.FfmpegId))
+            {
+                chain.Add(e);
+            }
+        }
+
+        foreach (EncoderInfo e in available.Where(x => x.Codec == current.Codec && !x.IsHardware))
+        {
+            Add(e);
+        }
+        Add(available.FirstOrDefault(x => x.FfmpegId == "libx264")); // last-resort software
+
+        return chain;
+    }
+
+    /// <summary>
+    /// Mid-stream hw→sw Degraded fallback (§3.6): rotates to a new segment encoded in software, once per
+    /// recording. Called from the pacer thread only — either by the sustained-behind health check or the
+    /// <see cref="_testForceDowngrade"/> test seam (<c>--selftest-downgrade</c>), which exercises the exact
+    /// same rotation path without needing a genuinely overloaded encoder.
+    /// </summary>
+    private void AttemptDowngrade()
+    {
+        if (_downgradeAttempted || _activeEncoder is not { IsHardware: true } activeEncoder)
+        {
+            return;
+        }
+
+        _downgradeAttempted = true;
+        List<EncoderInfo> swChain = BuildSoftwareFallbackChain(activeEncoder);
+        if (swChain.Count == 0)
+        {
+            return; // no software encoder available for this codec — nothing to fall back to
+        }
+
+        _errors.Warn("record.encoder-downgrade",
+            "Switching to software encoding — the hardware encoder couldn't keep up.",
+            "This uses more CPU but should stay in sync with real time.");
+        RotateSegment(swChain);
+    }
+
+    /// <summary>Test-only seam (mirrors the temporary --selftest-* hooks): forces the hw→sw downgrade path
+    /// deterministically instead of waiting for a genuine sustained encoder stall.</summary>
+    internal void TestForceDowngrade() => _testForceDowngrade = true;
 
     private List<EncoderInfo> BuildFallbackChain(EncoderInfo selected)
     {
@@ -718,6 +807,7 @@ public sealed class RecordingCoordinator : IDisposable
                     _errors.Warn("record.encoder-fallback",
                         $"Using {enc.DisplayName} — the selected encoder wouldn't start.");
                 }
+                _activeEncoder = enc;
                 return session;
             }
             catch (Exception ex) when (ex is EncoderStartException or InvalidOperationException)

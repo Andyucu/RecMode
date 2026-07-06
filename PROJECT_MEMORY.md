@@ -8,6 +8,44 @@
 
 ---
 
+## Session 2026-07-06 — Mid-stream hw→sw Degraded fallback (Phase 3 §3.6 tail, closes Phase 3)
+
+**Goal:** The last real Phase 3 tail — when a hardware encoder can't keep up, actually recover instead of just
+warning. Reuses the segment-rotation machinery just built for auto-split.
+
+### Design
+- `RecordingHealth.ShouldDowngradeToSoftware(behindDurationSeconds, encoderIsHardware)`: pure, `> 8s` behind
+  (past the existing 3s Degraded threshold) AND hardware. Software encoders never trigger it.
+- `RecordingCoordinator._activeEncoder` — now set inside `TryStartAnyEncoder` on success (previously nothing
+  tracked which encoder in the chain actually started).
+- `RotateSegment` generalized: `RotateSegment(List<EncoderInfo>? forcedChain = null)`. Auto-split calls it with
+  no args (existing behavior, unchanged); the downgrade path passes a software-only chain. If a forced chain is
+  used, it becomes `_encoderChain` going forward too, so a *later* auto-split rotation on the same recording
+  keeps using the downgraded encoder rather than reverting to hardware.
+- `BuildSoftwareFallbackChain(current)`: same-codec software encoders, then libx264 last resort (mirrors
+  `BuildFallbackChain`'s style).
+- `AttemptDowngrade()`: guards on `_downgradeAttempted` (once per recording) and `_activeEncoder.IsHardware`;
+  warns (`record.encoder-downgrade`) then calls `RotateSegment(softwareChain)`.
+- Wired into `PaceLoop`'s existing behind-realtime branch (nested inside the `now - behindSince > 3s` check
+  that already sets Degraded): compute `behindSeconds` and call `AttemptDowngrade()` if
+  `ShouldDowngradeToSoftware` is true, resetting `behindSince` for a fresh grace period on the new encoder.
+
+### Verification — the honest version
+- This dev box's AMD hardware encoder is fast enough (per the Phase 0.5 gate: 620 MB/s / 18.9% one core even at
+  native 5120×1440) that it doesn't realistically fall behind at any resolution tried, so the *organic* trigger
+  path can't be exercised live here — same category of gap as the NVENC/QSV vendor re-checks.
+- Instead: a test-only seam, `internal RecordingCoordinator.TestForceDowngrade()`, sets a `volatile` flag the
+  pacer thread checks each loop and calls the *exact same* `AttemptDowngrade()` the health check would — only
+  the trigger differs, not the mechanism under test. A temporary `--selftest-downgrade` hook (mirrors the
+  `--selftest-split` pattern) records 2s, forces the downgrade, records 4s more, stops.
+- Result: segment 1 (`h264_amf`, 2.0s) → **log-confirmed** `Segment rotation: started segment 2
+  (encoder=libx264)` → segment 2 (`libx264`, 6.0s). Both ffprobe-clean h264/aac MP4s at the correct resolution.
+  3 new `RecordingHealth` tests; 124 tests total, 0 warnings.
+- **Closes Phase 3** except the production decision-gate re-check (needs NVENC/QSV hardware, already tracked
+  as a standing vendor-gate item).
+
+---
+
 ## Session 2026-07-06 — Auto-split large recordings (Phase 3 §3.3 tail)
 
 **Goal:** Close the last open Phase 3 tail — segment rollover so a long recording doesn't grow one unbounded

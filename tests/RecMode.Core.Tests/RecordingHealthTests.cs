@@ -48,4 +48,23 @@ public class RecordingHealthTests
         Assert.False(RecordingHealth.IsDiskCritical(2L * 1024 * 1024 * 1024)); // 2 GB free
         Assert.False(RecordingHealth.IsDiskCritical(-1));                       // unknown reading ignored
     }
+
+    [Fact]
+    public void Downgrade_SoftwareEncoderNeverDowngrades()
+    {
+        // No further fallback exists once already on software — stays healthy-but-slow instead.
+        Assert.False(RecordingHealth.ShouldDowngradeToSoftware(100, encoderIsHardware: false));
+    }
+
+    [Fact]
+    public void Downgrade_HardwareBehindPastThreshold_Downgrades()
+    {
+        Assert.True(RecordingHealth.ShouldDowngradeToSoftware(RecordingHealth.DowngradeAfterSeconds + 0.1, encoderIsHardware: true));
+    }
+
+    [Fact]
+    public void Downgrade_HardwareNotYetPastThreshold_NoDowngrade()
+    {
+        Assert.False(RecordingHealth.ShouldDowngradeToSoftware(RecordingHealth.DowngradeAfterSeconds - 0.1, encoderIsHardware: true));
+    }
 }

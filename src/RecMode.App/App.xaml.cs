@@ -292,7 +292,7 @@ public partial class App : Application
         coordinator.Finished += result =>
         {
             string extra = "";
-            if (mode == "split")
+            if (mode is "split" or "downgrade")
             {
                 string dir = System.IO.Path.GetDirectoryName(result.OutputPath) ?? paths.RecordingsDirectory;
                 string stem = System.IO.Path.GetFileNameWithoutExtension(result.OutputPath).Split("_part")[0];
@@ -338,6 +338,14 @@ public partial class App : Application
                 else if (mode == "split")
                 {
                     System.Threading.Thread.Sleep(280000); // static-desktop content compresses hard; needs real time to cross the 100 MB floor
+                }
+                else if (mode == "downgrade")
+                {
+                    // Force the mid-stream hw→sw fallback deterministically (a real overload can't be reliably
+                    // reproduced on this hardware) — same rotation path the health check would trigger.
+                    System.Threading.Thread.Sleep(2000);
+                    coordinator.TestForceDowngrade();
+                    System.Threading.Thread.Sleep(4000);
                 }
                 else
                 {

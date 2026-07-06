@@ -21,4 +21,15 @@ public static class RecordingHealth
 
     /// <summary>True when free space has dropped to the critical threshold (ignores an unknown/negative reading).</summary>
     public static bool IsDiskCritical(long freeBytes) => freeBytes >= 0 && freeBytes < DiskCriticalBytes;
+
+    /// <summary>How long (beyond the initial Degraded threshold) a hardware encoder must stay behind before falling back to software.</summary>
+    public const double DowngradeAfterSeconds = 8.0;
+
+    /// <summary>
+    /// True once a <em>hardware</em> encoder has been continuously behind real time long enough that switching
+    /// to software encoding (which trades CPU for keeping up) is worth the mid-recording segment rotation.
+    /// Software encoders never trigger this — there's nowhere further to fall back to.
+    /// </summary>
+    public static bool ShouldDowngradeToSoftware(double behindDurationSeconds, bool encoderIsHardware)
+        => encoderIsHardware && behindDurationSeconds > DowngradeAfterSeconds;
 }
