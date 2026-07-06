@@ -100,6 +100,13 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         // --- Pre-flight (§3.6) ---
+        if (!MediaCompatibility.IsVideoCompatible(encoder.Codec, container))
+        {
+            _errors.Block("record.codec-container", MediaCompatibility.IncompatibilityReason(encoder.Codec, container),
+                "Pick a compatible container or encoder in Settings.");
+            return false;
+        }
+
         FfmpegResolution ff = _ffmpeg.Resolve();
         if (!ff.IsAvailable || ff.FfmpegPath is null)
         {
@@ -164,7 +171,7 @@ public sealed class RecordingCoordinator : IDisposable
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
 
             // Safe recording (§3): capture to MKV (crash-safe) then remux to MP4 (-c copy) on stop.
-            _safeRemux = _settings.Current.SafeRecording && container == MediaContainer.Mp4;
+            _safeRemux = _settings.Current.SafeRecording && container is MediaContainer.Mp4 or MediaContainer.Mov;
             MediaContainer actualContainer = _safeRemux ? MediaContainer.Mkv : container;
 
             string sourceLabel = target.Kind switch

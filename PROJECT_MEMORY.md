@@ -8,6 +8,31 @@
 
 ---
 
+## Session 2026-07-06 — Full container matrix: MOV + WebM (Phase 7)
+
+**Goal:** Complete the codec/container matrix — add MOV + WebM output with validation.
+
+### What was built
+- **`MediaCompatibility`** (Core, pure/tested): `IsVideoCompatible(codec, container)` — WebM = AV1 only, else
+  true (MP4/MOV/MKV take H.264/HEVC/AV1); `IncompatibilityReason` for the pre-flight message. **8 tests.**
+- **RecordViewModel**: `Formats = [Mp4, Mkv, Mov, WebM]`. **Bug fix:** `_selectedFormat` init was a
+  `Mkv ? Mkv : Mp4` ternary → MOV/WebM from settings silently became MP4; now
+  `Formats.Contains(Container) ? Container : Mp4`.
+- **Coordinator**: pre-flight `MediaCompatibility` check → `_errors.Block` + return false when incompatible.
+  Safe-recording now `container is Mp4 or Mov` (remux MKV→MOV; the shared `Remuxer` is extension-driven so
+  `-movflags +faststart` + `.mov` target just works). `ContainerExtension` already had mov/webm.
+
+### Verification (E2E, ffprobe)
+- **MOV**: h264 + aac, valid mov (safe-recording remux). **WebM**: **av1 (av1_amf, 5120×1440)** + opus, direct
+  (safe=false). **H264+WebM → blocked** (no recording, no `.recording.mkv`). 112 tests, 0 warnings.
+
+### Notes
+- **av1_amf works on this AMD RX 7900 XTX** (AV1 *hardware* encode) and does full 5120×1440 — no 4096 width cap
+  (h264_amf caps at 4096; av1/hevc don't). Good WebM/AV1 path on AMD.
+- Remaining Phase 7: per-app audio (process-loopback WASAPI), webcam source + overlay — both interop/hardware-heavy.
+
+---
+
 ## Session 2026-07-05 — Draw-on-screen annotation (Phase 8 complete)
 
 **Goal:** The last Phase 8 item — freehand draw-over-screen, captured in the recording.

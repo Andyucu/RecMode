@@ -79,9 +79,9 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
                 settings.Current.RegionWidth, settings.Current.RegionHeight);
         }
 
-        Formats = [MediaContainer.Mp4, MediaContainer.Mkv];
+        Formats = [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
         FrameRates = [30, 60, 120];
-        _selectedFormat = settings.Current.Container is MediaContainer.Mkv ? MediaContainer.Mkv : MediaContainer.Mp4;
+        _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mp4;
         _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 60;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
 
