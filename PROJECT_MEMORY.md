@@ -8,6 +8,39 @@
 
 ---
 
+## Session 2026-07-06 — Caution-coloured audio meters above 82% (Phase 4 tail)
+
+**Goal:** last easily-verifiable Phase 4 tail. Design (`RecMode.dc.html` `meterTick()`) has an explicit rule:
+`meterColor: a.level > 82 ? "var(--fill-system-caution)" : "var(--fill-accent-default)"`. Not implemented yet.
+
+### What was built
+- `--fill-system-caution` token (colors.css: `#9d5d00` light / `#fce100` dark) ported as `CautionColor`/
+  `CautionBrush` in both `Palette.Light.xaml`/`Palette.Dark.xaml`, alongside the existing `CriticalColor` pair
+  (same porting pattern).
+- `MeterCautionConverter` (Themes) — bound directly to `SystemMeter`/`MicMeter` (0..1 RMS) as the ProgressBar's
+  `Foreground`; `IsCaution(level) => level > 0.82` is a public static so the threshold itself is inspectable/
+  reusable. Resolves `CautionBrush` or `AccentBrush` via `Application.Current.TryFindResource` **at
+  conversion time** (not cached), so it naturally tracks theme switches since it re-runs on every ~30 Hz meter
+  tick anyway.
+- Wired on both meter `ProgressBar`s in `RecordView.xaml` (was a static `DynamicResource AccentBrush`).
+
+### Verification
+No unit test (this converter needs a live `Application.Current`/WPF resource dictionary — same as the other
+converters in this file, none of which have unit tests either; the codebase's convention is unit tests for
+Core/pure logic, visual/UIA checks for WPF glue). Instead, **live-verified against the running app**:
+generated a synthetic 220 Hz square wave WAV at ~95% full-scale amplitude (`System.Media.SoundPlayer`), played
+it into the default output device with System audio volume at 100%, and used `PrintWindow` to capture several
+frames during playback — the System audio meter bar turned amber consistently across frames, reverting to the
+accent blue once the tone stopped. Confirms the WASAPI-loopback level genuinely drives the converter (not just
+that it compiles). 140 tests still pass, 0 warnings (no new tests — see above).
+
+### Notes for next time
+Remaining Phase 4 tails: mic verified on real hardware (this environment has no live mic signal), and the
+rigorous ±40 ms soak beep+flash sync test (the quick `--selftest-av` check already showed ~1 ms alignment,
+well inside tolerance — the soak version is a longer-duration nice-to-have, not blocked by hardware).
+
+---
+
 ## Session 2026-07-06 — Recording profiles (plan §7 backlog #4, pulled forward at user request)
 
 **Goal:** user explicitly asked for a recording-profiles selector, noting it might already be in the plan. It

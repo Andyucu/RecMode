@@ -211,7 +211,8 @@
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  AutomationProperties.Name="System audio level"
-                                 Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 Foreground="{Binding SystemMeter, Converter={StaticResource MeterCaution}}"
+                                 Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
                     <Grid Margin="0,0,0,14" IsEnabled="{Binding SystemAudioEnabled}">
                         <Grid.ColumnDefinitions>
@@ -232,7 +233,8 @@
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  AutomationProperties.Name="Microphone level"
-                                 Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 Foreground="{Binding MicMeter, Converter={StaticResource MeterCaution}}"
+                                 Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
                     <Grid IsEnabled="{Binding MicEnabled}">
                         <Grid.ColumnDefinitions>

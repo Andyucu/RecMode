@@ -17,6 +17,7 @@
     <conv:EnumDisplayConverter x:Key="EnumDisplay" />
     <conv:ThreadCapConverter x:Key="ThreadCap" />
     <conv:AutoSplitSizeConverter x:Key="AutoSplitSize" />
+    <conv:MeterCautionConverter x:Key="MeterCaution" />
     <conv:EnumToVisibilityConverter x:Key="EnumToVisibility" />
 
     <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->

@@ -21,6 +21,7 @@
     <Color x:Key="SubtlePressedColor">#06000000</Color>
 
     <Color x:Key="CriticalColor">#C42B1C</Color>
+    <Color x:Key="CautionColor">#9D5D00</Color>
 
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
     <SolidColorBrush x:Key="SurfaceBaseBrush" Color="{StaticResource SurfaceBaseColor}" />
@@ -38,4 +39,5 @@
     <SolidColorBrush x:Key="SubtleHoverBrush" Color="{StaticResource SubtleHoverColor}" />
     <SolidColorBrush x:Key="SubtlePressedBrush" Color="{StaticResource SubtlePressedColor}" />
     <SolidColorBrush x:Key="CriticalBrush" Color="{StaticResource CriticalColor}" />
+    <SolidColorBrush x:Key="CautionBrush" Color="{StaticResource CautionColor}" />
 </ResourceDictionary>

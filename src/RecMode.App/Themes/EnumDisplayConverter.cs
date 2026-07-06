@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
+using System.Windows.Media;
 
 namespace RecMode.App.Themes;
 
@@ -74,6 +76,28 @@ public sealed class AutoSplitSizeConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         => value is int mb ? $"~{mb / 1024.0:0.#} GB" : string.Empty;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
+
+/// <summary>
+/// Audio meter fill colour: the design's caution rule (RecMode.dc.html meterTick) — turn the bar
+/// caution-coloured once the level exceeds 82%, accent-coloured otherwise. Bound directly to the 0..1 RMS
+/// meter value so it re-evaluates on every meter tick (naturally theme-safe: it re-resolves the current
+/// theme's brush via <c>Application.Current</c> each time rather than caching a stale reference).
+/// </summary>
+public sealed class MeterCautionConverter : IValueConverter
+{
+    public const double CautionThreshold = 0.82;
+
+    public static bool IsCaution(double level) => level > CautionThreshold;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        string key = value is double level && IsCaution(level) ? "CautionBrush" : "AccentBrush";
+        return Application.Current?.TryFindResource(key) as Brush ?? Brushes.Transparent;
+    }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;
