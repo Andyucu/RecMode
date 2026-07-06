@@ -33,7 +33,7 @@ public sealed class AudioMixer : IAudioMixer
     public AudioLevel SystemLevel => _system?.Level ?? AudioLevel.Silent;
     public AudioLevel MicLevel => _mic?.Level ?? AudioLevel.Silent;
 
-    public void Start(bool captureSystem, bool captureMic)
+    public void Start(bool captureSystem, bool captureMic, int? targetProcessId = null)
     {
         if (IsRunning)
         {
@@ -42,9 +42,20 @@ public sealed class AudioMixer : IAudioMixer
 
         if (captureSystem)
         {
-            var loopback = new WasapiLoopbackCapture();
-            _system = new MixSource(loopback);
-            _system.Start();
+            try
+            {
+                IWaveIn loopback = targetProcessId is int pid
+                    ? new ProcessLoopback.ProcessLoopbackCapture(pid)
+                    : new WasapiLoopbackCapture();
+                _system = new MixSource(loopback);
+                _system.Start();
+            }
+            catch (Exception) when (targetProcessId is not null)
+            {
+                // Target process gone/activation failed — fail closed (no system audio) rather than
+                // silently substituting full-system loopback, which the user didn't ask for.
+                _system = null;
+            }
         }
 
         if (captureMic)

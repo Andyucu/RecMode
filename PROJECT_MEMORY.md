@@ -8,6 +8,79 @@
 
 ---
 
+## Session 2026-07-06 — Per-app audio (process-loopback): built, found broken, disabled
+
+**Goal:** Phase 7's remaining item — per-app audio via WASAPI process-loopback capture (isolate system-audio
+recording to one running app instead of the whole system).
+
+### What was built
+- `src/RecMode.Audio/ProcessLoopback/ProcessLoopbackCapture.cs` (new) — raw COM interop against
+  `ActivateAudioInterfaceAsync`/`AUDCLNT_ACTIVATION_TYPE_PROCESS_LOOPBACK` (the Windows 10 2004/build-19041
+  API; NAudio doesn't expose it). Implements `IWaveIn` so it plugs into the existing `MixSource`/`AudioMixer`
+  pipeline unchanged. Virtual device path `VAD\Process_Loopback`; `IActivateAudioInterfaceCompletionHandler`
+  async-activation pattern; raw `IAudioClient`/`IAudioCaptureClient` COM interfaces (declared locally, not in
+  NAudio).
+- `AudioMixer.Start(bool, bool, int? targetProcessId)` — when a target PID is given, constructs
+  `ProcessLoopbackCapture` instead of `WasapiLoopbackCapture`; fails closed (no system audio, not a silent
+  fallback to full-system loopback) if activation throws.
+- `RecMode.Core.Recording.ProcessAudioTargetResolver` — pure process-name→PID resolution (5 unit tests).
+- `CaptureInterop.EnumerateAudioProcesses()` — visible top-level windows → `(ProcessId, ProcessName,
+  WindowTitle)`, for the picker UI and the resolver.
+- `RecordViewModel`/`RecordView.xaml` — a "Limit to app" combo in the Audio card; `RecordingCoordinator`
+  resolves the configured process name to a live PID at recording start.
+
+### The interop bug (found, partially fixed, then found to be worse than it looked)
+First bug: casting the async-activation result via `[MarshalAs(UnmanagedType.IUnknown)] out object` threw
+`InvalidCastException`/E_NOINTERFACE for `IAudioClient`. Fixed by switching the whole activation path to raw
+`IntPtr` + `Marshal.GetObjectForIUnknown` (more explicit than relying on automatic IUnknown marshaling for an
+async-activation-result scenario) — activation then succeeded with no exceptions, and the audio meter showed
+real, non-zero activity when the targeted process played sound.
+
+**But a controlled A/B test proved the capture isn't actually process-scoped.** Method: played a fixed WAV
+tone from a `powershell.exe` process (the configured target) — meter read a steady **0.0884 RMS**. With the
+target still playing, *also* started the *same* tone at reduced volume from a **different**, non-targeted
+`pwsh.exe` process — the meter rose to **0.0922**. If isolation were working, starting a non-targeted
+process's audio should have had zero effect on the meter. It didn't — the capture is pulling in audio from
+processes outside the target's tree.
+
+Reasoned through the likely interop surfaces without finding the specific defect: `AUDIOCLIENT_ACTIVATION_PARAMS`
+/ `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` field order and the `PROPVARIANT` blob's field offsets (`Vt@0,
+BlobSize@8, BlobData@16` — accounting for x64 pointer alignment padding after the 4-byte `BlobSize`) both
+check out against recollection of Microsoft's `ApplicationLoopback` sample; GUIDs for `IAudioClient` and the
+two async-activation interfaces likewise. Suspect `AUDCLNT_STREAMFLAGS_LOOPBACK` interacting with the
+already-loopback-semantic `VAD\Process_Loopback` virtual device, but couldn't verify — both `WebSearch` and
+`web_search_prime` were unavailable this session (one reported "unavailable", the other HTTP 429/insufficient
+balance), so this went unresolved rather than guessed at further.
+
+### Decision (user's call, asked via AskUserQuestion): ship disabled, defer the fix
+Rather than risk more blind iteration or ship a control that implies isolation it doesn't deliver — this is a
+"fail closed" situation, not a cosmetic one: a user who believes only one app's audio is being recorded but
+gets full-system audio instead is a real privacy/trust violation — the user chose to keep all the plumbing but
+disable it end to end:
+- `RecordView.xaml` — the "Limit to app" label + combo are `Visibility="Collapsed"`, with a comment
+  explaining why and pointing here.
+- `RecordViewModel.PerAppAudioTargetPid` — hardcoded to always return `null` (metering must match what a
+  real recording will actually do).
+- `RecordingCoordinator.Start()` — the per-app resolution block was removed; `perAppPid` is now always
+  `null`, so `PerAppAudioProcessName` in settings is inert even if a stale value is still persisted from
+  testing. The now-unused `ResolvePerAppAudioTarget` helper was deleted.
+- `AudioMixer`'s fail-closed catch block kept (still correct design for whenever this is re-enabled); the
+  temporary `%TEMP%\recmode-diag.txt` diagnostic write used mid-session (since `RecMode.Audio` doesn't
+  reference Serilog) was removed once no longer needed.
+
+**Next session, if picking this back up:** get real documentation access first (this session's two web-search
+tools were both down). The most promising unexplored leads are (a) whether `AUDCLNT_STREAMFLAGS_LOOPBACK`
+should be passed at all when initializing a client obtained from process-loopback activation — it might be
+implied by the virtual device already, and passing it explicitly may be what's pulling in the full mix — and
+(b) re-deriving the `AUDIOCLIENT_ACTIVATION_PARAMS` union layout from a verified current header rather than
+memory. Verification technique worth reusing: UIA `RangeValuePattern` on the live meter, driven by two
+differently-named helper processes (`powershell.exe` vs `pwsh.exe`, both installed on this box) playing
+distinguishable tones simultaneously — a much sharper test than checking the meter is merely non-zero.
+
+Build: 0 warnings. Tests: 148 passed (6 Audio + 1 Recording + 32 Encoding + 109 Core), 0 failed.
+
+---
+
 ## Session 2026-07-06 — Motion pass: recording pulse + screenshot flash (Phase 6)
 
 **Goal:** Phase 6's "motion" line item, still unstarted. Went to the design source (`RecMode.dc.html`) for

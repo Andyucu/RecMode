@@ -45,6 +45,9 @@ internal static class CaptureInterop
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
 
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
     private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
     private delegate bool WindowEnumProc(IntPtr hwnd, IntPtr data);
 
@@ -147,6 +150,72 @@ internal static class CaptureInterop
             if (!string.IsNullOrWhiteSpace(title))
             {
                 results.Add(new WindowInfo { Handle = hwnd, Title = title });
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return results;
+    }
+
+    /// <summary>
+    /// Running apps with a visible window, usable as per-app audio capture targets (plan §7). One entry per
+    /// process (first window found), excluding RecMode's own process. Same visibility/cloak filtering as
+    /// <see cref="EnumerateWindows"/>.
+    /// </summary>
+    public static IReadOnlyList<AudioProcessTarget> EnumerateAudioProcesses()
+    {
+        var results = new List<AudioProcessTarget>();
+        var seenPids = new HashSet<uint>();
+        uint selfPid = (uint)Environment.ProcessId;
+
+        EnumWindows((hwnd, unusedData) =>
+        {
+            if (!IsWindowVisible(hwnd))
+            {
+                return true;
+            }
+
+            int len = GetWindowTextLength(hwnd);
+            if (len == 0)
+            {
+                return true;
+            }
+
+            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            if ((exStyle & WS_EX_TOOLWINDOW) != 0)
+            {
+                return true;
+            }
+
+            if (DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0)
+            {
+                return true;
+            }
+
+            _ = GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0 || pid == selfPid || !seenPids.Add(pid))
+            {
+                return true;
+            }
+
+            string processName;
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+                processName = process.ProcessName;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentException)
+            {
+                return true; // process exited or access denied between enumeration and lookup
+            }
+
+            var sb = new System.Text.StringBuilder(len + 1);
+            _ = GetWindowText(hwnd, sb, sb.Capacity);
+            string title = sb.ToString();
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                results.Add(new AudioProcessTarget { ProcessId = (int)pid, ProcessName = processName, WindowTitle = title });
             }
 
             return true;

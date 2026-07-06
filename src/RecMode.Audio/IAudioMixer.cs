@@ -24,8 +24,12 @@ public interface IAudioMixer : IDisposable
     AudioLevel SystemLevel { get; }
     AudioLevel MicLevel { get; }
 
-    /// <summary>Starts capture/metering for the requested sources.</summary>
-    void Start(bool captureSystem, bool captureMic);
+    /// <summary>
+    /// Starts capture/metering for the requested sources. When <paramref name="targetProcessId"/> is set and
+    /// <paramref name="captureSystem"/> is true, the system source captures only that process's (and by
+    /// default its child processes') audio instead of the whole system — per-app audio (plan §7).
+    /// </summary>
+    void Start(bool captureSystem, bool captureMic, int? targetProcessId = null);
 
     void Stop();
 

@@ -33,6 +33,8 @@ public static class CaptureCapabilities
 
     public static IReadOnlyList<WindowInfo> EnumerateWindows() => CaptureInterop.EnumerateWindows();
 
+    public static IReadOnlyList<AudioProcessTarget> EnumerateAudioProcesses() => CaptureInterop.EnumerateAudioProcesses();
+
     public static bool IsSupported() => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported();
 
     /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>

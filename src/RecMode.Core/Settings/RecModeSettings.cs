@@ -62,6 +62,13 @@ public sealed class RecModeSettings
     public int SystemVolume { get; set; } = 100;
     public int MicVolume { get; set; } = 100;
 
+    /// <summary>
+    /// Per-app audio (plan §7): when set, "System audio" captures only this process's audio instead of the
+    /// whole system. Persisted by process *name* (PIDs aren't stable across restarts) and re-resolved to a
+    /// live PID at recording start; null/empty means full-system loopback (the default, unchanged behavior).
+    /// </summary>
+    public string? PerAppAudioProcessName { get; set; }
+
     // Performance (bounds computed from hardware probe in Phase 3/9; 0 = auto)
     public int CpuThreadCap { get; set; }
     public EncoderEffort Effort { get; set; } = EncoderEffort.Balanced;

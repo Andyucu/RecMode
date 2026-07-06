@@ -40,3 +40,12 @@ public sealed record WindowInfo
     public required string Title { get; init; }
     public override string ToString() => Title;
 }
+
+/// <summary>A running app with a visible window, usable as a per-app audio capture target (plan §7).</summary>
+public sealed record AudioProcessTarget
+{
+    public required int ProcessId { get; init; }
+    public required string ProcessName { get; init; }
+    public required string WindowTitle { get; init; }
+    public override string ToString() => $"{WindowTitle} ({ProcessName})";
+}

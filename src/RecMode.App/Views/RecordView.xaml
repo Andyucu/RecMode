@@ -216,6 +216,20 @@
                                       IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}"
                                       AutomationProperties.LabeledBy="{Binding ElementName=SystemAudioLabel}" />
                     </Grid>
+                    <!-- Per-app audio (plan §7): narrows System audio to one running app.
+                         Hidden pending a fix — WASAPI process-loopback activates without error and the
+                         meter shows activity, but a controlled A/B test (2026-07-06) proved it doesn't
+                         actually isolate: a second, non-targeted process's audio still leaks into the
+                         capture. Shipping this control would misrepresent isolation that doesn't hold, so
+                         it stays hidden and RecordingCoordinator ignores PerAppAudioProcessName until it's
+                         fixed. See PROJECT_MEMORY.md for the investigation. -->
+                    <TextBlock x:Name="PerAppAudioLabel" Text="Limit to app" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding SystemAudioEnabled}" Visibility="Collapsed" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding PerAppAudioTargets}" SelectedItem="{Binding SelectedPerAppAudioTarget}"
+                              IsEnabled="{Binding SystemAudioEnabled}" Margin="0,0,0,10"
+                              AutomationProperties.LabeledBy="{Binding ElementName=PerAppAudioLabel}"
+                              Visibility="Collapsed" />
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  AutomationProperties.Name="System audio level"
                                  Foreground="{Binding SystemMeter, Converter={StaticResource MeterCaution}}"

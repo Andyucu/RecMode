@@ -464,6 +464,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     {
         _isActivePage = true;
         LoadDevices();
+        LoadPerAppAudioTargets(); // refreshed every visit — the running-app list changes more than monitors/encoders
         StartPreview();
         StartMetering();
     }
@@ -576,6 +577,60 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     private double _systemVolume;
     private double _micVolume;
 
+    // Per-app audio (plan §7): narrows "System audio" to one running app instead of the whole system.
+    private readonly AudioProcessTarget _allAppsSentinel = new() { ProcessId = 0, ProcessName = "", WindowTitle = "All apps" };
+    private AudioProcessTarget? _selectedPerAppAudioTarget;
+    private bool _loadingPerAppTargets;
+
+    public ObservableCollection<AudioProcessTarget> PerAppAudioTargets { get; } = [];
+
+    public AudioProcessTarget? SelectedPerAppAudioTarget
+    {
+        get => _selectedPerAppAudioTarget;
+        set
+        {
+            if (!SetProperty(ref _selectedPerAppAudioTarget, value) || _loadingPerAppTargets)
+            {
+                return;
+            }
+
+            _settings.Current.PerAppAudioProcessName = ReferenceEquals(value, _allAppsSentinel) ? null : value?.ProcessName;
+            _settings.RequestSave();
+            RestartMetering();
+        }
+    }
+
+    private void LoadPerAppAudioTargets()
+    {
+        _loadingPerAppTargets = true;
+        try
+        {
+            PerAppAudioTargets.Clear();
+            PerAppAudioTargets.Add(_allAppsSentinel);
+            foreach (AudioProcessTarget t in CaptureCapabilities.EnumerateAudioProcesses())
+            {
+                PerAppAudioTargets.Add(t);
+            }
+
+            string? savedName = _settings.Current.PerAppAudioProcessName;
+            _selectedPerAppAudioTarget = string.IsNullOrEmpty(savedName)
+                ? _allAppsSentinel
+                : PerAppAudioTargets.FirstOrDefault(t => string.Equals(t.ProcessName, savedName, StringComparison.OrdinalIgnoreCase)) ?? _allAppsSentinel;
+            OnPropertyChanged(nameof(SelectedPerAppAudioTarget));
+        }
+        finally
+        {
+            _loadingPerAppTargets = false;
+        }
+    }
+
+    /// <summary>
+    /// The PID to narrow system-audio capture to, or null for the whole system. Always null for now — the
+    /// "Limit to app" control is hidden (see RecordView.xaml) because process-loopback isolation doesn't
+    /// actually hold, so metering must reflect the same full-system behavior a real recording will use.
+    /// </summary>
+    private int? PerAppAudioTargetPid => null;
+
     public bool SystemAudioEnabled
     {
         get => _systemAudioEnabled;
@@ -670,7 +725,7 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         try
         {
             RecMode.Audio.IAudioMixer mixer = _mixerFactory();
-            mixer.Start(SystemAudioEnabled, MicEnabled);
+            mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid);
             mixer.SystemGain = (float)(SystemVolume / 100.0);
             mixer.MicGain = (float)(MicVolume / 100.0);
             _meterMixer = mixer;
