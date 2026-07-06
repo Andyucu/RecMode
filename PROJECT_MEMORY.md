@@ -8,6 +8,27 @@
 
 ---
 
+## Session 2026-07-06 — Accessibility pass: accessible names (Phase 10)
+
+**Goal:** Start Phase 10 (toward 1.0) with a11y — give icon-only/nameless controls accessible names.
+
+### What was done
+- `AutomationProperties.Name` added to: ShellWindow theme toggle ("Toggle theme") + caption buttons
+  (Minimize/Maximize/Close); SettingsView accent swatches ("Blue accent"…"Orange accent"); RecordView Quality
+  slider, System/Microphone volume sliders, and the System/Microphone level meters (ProgressBars).
+- XAML-only; no VM/logic change. `AutomationProperties` needs no xmlns prefix in WPF.
+
+### Verification (automation tree, headless)
+- Queried the running app's UIA tree by name: Toggle theme / Minimize / Maximize / Close (Button), System audio
+  volume / Microphone volume (Slider), Quality — all resolve. (Swatches live on the Settings page, not in the
+  launch tree; same one-line treatment, pattern proven on the shell controls.) 112 tests, 0 warnings.
+
+### Remaining (Phase 10)
+- Fuller a11y (LabeledBy/tab-order audit, real screen-reader pass); Win10 2004 regression pass (needs Win10);
+  1.0.0 portable zip; final hardening.
+
+---
+
 ## Session 2026-07-06 — Full container matrix: MOV + WebM (Phase 7)
 
 **Goal:** Complete the codec/container matrix — add MOV + WebM output with validation.

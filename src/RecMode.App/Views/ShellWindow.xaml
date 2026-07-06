@@ -63,13 +63,14 @@
 
             <!-- Theme toggle + caption buttons -->
             <Button Grid.Column="3" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="Toggle theme"
+                    AutomationProperties.Name="Toggle theme"
                     WindowChrome.IsHitTestVisibleInChrome="True" Width="40" Height="32" VerticalAlignment="Center"
                     Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" />
 
             <StackPanel Grid.Column="4" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
-                <Button x:Name="MinButton" Content="&#xE921;" Click="OnMinimize" Style="{StaticResource CaptionButton}" />
-                <Button x:Name="MaxButton" Content="&#xE922;" Click="OnMaximizeRestore" Style="{StaticResource CaptionButton}" />
-                <Button x:Name="CloseButton" Content="&#xE8BB;" Click="OnClose" Style="{StaticResource CaptionCloseButton}" />
+                <Button x:Name="MinButton" Content="&#xE921;" Click="OnMinimize" AutomationProperties.Name="Minimize" Style="{StaticResource CaptionButton}" />
+                <Button x:Name="MaxButton" Content="&#xE922;" Click="OnMaximizeRestore" AutomationProperties.Name="Maximize" Style="{StaticResource CaptionButton}" />
+                <Button x:Name="CloseButton" Content="&#xE8BB;" Click="OnClose" AutomationProperties.Name="Close" Style="{StaticResource CaptionCloseButton}" />
             </StackPanel>
         </Grid>
 

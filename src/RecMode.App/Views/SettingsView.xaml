@@ -64,14 +64,19 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0078D4"
+                                     AutomationProperties.Name="Blue accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Blue}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#D13438"
+                                     AutomationProperties.Name="Red accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Red}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#8B6CCB"
+                                     AutomationProperties.Name="Purple accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Purple}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0F7B7B"
+                                     AutomationProperties.Name="Teal accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Teal}" />
                         <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#CA5010" Margin="0"
+                                     AutomationProperties.Name="Orange accent"
                                      IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Orange}" />
                     </StackPanel>
                 </Grid>

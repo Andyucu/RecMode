@@ -176,6 +176,7 @@
                         <TextBlock Text="{Binding QualityLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
                     </Grid>
                     <Slider Style="{StaticResource AppSlider}" Minimum="0" Maximum="100" Value="{Binding Quality}"
+                            AutomationProperties.Name="Quality"
                             IsSnapToTickEnabled="True" TickFrequency="1" />
                 </StackPanel>
             </Border>
@@ -192,6 +193,7 @@
                                       IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}" />
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
+                                 AutomationProperties.Name="System audio level"
                                  Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
                     <Grid Margin="0,0,0,14" IsEnabled="{Binding SystemAudioEnabled}">
@@ -199,7 +201,8 @@
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
-                                Value="{Binding SystemVolume}" VerticalAlignment="Center" />
+                                Value="{Binding SystemVolume}" VerticalAlignment="Center"
+                                AutomationProperties.Name="System audio volume" />
                         <TextBlock Grid.Column="1" Text="{Binding SystemVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>
@@ -211,6 +214,7 @@
                                       IsChecked="{Binding MicEnabled, Mode=TwoWay}" />
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
+                                 AutomationProperties.Name="Microphone level"
                                  Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
                     <Grid IsEnabled="{Binding MicEnabled}">
@@ -218,7 +222,8 @@
                             <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
-                                Value="{Binding MicVolume}" VerticalAlignment="Center" />
+                                Value="{Binding MicVolume}" VerticalAlignment="Center"
+                                AutomationProperties.Name="Microphone volume" />
                         <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>
