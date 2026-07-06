@@ -60,6 +60,7 @@ internal static class Composition
         services.AddSingleton<IProfileNamePrompt, ProfileNamePrompt>();
         services.AddSingleton<OrphanRecoveryService>();
         services.AddSingleton<IPowerStatus, PowerStatus>();
+        services.AddSingleton<IDiskSpeedProbe, DiskSpeedProbe>();
         services.AddSingleton<RecMode.Core.Library.ILibraryIndex, RecMode.Core.Library.LibraryIndex>();
         services.AddSingleton<SchedulerService>();
         services.AddSingleton<GlobalMouseHook>();

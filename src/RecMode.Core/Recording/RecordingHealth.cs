@@ -32,4 +32,16 @@ public static class RecordingHealth
     /// </summary>
     public static bool ShouldDowngradeToSoftware(double behindDurationSeconds, bool encoderIsHardware)
         => encoderIsHardware && behindDurationSeconds > DowngradeAfterSeconds;
+
+    /// <summary>
+    /// Below this sustained write throughput, the output disk (not the encoder) is the likely bottleneck —
+    /// e.g. a network share or an old flash drive. Deliberately conservative: even a slow 5400rpm HDD clears
+    /// this by a wide margin, so it only fires for genuinely exotic targets, but a nearly-full-quota network
+    /// share can have plenty of free *space* while still being far too slow — a gap the free-space pre-flight
+    /// check alone can't catch.
+    /// </summary>
+    public const double DiskSlowThresholdMBps = 10.0;
+
+    /// <summary>True when a measured write-speed probe came back under the slow-disk threshold (a negative reading means "unknown" — never warn on that).</summary>
+    public static bool IsDiskTooSlow(double measuredMBps) => measuredMBps >= 0 && measuredMBps < DiskSlowThresholdMBps;
 }

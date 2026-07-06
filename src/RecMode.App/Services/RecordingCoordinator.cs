@@ -50,6 +50,7 @@ public sealed class RecordingCoordinator : IDisposable
 
     private readonly IEncoderProbe _encoderProbe;
     private readonly IPowerStatus _power;
+    private readonly IDiskSpeedProbe _diskSpeed;
     private readonly RecMode.Core.Library.ILibraryIndex _libraryIndex;
 
     // Metadata snapshot for the library index (captured at Start, written on successful finalize).
@@ -81,6 +82,7 @@ public sealed class RecordingCoordinator : IDisposable
         IEncoderProbe encoderProbe,
         Func<IAudioMixer> mixerFactory,
         IPowerStatus power,
+        IDiskSpeedProbe diskSpeed,
         RecMode.Core.Library.ILibraryIndex libraryIndex)
     {
         _captureFactory = captureFactory;
@@ -91,6 +93,7 @@ public sealed class RecordingCoordinator : IDisposable
         _stateMachine = stateMachine;
         _encoderProbe = encoderProbe;
         _power = power;
+        _diskSpeed = diskSpeed;
         _libraryIndex = libraryIndex;
         _mixerFactory = mixerFactory;
     }
@@ -161,6 +164,17 @@ public sealed class RecordingCoordinator : IDisposable
         catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
         {
             // Free-space check is best-effort.
+        }
+
+        // Disk-speed pre-flight (§3.6, disk-speed signal): plenty of free space doesn't mean fast enough —
+        // catches network shares / old flash drives the free-space check alone would miss.
+        double diskMBps = _diskSpeed.MeasureWriteSpeedMBps(outputDir);
+        Log.Debug("Disk-speed probe: {Mbps:F1} MB/s for {Dir}", diskMBps, outputDir);
+        if (RecordingHealth.IsDiskTooSlow(diskMBps))
+        {
+            _errors.Warn("record.slow-disk",
+                $"The output folder's drive looks slow (~{diskMBps:F1} MB/s).",
+                "Recording may stutter or drop frames. Try a faster drive if this happens.");
         }
 
         // Battery pre-flight (§3.6 / Phase 9): recording is power-hungry — nudge laptop users to plug in.

@@ -8,6 +8,40 @@
 
 ---
 
+## Session 2026-07-06 — Disk-speed pre-flight signal (feature-triage: last recording-health piece)
+
+**Goal:** CLAUDE.md's feature-triage bullet has tracked this as an explicit open item since 2026-07-03:
+"recording health indicator (encoder-can't-keep-up done 2026-07-05… **disk-speed signal still TODO**)".
+
+### Design
+- `RecordingHealth.IsDiskTooSlow(measuredMBps)` (Core, pure): `DiskSlowThresholdMBps = 10.0`. Deliberately
+  conservative — any real spinning HDD (80–150 MB/s) or SSD clears this trivially; it's meant to catch network
+  shares and old flash drives, not warn on normal hardware. A negative reading (probe failed) never warns —
+  matches the existing free-space check's best-effort philosophy.
+- `IDiskSpeedProbe`/`DiskSpeedProbe` (App, mirrors the `IPowerStatus` pattern): writes an 8 MB temp file with
+  `FileOptions.WriteThrough` (bypasses the OS write cache — otherwise a slow network share could look "fast"
+  because the write returns before actually reaching the remote disk) plus an explicit `Flush(true)`, times
+  it, deletes the file in a `finally`. Returns -1 on any I/O failure.
+- Wired into `RecordingCoordinator.Start()`'s existing pre-flight block, right after the free-space check —
+  same section, same `_errors.Warn(...)` pattern as the on-battery/low-disk-space warnings already there.
+- A `Log.Debug` line records the raw measured MB/s unconditionally (silent by default — app's
+  `MinimumLevel.Information()` — but there for troubleshooting a real "why did my recording stutter" report).
+
+### Verification
+- 3 new `RecordingHealth` tests (below/at-threshold/unknown-reading). 143 tests total, 0 warnings.
+- **E2E, not just unit tests**: temporarily bumped the log level to Debug for one verification run, executed a
+  real `--selftest-record`, and confirmed in the log the probe measured **758.5 MB/s** on this machine's SSD
+  (a plausible, real number — not a stub/hardcoded value) and correctly stayed silent (no false-positive
+  warning). Reverted the log-level change afterward; the `Log.Debug` call itself stays in the shipped code.
+
+### Notes for next time
+No way to genuinely test the "slow disk" branch live in this environment (no mapped slow network share or
+old USB drive available) — covered by the pure unit tests instead, same category of gap as other
+hardware/environment-dependent items (NVENC/QSV, HDR, Win10). This closes out the feature-triage list's
+recording-health item entirely — both halves (encoder-can't-keep-up and disk-speed) are now done.
+
+---
+
 ## Session 2026-07-06 — Tab-order audit (Phase 10) — no defects found
 
 **Goal:** the last un-started Phase 10 a11y item besides a full screen-reader pass. Audit whether Tab

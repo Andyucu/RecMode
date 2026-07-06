@@ -67,4 +67,24 @@ public class RecordingHealthTests
     {
         Assert.False(RecordingHealth.ShouldDowngradeToSoftware(RecordingHealth.DowngradeAfterSeconds - 0.1, encoderIsHardware: true));
     }
+
+    [Fact]
+    public void DiskSpeed_BelowThreshold_IsTooSlow()
+    {
+        Assert.True(RecordingHealth.IsDiskTooSlow(RecordingHealth.DiskSlowThresholdMBps - 0.1));
+        Assert.True(RecordingHealth.IsDiskTooSlow(0));
+    }
+
+    [Fact]
+    public void DiskSpeed_AtOrAboveThreshold_NotTooSlow()
+    {
+        Assert.False(RecordingHealth.IsDiskTooSlow(RecordingHealth.DiskSlowThresholdMBps));
+        Assert.False(RecordingHealth.IsDiskTooSlow(500));
+    }
+
+    [Fact]
+    public void DiskSpeed_UnknownReading_NeverWarns()
+    {
+        Assert.False(RecordingHealth.IsDiskTooSlow(-1)); // probe failed — best-effort, never block on it
+    }
 }
