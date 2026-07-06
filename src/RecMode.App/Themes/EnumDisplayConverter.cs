@@ -47,6 +47,18 @@ public sealed class EnumDisplayConverter : IValueConverter
         => Binding.DoNothing;
 }
 
+/// <summary>Visible when the bound enum equals the <c>ConverterParameter</c> (member name), else Collapsed. One-way.</summary>
+public sealed class EnumToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is not null && parameter is not null && string.Equals(value.ToString(), parameter.ToString(), StringComparison.Ordinal)
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => System.Windows.Data.Binding.DoNothing;
+}
+
 /// <summary>Shows the CPU thread cap: 0 → "Auto", otherwise the number. One-way (the combo edits the int directly).</summary>
 public sealed class ThreadCapConverter : IValueConverter
 {

@@ -16,6 +16,7 @@
     <conv:EnumToBoolConverter x:Key="EnumToBool" />
     <conv:EnumDisplayConverter x:Key="EnumDisplay" />
     <conv:ThreadCapConverter x:Key="ThreadCap" />
+    <conv:EnumToVisibilityConverter x:Key="EnumToVisibility" />
 
     <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->
     <DataTemplate x:Key="EnumItemTemplate">
@@ -233,6 +234,43 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
                             <Setter TargetName="pill" Property="Visibility" Value="Visible" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Top-bar nav item (horizontal) ===================== -->
+    <Style x:Key="TopNavButton" TargetType="RadioButton">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="bd" Background="Transparent" CornerRadius="4" Padding="12,0">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Margin="0,0,8,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ContentPresenter VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Border x:Name="underline" Height="3" CornerRadius="1.5" Margin="10,0" VerticalAlignment="Bottom"
+                                    Background="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="underline" Property="Visibility" Value="Visible" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                     </ControlTemplate.Triggers>

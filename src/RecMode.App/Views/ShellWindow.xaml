@@ -74,30 +74,62 @@
             </StackPanel>
         </Grid>
 
-        <!-- ===== Body: sidebar + content ===== -->
+        <!-- ===== Body: sidebar (Layout=Sidebar) or topbar (Layout=Topbar) + content ===== -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="204" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,1,0">
+            <!-- Sidebar nav -->
+            <Border Grid.Column="0" Width="204" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,1,0"
+                    Visibility="{Binding Layout, Converter={StaticResource EnumToVisibility}, ConverterParameter=Sidebar}">
                 <StackPanel Margin="0,8">
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Record}"
-                                 Tag="&#xE714;" IsChecked="True" Command="{Binding NavigateCommand}" CommandParameter="Record" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Library}"
-                                 Tag="&#xE8A9;" Command="{Binding NavigateCommand}" CommandParameter="Library" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Schedule}"
-                                 Tag="&#xE787;" Command="{Binding NavigateCommand}" CommandParameter="Schedule" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" Content="{x:Static res:Strings.Nav_Settings}"
-                                 Tag="&#xE713;" Command="{Binding NavigateCommand}" CommandParameter="Settings" />
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Record"
+                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Library"
+                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Schedule"
+                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
+                                 Command="{Binding NavigateCommand}" CommandParameter="Settings"
+                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
                 </StackPanel>
             </Border>
 
-            <ContentControl Grid.Column="1" Content="{Binding CurrentPage}" Margin="0" />
+            <!-- Content column (with optional top nav bar) -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Top-bar nav -->
+                <Border Grid.Row="0" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,0,1" Padding="14,7"
+                        Visibility="{Binding Layout, Converter={StaticResource EnumToVisibility}, ConverterParameter=TopTab}">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Record"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Library"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Schedule"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Settings"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+
+                <ContentControl Grid.Row="1" Content="{Binding CurrentPage}" Margin="0" />
 
             <!-- Error/warning snackbar (§3.6 RecoverableWarning/BlockingError channel) -->
-            <Border Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"
+            <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"
                     Visibility="{Binding SnackbarVisible, Converter={StaticResource BoolToVisibility}}"
                     Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16,10" MaxWidth="620">
@@ -120,6 +152,7 @@
                             Style="{StaticResource SecondaryButton}" Margin="16,0,0,0" Height="28" />
                 </StackPanel>
             </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

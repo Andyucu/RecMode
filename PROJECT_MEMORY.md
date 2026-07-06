@@ -8,6 +8,35 @@
 
 ---
 
+## Session 2026-07-06 — Top-bar navigation layout (Phase 6)
+
+**Goal:** The design's alternate shell layout (Sidebar ↔ Top bar) + regain visual verification.
+
+### Verification unblocked — PrintWindow
+- **`PrintWindow(hwnd, dc, PW_RENDERFULLCONTENT=0x2)` captures the RecMode window directly, even when it's
+  behind the IDE** (the CopyFromScreen/GDI approach grabbed the IDE; SetForegroundWindow is blocked for bg
+  procs). This restores visual UI verification: set state in settings.json → launch → PrintWindow → Read PNG.
+
+### What was built
+- **`EnumToVisibilityConverter`** (Themes): enum==param ? Visible : Collapsed (one-way). Registered `EnumToVisibility`.
+- **`TopNavButton`** style (Controls.xaml): horizontal nav item — icon(Tag)+label, accent **underline** when checked.
+- **ShellViewModel**: `Layout` (ShellLayout) prop, init from settings, updated on `SettingsChanged` (live switch).
+- **SettingsViewModel**: `SelectedLayout` (uses `Save()` = immediate, so the shell switches now) + `Layouts`
+  `[Sidebar, TopTab]`. Settings→Appearance gets a "Navigation layout" segmented control (glyph E8A1).
+- **ShellWindow** body restructured: sidebar Border (col0, `Width=204`, Visibility=Layout==Sidebar) OR a top
+  Border (row0 of the content grid, Visibility=Layout==TopTab) with horizontal `TopNavButton`s. Both nav sets
+  bind `IsChecked` **one-way** to `SelectedNav` via `EnumToBool` (stay in sync; no cross-group juggling) +
+  `Command=NavigateCommand`. Distinct GroupNames navSide/navTop.
+
+### Verification (PrintWindow)
+- Set `Layout=TopTab` → captured: horizontal nav (Record underlined) across the top, **sidebar gone**, content
+  full-width. Sidebar mode still renders (reset). 116 tests, 0 warnings.
+
+### Notes
+- Enum is `ShellLayout.TopTab` (not "Topbar"). Compact layout (a separate mini-window) still deferred; motion left.
+
+---
+
 ## Session 2026-07-06 — Hardware-bounded CPU thread cap (Phase 9)
 
 **Goal:** The §3.3 "hardware-derived bounds" for the thread cap (last non-external Phase 9 item).

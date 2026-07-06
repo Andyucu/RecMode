@@ -41,6 +41,7 @@ public sealed class SettingsViewModel : ObservableObject
     private int _cpuThreadCap;
     private bool _lowerEncoderPriority;
     private EncoderEffort _effort;
+    private ShellLayout _layout;
 
     public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup,
         Services.HotkeyBindings hotkeys)
@@ -67,6 +68,7 @@ public sealed class SettingsViewModel : ObservableObject
         _cpuThreadCap = ThreadCaps.Contains(s.CpuThreadCap) ? s.CpuThreadCap : 0; // clamp a value from a bigger machine
         _lowerEncoderPriority = s.BelowNormalEncoderPriority;
         _effort = s.Effort;
+        _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
 
         BrowseCommand = new RelayCommand(BrowseFolder);
@@ -74,6 +76,7 @@ public sealed class SettingsViewModel : ObservableObject
         CancelHotkeyCommand = new RelayCommand(CancelCapture);
     }
 
+    public IReadOnlyList<ShellLayout> Layouts { get; } = [ShellLayout.Sidebar, ShellLayout.TopTab];
     public IReadOnlyList<AppTheme> Themes { get; } = [AppTheme.System, AppTheme.Light, AppTheme.Dark];
     public IReadOnlyList<AccentColor> Accents { get; } =
         [AccentColor.Blue, AccentColor.Red, AccentColor.Purple, AccentColor.Teal, AccentColor.Orange];
@@ -137,6 +140,19 @@ public sealed class SettingsViewModel : ObservableObject
             Version? v = Assembly.GetEntryAssembly()?.GetName().Version;
             string version = v is null ? "1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
             return $"RecMode {version} · .NET 10 · WPF";
+        }
+    }
+
+    public ShellLayout SelectedLayout
+    {
+        get => _layout;
+        set
+        {
+            if (SetProperty(ref _layout, value))
+            {
+                _settings.Current.Layout = value;
+                _settings.Save(); // save now (not debounced) so the shell switches layout immediately
+            }
         }
     }
 

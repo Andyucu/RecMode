@@ -94,6 +94,8 @@
   <data name="Settings_General" xml:space="preserve"><value>General</value></data>
   <data name="Settings_ThemeDesc" xml:space="preserve"><value>Light and dark follow Fluent theme resources</value></data>
   <data name="Settings_AccentDesc" xml:space="preserve"><value>Applies to selection, sliders and the record action</value></data>
+  <data name="Settings_Layout" xml:space="preserve"><value>Navigation layout</value></data>
+  <data name="Settings_LayoutDesc" xml:space="preserve"><value>Show the navigation on the side or across the top</value></data>
   <data name="Settings_Encoder" xml:space="preserve"><value>Video encoder</value></data>
   <data name="Settings_EncoderDesc" xml:space="preserve"><value>AV1 gives the smallest files; H.264 is the most compatible</value></data>
   <data name="Settings_Container" xml:space="preserve"><value>Container format</value></data>

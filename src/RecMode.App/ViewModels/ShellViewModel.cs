@@ -53,7 +53,14 @@ public sealed class ShellViewModel : ObservableObject
         _snackbarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _snackbarTimer.Tick += (_, _) => { _snackbarTimer.Stop(); SnackbarVisible = false; };
         errors.ErrorReported += OnErrorReported;
+
+        _layout = settingsService.Current.Layout;
+        settingsService.SettingsChanged += (_, _) => Layout = settingsService.Current.Layout; // live layout switch
     }
+
+    private ShellLayout _layout;
+    /// <summary>Sidebar vs topbar shell layout (design Layout option); drives which nav the window shows.</summary>
+    public ShellLayout Layout { get => _layout; private set => SetProperty(ref _layout, value); }
 
     public ICommand DismissSnackbarCommand { get; }
 

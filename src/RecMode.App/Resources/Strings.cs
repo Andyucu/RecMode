@@ -62,6 +62,8 @@ public static class Strings
     public static string Settings_General => Get(nameof(Settings_General));
     public static string Settings_ThemeDesc => Get(nameof(Settings_ThemeDesc));
     public static string Settings_AccentDesc => Get(nameof(Settings_AccentDesc));
+    public static string Settings_Layout => Get(nameof(Settings_Layout));
+    public static string Settings_LayoutDesc => Get(nameof(Settings_LayoutDesc));
     public static string Settings_Encoder => Get(nameof(Settings_Encoder));
     public static string Settings_EncoderDesc => Get(nameof(Settings_EncoderDesc));
     public static string Settings_Container => Get(nameof(Settings_Container));
