@@ -74,14 +74,17 @@
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Content="{x:Static res:Strings.Library_Open}"
                                                 Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" />
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Open {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"
                                                 Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Show {0} in folder'}" />
                                         <Button Content="{x:Static res:Strings.Library_Delete}"
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
-                                                Foreground="{DynamicResource CriticalBrush}" />
+                                                Foreground="{DynamicResource CriticalBrush}"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Delete {0}'}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>

@@ -12,12 +12,14 @@
             <TextBlock x:Name="TitleBar" Text="{x:Static res:Strings.ScheduleEdit_Title}" Style="{StaticResource SubtitleText}"
                        Margin="0,0,0,16" />
 
-            <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Margin="0,0,0,12" />
+            <TextBlock x:Name="NameLabel" Text="{x:Static res:Strings.ScheduleEdit_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" Margin="0,0,0,12"
+                     AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}" />
 
-            <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Recurrence}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <TextBlock x:Name="RecurrenceLabel" Text="{x:Static res:Strings.ScheduleEdit_Recurrence}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
             <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                      ItemsSource="{Binding Recurrences}" SelectedItem="{Binding SelectedRecurrence}" Margin="0,0,0,12" />
+                      ItemsSource="{Binding Recurrences}" SelectedItem="{Binding SelectedRecurrence}" Margin="0,0,0,12"
+                      AutomationProperties.LabeledBy="{Binding ElementName=RecurrenceLabel}" />
 
             <Grid Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
@@ -26,13 +28,15 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Time}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-                    <TextBox Text="{Binding Time, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}" />
+                    <TextBlock x:Name="TimeLabel" Text="{x:Static res:Strings.ScheduleEdit_Time}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding Time, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource AppTextBox}"
+                             AutomationProperties.LabeledBy="{Binding ElementName=TimeLabel}" />
                 </StackPanel>
                 <StackPanel Grid.Column="2">
-                    <TextBlock Text="{x:Static res:Strings.ScheduleEdit_Duration}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="DurationLabel" Text="{x:Static res:Strings.ScheduleEdit_Duration}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              ItemsSource="{Binding Durations}" SelectedItem="{Binding DurationMinutes}" />
+                              ItemsSource="{Binding Durations}" SelectedItem="{Binding DurationMinutes}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=DurationLabel}" />
                 </StackPanel>
             </Grid>
 

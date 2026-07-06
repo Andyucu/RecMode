@@ -8,6 +8,66 @@
 
 ---
 
+## Session 2026-07-06 — Accessibility: LabeledBy + distinguishing button names (Phase 10)
+
+**Goal:** the CLAUDE.md Phase 10 remaining line named "LabeledBy/tab-order, screen-reader pass" as unstarted
+(accessible *names* on icon-only controls landed 2026-07-06 earlier; this is the next slice — labeled form
+controls).
+
+### What was found (via live UIA query before any fix)
+Enumerating the Record screen's 5 combo boxes showed **every one had an empty accessible `Name`** — a screen
+reader arriving at the Display/Encoder/Format/Frame rate/Profile combos would announce nothing meaningful.
+Same for the Quality slider (though it had an explicit hardcoded `AutomationProperties.Name="Quality"` that
+bypassed localization). This was a real, confirmed gap, not a guess.
+
+### What was built
+- `AutomationProperties.LabeledBy="{Binding ElementName=...}"` added from each card's visible caption
+  `TextBlock` (given an `x:Name`) to its paired control, across: `RecordView.xaml` (Profile/Display/Window/
+  Encoder/Format/Frame rate combos, Quality slider, System audio/Microphone toggles), `SettingsView.xaml`
+  (every combo/textbox/toggle card — Encoder, Container, Audio format/bitrate, Pattern, Countdown, Cursor,
+  Clicks, Auto-split, Effort, Thread cap, Encoder priority, Startup, Updates), `ScheduleEditWindow.xaml`
+  (Name/Recurrence/Time/Duration), `SaveProfileWindow.xaml` (profile name).
+- Distinguishing `AutomationProperties.Name` for previously-identical repeated controls: the three hotkey
+  "Change" buttons (`Settings_HkStartStop` etc. — were all just "Change"), and the per-row Schedule
+  (Edit/Delete/Enable) and Library (Open/Reveal/Delete) buttons, via `{Binding Name, StringFormat='...{0}'}`
+  / `{Binding DisplayName, StringFormat='...{0}'}`.
+
+### Verification — live UIA against the running app, not just code review
+- **Record**: confirmed all 5 combos + Quality slider went from empty `Name` to correct values (Profile/
+  Display/Encoder/Format/Frame rate/Quality).
+- **Settings**: confirmed all 7 combos + the filename TextBox + all 7 toggle switches resolve correctly
+  (discovered along the way: WPF's bare `ToggleButton` reports `ControlType.Button` in the UIA tree, not
+  `ControlType.ToggleButton` — querying the wrong control type silently returns zero results). Hotkey Change
+  buttons confirmed distinguishable ("Change start/stop shortcut" etc.).
+- **ScheduleEditWindow modal**: confirmed all 4 fields (Name/Repeat/Start time/Duration).
+- **Library**: confirmed every row's Open/Show-in-folder/Delete carries the actual filename.
+- **Schedule row buttons**: not re-verified live this session (nav-click flakiness — see below — meant I
+  ran out of clean opportunities), but they use the *identical* `StringFormat` binding technique already
+  confirmed correct on Library, so this is a reasoned-not-guessed confidence call, not a gap glossed over.
+
+### Two UIA gotchas discovered (worth remembering for future automated verification in this app)
+1. **`SelectionItemPattern.Select()` on a `RadioButton` does not fire `Command`.** The sidebar nav
+   `RadioButton`s bind `IsChecked` **one-way** (VM→View) and drive navigation entirely through
+   `Command`/`CommandParameter`. UIA's `Select()`/`Toggle()` automation calls only flip the local `IsChecked`
+   value — they don't raise the `Click` routed event `ICommandSource` listens to. A test script that calls
+   `Select()` on a nav item will see it render as "selected" while the page underneath never changes. Fix:
+   simulate a **real mouse click** at the element's `BoundingRectangle` center (`SetCursorPos` +
+   `mouse_event`), after confirming via `WindowFromPoint` that the target window is actually unoccluded at
+   that screen point. Plain `Button`s (with a `Click` handler) *do* respond correctly to
+   `InvokePattern.Invoke()` — this gotcha is specific to `RadioButton`/`ToggleButton`-style selection.
+2. **A transient WPF/GPU rendering glitch mid-session**: at one point the main window went solid black —
+   confirmed via a raw `CopyFromScreen` capture (not just `PrintWindow`) that the *actual pixels on screen*
+   were black, ruling out a capture-API quirk. `IsIconic`/`IsWindowVisible` both reported normal, and the log
+   showed no crash. Killing and relaunching produced a normal-rendering instance immediately — treated as an
+   environmental one-off (GPU/DWM hiccup), not a regression from this session's changes, since a fresh
+   instance with identical code rendered fine.
+
+140 tests still pass (no new unit tests — this is WPF markup/glue, verified live per the codebase's existing
+convention of not unit-testing converters/XAML). **Remaining Phase 10 a11y work:** tab-order audit, a real
+screen-reader (Narrator) pass, Win10 2004 regression, portable zip 1.0.0 stamp.
+
+---
+
 ## Session 2026-07-06 — Caution-coloured audio meters above 82% (Phase 4 tail)
 
 **Goal:** last easily-verifiable Phase 4 tail. Design (`RecMode.dc.html` `meterTick()`) has an explicit rule:

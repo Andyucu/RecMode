@@ -106,7 +106,7 @@
                     <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
                     <!-- Recording profile (plan §7 backlog #4, pulled forward): applies container/fps/quality/audio -->
-                    <TextBlock Text="{x:Static res:Strings.Record_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="ProfileLabel" Text="{x:Static res:Strings.Record_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <Grid Margin="0,0,0,12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -114,7 +114,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                  ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" Margin="0,0,8,0" />
+                                  ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" Margin="0,0,8,0"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=ProfileLabel}" />
                         <Button Grid.Column="1" Content="{x:Static res:Strings.Profile_SaveAs}" Command="{Binding SaveProfileCommand}"
                                 Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="0,0,8,0" />
                         <Button Grid.Column="2" Content="{x:Static res:Strings.Profile_Delete}" Command="{Binding DeleteProfileCommand}"
@@ -133,9 +134,10 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <TextBlock Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="DisplayLabel" Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                  ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12" />
+                                  ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=DisplayLabel}" />
                     </StackPanel>
 
                     <!-- Window picker (window source) -->
@@ -149,9 +151,10 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <TextBlock Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="WindowLabel" Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                  ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12" />
+                                  ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
                     </StackPanel>
 
                     <!-- Region info (region source) -->
@@ -173,27 +176,30 @@
                         </Grid>
                     </StackPanel>
 
-                    <TextBlock Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="EncoderLabel" Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              ItemsSource="{Binding Encoders}" SelectedItem="{Binding SelectedEncoder}" Margin="0,0,0,4" />
+                              ItemsSource="{Binding Encoders}" SelectedItem="{Binding SelectedEncoder}" Margin="0,0,0,4"
+                              AutomationProperties.LabeledBy="{Binding ElementName=EncoderLabel}" />
                     <TextBlock Text="{Binding HardwareBadge}" Style="{StaticResource CaptionText}"
                                Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,12" />
 
-                    <TextBlock Text="{x:Static res:Strings.Record_Format}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="FormatLabel" Text="{x:Static res:Strings.Record_Format}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Margin="0,0,0,12"
-                              ItemTemplate="{StaticResource EnumItemTemplate}" />
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=FormatLabel}" />
 
-                    <TextBlock Text="{x:Static res:Strings.Record_FrameRate}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <TextBlock x:Name="FrameRateLabel" Text="{x:Static res:Strings.Record_FrameRate}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                              ItemsSource="{Binding FrameRates}" SelectedItem="{Binding SelectedFrameRate}" Margin="0,0,0,12" />
+                              ItemsSource="{Binding FrameRates}" SelectedItem="{Binding SelectedFrameRate}" Margin="0,0,0,12"
+                              AutomationProperties.LabeledBy="{Binding ElementName=FrameRateLabel}" />
 
                     <Grid Margin="0,0,0,2">
-                        <TextBlock Text="{x:Static res:Strings.Record_Quality}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="QualityLabelText" Text="{x:Static res:Strings.Record_Quality}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
                         <TextBlock Text="{Binding QualityLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
                     </Grid>
                     <Slider Style="{StaticResource AppSlider}" Minimum="0" Maximum="100" Value="{Binding Quality}"
-                            AutomationProperties.Name="Quality"
+                            AutomationProperties.LabeledBy="{Binding ElementName=QualityLabelText}"
                             IsSnapToTickEnabled="True" TickFrequency="1" />
                 </StackPanel>
             </Border>
@@ -205,9 +211,10 @@
 
                     <!-- System audio -->
                     <Grid Margin="0,0,0,6">
-                        <TextBlock Text="System audio" VerticalAlignment="Center" />
+                        <TextBlock x:Name="SystemAudioLabel" Text="System audio" VerticalAlignment="Center" />
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
-                                      IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}" />
+                                      IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=SystemAudioLabel}" />
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  AutomationProperties.Name="System audio level"
@@ -227,9 +234,10 @@
 
                     <!-- Microphone -->
                     <Grid Margin="0,0,0,6">
-                        <TextBlock Text="Microphone" VerticalAlignment="Center" />
+                        <TextBlock x:Name="MicLabel" Text="Microphone" VerticalAlignment="Center" />
                         <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
-                                      IsChecked="{Binding MicEnabled, Mode=TwoWay}" />
+                                      IsChecked="{Binding MicEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=MicLabel}" />
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
                                  AutomationProperties.Name="Microphone level"

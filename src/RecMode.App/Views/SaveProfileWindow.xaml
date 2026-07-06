@@ -12,9 +12,10 @@
             <TextBlock x:Name="TitleBar" Text="{x:Static res:Strings.Profile_SaveTitle}" Style="{StaticResource SubtitleText}"
                        Margin="0,0,0,16" />
 
-            <TextBlock Text="{x:Static res:Strings.Profile_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <TextBlock x:Name="ProfileNameLabel" Text="{x:Static res:Strings.Profile_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
             <TextBox x:Name="NameBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource AppTextBox}" Margin="0,0,0,16" />
+                     Style="{StaticResource AppTextBox}" Margin="0,0,0,16"
+                     AutomationProperties.LabeledBy="{Binding ElementName=ProfileNameLabel}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"
