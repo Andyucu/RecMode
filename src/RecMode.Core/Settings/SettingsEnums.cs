@@ -65,3 +65,12 @@ public enum EncoderEffort
     Balanced,
     Quality,
 }
+
+/// <summary>Corner the webcam picture-in-picture overlay is anchored to.</summary>
+public enum WebcamOverlayPosition
+{
+    BottomRight,
+    BottomLeft,
+    TopRight,
+    TopLeft,
+}

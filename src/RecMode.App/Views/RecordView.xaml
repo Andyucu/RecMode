@@ -270,6 +270,45 @@
                     </Grid>
                 </StackPanel>
             </Border>
+
+            <!-- Webcam picture-in-picture overlay (Phase 7) -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="Webcam" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock x:Name="WebcamLabel" Text="Show webcam" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding WebcamEnabled, Mode=TwoWay}"
+                                      IsEnabled="{Binding HasWebcamDevices}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=WebcamLabel}" />
+                    </Grid>
+                    <TextBlock Text="No camera detected" Style="{StaticResource CaptionText}" Margin="0,0,0,10"
+                               Visibility="{Binding HasWebcamDevices, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                    <TextBlock x:Name="WebcamDeviceLabel" Text="Camera" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding WebcamEnabled}" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding WebcamDevices}" SelectedItem="{Binding SelectedWebcamDevice}"
+                              IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
+                              AutomationProperties.LabeledBy="{Binding ElementName=WebcamDeviceLabel}" />
+
+                    <TextBlock x:Name="WebcamPositionLabel" Text="Position" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding WebcamEnabled}" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding WebcamPositions}" SelectedItem="{Binding WebcamPosition}"
+                              IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=WebcamPositionLabel}" />
+
+                    <Grid Margin="0,0,0,2" IsEnabled="{Binding WebcamEnabled}">
+                        <TextBlock x:Name="WebcamSizeLabel" Text="Size" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                    </Grid>
+                    <Slider Style="{StaticResource AppSlider}" Minimum="10" Maximum="50" Value="{Binding WebcamSizePercent}"
+                            IsEnabled="{Binding WebcamEnabled}"
+                            AutomationProperties.LabeledBy="{Binding ElementName=WebcamSizeLabel}" />
+                </StackPanel>
+            </Border>
             </StackPanel>
             </ScrollViewer>
         </Grid>

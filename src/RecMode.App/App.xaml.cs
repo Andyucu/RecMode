@@ -277,6 +277,16 @@ public partial class App : Application
             var s = _host!.Services.GetRequiredService<ISettingsService>();
             s.Current.SystemAudioEnabled = true;
         }
+        // "webcam" mode: no real camera needed — inject a synthetic solid-colour frame source via the test
+        // seam and verify the GPU compositing lands it at the expected picture-in-picture rectangle.
+        if (mode == "webcam")
+        {
+            var s = _host!.Services.GetRequiredService<ISettingsService>();
+            s.Current.WebcamPosition = RecMode.Core.Settings.WebcamOverlayPosition.BottomRight;
+            s.Current.WebcamSizePercent = 20;
+            var coord = _host.Services.GetRequiredService<Services.RecordingCoordinator>();
+            coord.TestForceWebcamSource(new SolidColorWebcamFrameSource(320, 180, 0xFF, 0x00, 0xFF)); // magenta BGRA
+        }
         // "split" mode: force the smallest allowed auto-split threshold and a high-bitrate quality so a
         // rollover happens quickly, to verify the segment rotation end-to-end.
         if (mode == "split")
@@ -512,5 +522,36 @@ public partial class App : Application
         }
 
         base.OnExit(e);
+    }
+
+    /// <summary>Test-only fake for <c>--selftest-webcam</c>: a fixed solid-colour BGRA frame, so the GPU
+    /// picture-in-picture compositing can be verified without real camera hardware.</summary>
+    private sealed class SolidColorWebcamFrameSource : RecMode.Capture.Webcam.IWebcamFrameSource
+    {
+        private readonly byte[] _frame;
+        private readonly int _width, _height;
+
+        public SolidColorWebcamFrameSource(int width, int height, byte b, byte g, byte r)
+        {
+            _width = width;
+            _height = height;
+            _frame = new byte[width * height * 4];
+            for (int i = 0; i < _frame.Length; i += 4)
+            {
+                _frame[i] = b;
+                _frame[i + 1] = g;
+                _frame[i + 2] = r;
+                _frame[i + 3] = 0xFF;
+            }
+        }
+
+        public bool TryGetLatestFrame(out byte[] data, out int width, out int height, out int stride)
+        {
+            data = _frame;
+            width = _width;
+            height = _height;
+            stride = _width * 4;
+            return true;
+        }
     }
 }

@@ -1,3 +1,4 @@
+using RecMode.Capture.Webcam;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -23,6 +24,8 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private byte[] _scratch = [];
     private bool _hasLatest;
     private long _capturedFrames;
+    private IWebcamFrameSource? _webcamSource;
+    private RegionRect? _webcamRect;
 
     public bool IsRunning { get; private set; }
     public int OutputWidth { get; private set; }
@@ -49,6 +52,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
         int srcW = item.Size.Width, srcH = item.Size.Height;
         _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
+        _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
         OutputWidth = dstW;
         OutputHeight = dstH;
         Nv12ByteSize = _converter.Nv12ByteSize;
@@ -98,6 +102,13 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             Buffer.BlockCopy(_latest, 0, dest, 0, Nv12ByteSize);
             return true;
         }
+    }
+
+    public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect)
+    {
+        _webcamSource = source;
+        _webcamRect = rect;
+        _converter?.SetWebcamOverlay(source, rect);
     }
 
     public void Stop()

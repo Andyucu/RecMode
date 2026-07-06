@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using RecMode.Audio;
 using RecMode.Capture;
+using RecMode.Capture.Webcam;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Recording;
@@ -32,6 +33,7 @@ public sealed class RecordingCoordinator : IDisposable
     private readonly RecordingStateMachine _stateMachine;
 
     private ICaptureEngine? _capture;
+    private WebcamCaptureSource? _webcamCapture;
     private FfmpegRecordingSession? _session;
     private Thread? _pacer;
     private volatile bool _stopRequested;
@@ -71,6 +73,11 @@ public sealed class RecordingCoordinator : IDisposable
     private EncoderInfo? _activeEncoder;
     private bool _downgradeAttempted;
     private volatile bool _testForceDowngrade; // test-only seam for --selftest-downgrade; see AttemptDowngrade
+
+    // Test-only seam (--selftest-webcam): injects a synthetic frame source in place of a real
+    // WebcamCaptureSource, so the GPU picture-in-picture compositing can be verified without camera hardware.
+    private IWebcamFrameSource? _testForcedWebcamSource;
+    internal void TestForceWebcamSource(IWebcamFrameSource source) => _testForcedWebcamSource = source;
 
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
@@ -198,6 +205,34 @@ public sealed class RecordingCoordinator : IDisposable
 
             _capture = _captureFactory();
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
+
+            // Webcam picture-in-picture overlay (Phase 7): best-effort — a missing/busy camera warns but
+            // never blocks the recording. Runs synchronously before capture is considered "started" so the
+            // very first frame already carries the overlay, not just frames after it warms up.
+            if (_testForcedWebcamSource is { } forcedSource)
+            {
+                (int fx, int fy, int fw, int fh) = WebcamOverlayLayout.ComputeRect(
+                    dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
+                _capture.SetWebcamOverlay(forcedSource, new RegionRect(fx, fy, fw, fh));
+            }
+            else if (_settings.Current.WebcamEnabled && !string.IsNullOrEmpty(_settings.Current.WebcamDeviceId))
+            {
+                try
+                {
+                    var webcam = new WebcamCaptureSource();
+                    webcam.StartAsync(_settings.Current.WebcamDeviceId).GetAwaiter().GetResult();
+                    _webcamCapture = webcam;
+                    (int wx, int wy, int ww, int wh) = WebcamOverlayLayout.ComputeRect(
+                        dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
+                    _capture.SetWebcamOverlay(_webcamCapture, new RegionRect(wx, wy, ww, wh));
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or COMException)
+                {
+                    _webcamCapture = null;
+                    _errors.Warn("record.webcam-unavailable", "The webcam overlay couldn't be started.",
+                        "Recording will continue without the picture-in-picture.");
+                }
+            }
 
             // Safe recording (§3): capture to MKV (crash-safe) then remux to MP4 (-c copy) on stop.
             _safeRemux = _settings.Current.SafeRecording && container is MediaContainer.Mp4 or MediaContainer.Mov;
@@ -576,12 +611,14 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         _capture?.Stop();
+        _webcamCapture?.Stop();
         _session?.Dispose();
         _capture?.Dispose();
         _mixer?.Dispose();
         _audioStop?.Dispose();
         _session = null;
         _capture = null;
+        _webcamCapture = null;
         _mixer = null;
         _audioThread = null;
         _audioStop = null;

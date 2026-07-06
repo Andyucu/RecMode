@@ -32,6 +32,11 @@ public sealed class EnumDisplayConverter : IValueConverter
         ["System"] = "System",
         ["Light"] = "Light",
         ["Dark"] = "Dark",
+        // Webcam overlay position
+        ["BottomRight"] = "Bottom right",
+        ["BottomLeft"] = "Bottom left",
+        ["TopRight"] = "Top right",
+        ["TopLeft"] = "Top left",
     };
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -44,6 +49,16 @@ public sealed class EnumDisplayConverter : IValueConverter
         string key = value.ToString() ?? "";
         return Labels.TryGetValue(key, out string? label) ? label : key;
     }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}
+
+/// <summary>Visible when the bound bool is false, Collapsed when true — the inverse of <c>BooleanToVisibilityConverter</c>.</summary>
+public sealed class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => Binding.DoNothing;

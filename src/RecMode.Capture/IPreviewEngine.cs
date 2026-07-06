@@ -1,3 +1,5 @@
+using RecMode.Capture.Webcam;
+
 namespace RecMode.Capture;
 
 /// <summary>
@@ -18,5 +20,9 @@ public interface IPreviewEngine : IDisposable
 
     void Start(CaptureTarget target, bool captureCursor);
     bool TryGetLatestFrame(byte[] dest);
+
+    /// <summary>Enables/disables the webcam picture-in-picture overlay on the preview; call after <see cref="Start"/>. Null source disables it.</summary>
+    void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect);
+
     void Stop();
 }

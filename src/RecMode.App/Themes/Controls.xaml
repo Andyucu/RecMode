@@ -19,6 +19,7 @@
     <conv:AutoSplitSizeConverter x:Key="AutoSplitSize" />
     <conv:MeterCautionConverter x:Key="MeterCaution" />
     <conv:EnumToVisibilityConverter x:Key="EnumToVisibility" />
+    <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
 
     <!-- Combo item display that shows friendly enum labels (H.264, MP4, AAC …) -->
     <DataTemplate x:Key="EnumItemTemplate">

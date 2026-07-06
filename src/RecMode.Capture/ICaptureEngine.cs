@@ -1,3 +1,5 @@
+using RecMode.Capture.Webcam;
+
 namespace RecMode.Capture;
 
 /// <summary>
@@ -22,6 +24,9 @@ public interface ICaptureEngine : IDisposable
 
     /// <summary>Copies the most recent NV12 frame into <paramref name="dest"/>. False until the first frame arrives.</summary>
     bool TryGetLatestFrame(byte[] dest);
+
+    /// <summary>Enables/disables the webcam picture-in-picture overlay on this capture's output; call after <see cref="Start"/>. Null source disables it.</summary>
+    void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect);
 
     void Stop();
 }

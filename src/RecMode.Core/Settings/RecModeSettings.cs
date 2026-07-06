@@ -69,6 +69,17 @@ public sealed class RecModeSettings
     /// </summary>
     public string? PerAppAudioProcessName { get; set; }
 
+    /// <summary>
+    /// Webcam picture-in-picture overlay (Phase 7). Null <see cref="WebcamDeviceId"/> means "not configured" —
+    /// enabling the toggle with no device selected does nothing (fails closed, no accidental default-camera use).
+    /// </summary>
+    public bool WebcamEnabled { get; set; }
+    public string? WebcamDeviceId { get; set; }
+    public WebcamOverlayPosition WebcamPosition { get; set; } = WebcamOverlayPosition.BottomRight;
+
+    /// <summary>PIP box width as a percentage of the output frame width, 10–50.</summary>
+    public int WebcamSizePercent { get; set; } = 20;
+
     // Performance (bounds computed from hardware probe in Phase 3/9; 0 = auto)
     public int CpuThreadCap { get; set; }
     public EncoderEffort Effort { get; set; } = EncoderEffort.Balanced;

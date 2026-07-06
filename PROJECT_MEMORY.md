@@ -8,6 +8,82 @@
 
 ---
 
+## Session 2026-07-06 — Webcam picture-in-picture overlay (Phase 7)
+
+**Goal:** the other remaining Phase 7 item after per-app audio (disabled this same day, see below) — webcam
+source + overlay. No physical webcam on this dev machine (`Get-PnpDevice -Class Camera` returns nothing; the
+only match is a printer misfiled under `Image`), so scope was: build the whole feature properly, verify
+everything that doesn't require an actual camera, and find a way to verify the one part that could plausibly
+be camera-specific (the GPU compositing) without one.
+
+### Design decision: GPU compositing via a second VideoProcessor stream, not CPU blending
+The capture pipeline already runs every frame through `ID3D11VideoProcessorBlt` (`Nv12Converter` for
+recording, `BgraScaler` for preview) to convert/scale the desktop texture. The D3D11 video processor
+natively supports **multiple input streams composited in one `Blt` call** (its VMR/EVR sub-picture heritage —
+this is exactly the mechanism DXVA implementations use for closed captions/logo overlays), each with its own
+`VideoProcessorSetStreamDestRect`. So the webcam PIP is stream 1: its BGRA frame gets uploaded into a small
+GPU texture once per *camera* frame (not per desktop frame — cameras run far slower than 60fps), and the
+existing single Blt call becomes a two-stream Blt with stream 1's dest rect set to the PIP rectangle. No
+extra readback, no CPU-side alpha blending, no second GPU pass — genuinely "one GPU copy chain" in spirit.
+New `WebcamOverlayCompositor` (`RecMode.Capture/Webcam/`) owns the upload-texture lifecycle and is shared by
+both `Nv12Converter` and `BgraScaler` so recording and preview always show the identical composite.
+
+### Camera capture: Windows.Media.Capture frame-reader (WinRT), not NAudio/DirectShow
+Webcams aren't audio devices, so the NAudio pattern from the per-app-audio work doesn't apply. Used
+`Windows.Media.Capture.MediaCapture` + `MediaFrameReader` (available directly via the project's WinRT-capable
+TFM `net10.0-windows10.0.19041.0`, same mechanism that already gives WGC access with no extra NuGet package)
+requesting `MediaEncodingSubtypes.Bgra8` frames directly — avoids doing our own YUV→BGRA conversion, since
+the Frame Server does it for us if the source doesn't natively deliver BGRA8. `MediaCaptureSharingMode
+.SharedReadOnly` lets a live preview instance and a recording's own instance both read the same physical
+camera without fighting over it (mirrors the existing "preview and recording use separate sessions, don't
+run both, but both work independently" pattern already established for the desktop capture path). Frame
+delivery uses the same "latest frame, no queueing" pull pattern as WGC preview/capture — `IWebcamFrameSource
+.TryGetLatestFrame` — so a slow consumer never backs up a queue.
+
+`IMemoryBufferByteAccess` (the standard, widely-used COM shim for getting a raw pointer out of a WinRT
+`SoftwareBitmap`'s locked buffer — same pattern as Microsoft's own camera samples) needed a local
+`[ComImport]` declaration since it isn't projected by the BCL, mirroring the per-app-audio session's approach
+to un-projected WinRT/COM interfaces earlier today.
+
+### Bug found via self-test, fixed same session: texture needs BindFlags.RenderTarget
+First `--selftest-webcam` run recorded successfully (exit 0, no errors reported to the CLI) but the pipe
+"never connected" when `Stop()` tried to finalize — meaning the pacer thread never got a single frame,
+meaning `WgcCaptureEngine.OnFrameArrived`'s call into `Nv12Converter.Convert` was throwing on *every* frame
+and the exception was being silently swallowed by the WGC `FrameArrived` COM callback (managed exceptions
+don't reliably propagate across that ABI boundary). Added a temporary `%TEMP%\recmode-diag.txt` catch (same
+technique used for the per-app-audio COM debugging earlier today) directly in `OnFrameArrived` to surface it:
+`SharpGenException` `E_INVALIDARG` from `ID3D11VideoDevice.CreateVideoProcessorInputView`, thrown lazily the
+first time `WebcamOverlayCompositor.EnsureTexture` tried to create the input view for the newly-created
+webcam upload texture. The texture was created with `BindFlags.ShaderResource` only; adding
+`BindFlags.RenderTarget` (matching what a WGC/`Direct3D11CaptureFramePool` texture — which *does* work as a
+video-processor input — actually gets under the hood) fixed it immediately. Diagnostic removed once
+confirmed. **Lesson for next time this comes up:** a D3D11 texture intended as a `ID3D11VideoProcessorInputView`
+source apparently needs `RenderTarget` in its bind flags on this AMD driver even though it's conceptually
+read-only input — `ShaderResource` alone isn't sufficient.
+
+### Verification without physical camera hardware
+Added a permanent test seam (mirrors `RecordingCoordinator.TestForceDowngrade`, kept for the same reason —
+this AMD box can't organically produce the real-world condition being tested): `TestForceWebcamSource
+(IWebcamFrameSource)` lets `--selftest-webcam` inject a `SolidColorWebcamFrameSource` (a fixed 320×180
+magenta BGRA buffer) in place of a real `WebcamCaptureSource`, exercising the *exact* same
+`WebcamOverlayLayout.ComputeRect` → `SetWebcamOverlay` → GPU-composite path a real camera would. After the
+bind-flags fix: `--selftest-webcam` → 360-frame valid MP4; extracted a mid-recording frame with ffmpeg and
+visually confirmed the solid magenta box sitting exactly at the computed bottom-right rectangle on the real
+4096×1152 desktop capture, nothing composited outside it. This is a good verification pattern for future
+GPU-compositing work — inject a synthetic, visually-unmistakable source through a narrow test seam rather
+than mocking the whole pipeline.
+
+### What's out of scope / unchanged
+The Record screen already had a disabled **"Webcam" source-type tile** (Screen/Window/Region/**Webcam** radio
+group, `Content="{x:Static res:Strings.Source_Webcam}"`, `RecordView.xaml:34`) — a Phase-1 placeholder for a
+*different*, not-yet-built feature: recording the webcam itself as the primary capture source. This session's
+work is the picture-in-picture *overlay* (webcam on top of screen/window/region), a separate feature; the
+placeholder tile is untouched and still does nothing, which is correct — not a regression.
+
+Build: 0 warnings. Tests: 154 passed (115 Core + 32 Encoding + 6 Audio + 1 Recording), 0 failed.
+
+---
+
 ## Session 2026-07-06 — Per-app audio (process-loopback): built, found broken, disabled
 
 **Goal:** Phase 7's remaining item — per-app audio via WASAPI process-loopback capture (isolate system-audio

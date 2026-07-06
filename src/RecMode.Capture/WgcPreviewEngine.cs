@@ -1,3 +1,4 @@
+using RecMode.Capture.Webcam;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -26,6 +27,8 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     private byte[] _scratch = [];
     private bool _hasLatest;
     private long _lastFrameTicks;
+    private IWebcamFrameSource? _webcamSource;
+    private RegionRect? _webcamRect;
 
     public bool IsRunning { get; private set; }
     public int Width { get; private set; }
@@ -53,6 +56,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         int effectiveH = target.Region?.Height ?? srcH;
         (int dstW, int dstH) = FitPreview(Math.Max(2, effectiveW), Math.Max(2, effectiveH));
         _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
+        _scaler.SetWebcamOverlay(_webcamSource, _webcamRect);
         Width = dstW;
         Height = dstH;
         Stride = _scaler.Stride;
@@ -112,6 +116,13 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             Buffer.BlockCopy(_latest, 0, dest, 0, ByteSize);
             return true;
         }
+    }
+
+    public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect)
+    {
+        _webcamSource = source;
+        _webcamRect = rect;
+        _scaler?.SetWebcamOverlay(source, rect);
     }
 
     public void Stop()

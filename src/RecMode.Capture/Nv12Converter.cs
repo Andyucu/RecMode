@@ -1,3 +1,4 @@
+using RecMode.Capture.Webcam;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -24,6 +25,10 @@ internal sealed class Nv12Converter : IDisposable
     // pointer — is created once per distinct texture and reused forever after, instead of once per frame.
     private readonly Dictionary<IntPtr, ID3D11VideoProcessorInputView> _inputViewCache = [];
     private readonly VideoProcessorStream[] _streamBuffer = new VideoProcessorStream[1];
+    private readonly VideoProcessorStream[] _streamBufferWithWebcam = new VideoProcessorStream[2];
+    private readonly WebcamOverlayCompositor _webcamCompositor;
+    private IWebcamFrameSource? _webcamSource;
+    private RegionRect? _webcamRect;
 
     public int OutputWidth { get; }
     public int OutputHeight { get; }
@@ -86,12 +91,39 @@ internal sealed class Nv12Converter : IDisposable
             _videoContext.VideoProcessorSetStreamSourceRect(_processor, 0, true,
                 new Vortice.RawRect(r.X, r.Y, r.X + r.Width, r.Y + r.Height));
         }
+
+        _webcamCompositor = new WebcamOverlayCompositor(device, context, _videoDevice, _enumerator);
+    }
+
+    /// <summary>Enables/disables the webcam picture-in-picture overlay; null source disables it.</summary>
+    public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect)
+    {
+        _webcamSource = source;
+        _webcamRect = rect;
     }
 
     /// <summary>Converts <paramref name="src"/> to NV12 and copies tightly-packed bytes into <paramref name="dest"/>.</summary>
     public void Convert(ID3D11Texture2D src, byte[] dest)
     {
         ID3D11VideoProcessorInputView inputView = GetOrCreateInputView(src);
+
+        if (_webcamSource is not null && _webcamRect is { } rect)
+        {
+            ID3D11VideoProcessorInputView? webcamView = _webcamCompositor.Update(_webcamSource);
+            if (webcamView is not null)
+            {
+                _streamBufferWithWebcam[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
+                _streamBufferWithWebcam[1] = new VideoProcessorStream { Enable = true, InputSurface = webcamView };
+                _videoContext.VideoProcessorSetStreamDestRect(_processor, 1, true,
+                    new Vortice.RawRect(rect.X, rect.Y, rect.X + rect.Width, rect.Y + rect.Height));
+                _videoContext.VideoProcessorBlt(_processor, _outputView, 0, 2, _streamBufferWithWebcam);
+
+                _context.CopyResource(_nv12Staging, _nv12Gpu);
+                ReadbackTightlyPacked(dest);
+                return;
+            }
+        }
+
         _streamBuffer[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
         _videoContext.VideoProcessorBlt(_processor, _outputView, 0, 1, _streamBuffer);
 
@@ -154,6 +186,7 @@ internal sealed class Nv12Converter : IDisposable
             view.Dispose();
         }
         _inputViewCache.Clear();
+        _webcamCompositor.Dispose();
 
         _outputView.Dispose();
         _nv12Staging.Dispose();
