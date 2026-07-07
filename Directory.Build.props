@@ -23,7 +23,7 @@
     <Product>RecMode</Product>
     <Copyright>Copyright © RecMode</Copyright>
     <!-- Versioning: 0.9.x-beta, x bumped on every build/release (see CLAUDE.md working notes). -->
-    <Version>0.9.5-beta</Version>
+    <Version>0.9.6-beta</Version>
     <!-- Keep InformationalVersion (shown in Settings) as a clean "0.9.x-beta" — suppress the SDK's
          default "+<git-sha>" build-metadata suffix. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

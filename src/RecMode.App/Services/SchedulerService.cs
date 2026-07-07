@@ -10,6 +10,16 @@ namespace RecMode.App.Services;
 /// <see cref="ScheduleEvaluator"/>; a due one starts a recording with the current Record settings and is
 /// stopped after its duration. Runs while the app is alive (including from the tray); missed windows (app
 /// closed) aren't caught up. Never interrupts an in-progress recording.
+///
+/// <para><b>Deliberate §3.9 exception, not an oversight:</b> this is the one place in the app that polls
+/// on a fixed interval rather than being purely event-driven. Schedules match at minute granularity
+/// (<see cref="ScheduleEvaluator.IsDue"/> checks <c>now.Hour</c>/<c>now.Minute</c>), and this timer runs at
+/// <see cref="DispatcherPriority.Background"/> — a single tick could be delayed past its target minute if
+/// the UI thread is busy with higher-priority work, silently skipping that occurrence entirely (a missed
+/// "Once" schedule never re-fires; Daily/Weekly slip a full cycle). Polling ~3×/minute is the fault-tolerance
+/// margin against exactly that: if one tick is late, another within the same minute still catches it. The
+/// cost (one wakeup per 20s while idle-in-tray) is negligible, so the tradeoff favors correctness over
+/// purity here rather than a precisely-armed single-shot timer.</para>
 /// </summary>
 public sealed class SchedulerService(ISettingsService settings, RecordViewModel record, RecordingCoordinator coordinator) : IDisposable
 {

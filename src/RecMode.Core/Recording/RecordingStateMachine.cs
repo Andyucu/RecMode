@@ -1,10 +1,10 @@
 namespace RecMode.Core.Recording;
 
 /// <summary>
-/// The single recording state machine (plan §3.7). Owns legal transitions, the countdown→record→
-/// pause→finalize lifecycle, and the pause PTS math that keeps output gapless. This is deliberately
-/// UI-free and side-effect-free beyond raising <see cref="StateChanged"/>: capture/audio/encoder
-/// subsystems subscribe and react. Not thread-safe — callers marshal onto one thread (the UI/dispatcher).
+/// The single recording state machine (plan §3.7). Owns legal transitions, the record→pause→finalize
+/// lifecycle, and the pause PTS math that keeps output gapless. This is deliberately UI-free and
+/// side-effect-free beyond raising <see cref="StateChanged"/>: capture/audio/encoder subsystems subscribe
+/// and react. Not thread-safe — callers marshal onto one thread (the UI/dispatcher).
 /// </summary>
 public sealed class RecordingStateMachine
 {
@@ -24,9 +24,8 @@ public sealed class RecordingStateMachine
 
     public event EventHandler<RecordingStateChangedEventArgs>? StateChanged;
 
-    /// <summary>True once countdown/recording has begun and not yet finalized.</summary>
-    public bool IsActive => State is RecordingState.Countdown or RecordingState.Recording
-        or RecordingState.Paused or RecordingState.Degraded;
+    /// <summary>True once recording has begun and not yet finalized.</summary>
+    public bool IsActive => State is RecordingState.Recording or RecordingState.Paused;
 
     /// <summary>
     /// Active recorded duration excluding paused spans — the value a timer UI should show and the basis
@@ -36,8 +35,7 @@ public sealed class RecordingStateMachine
     {
         get
         {
-            if (State is RecordingState.Idle or RecordingState.Countdown or RecordingState.Finalizing
-                && _recordingStartedAt == default)
+            if (State is RecordingState.Idle or RecordingState.Finalizing && _recordingStartedAt == default)
             {
                 return TimeSpan.Zero;
             }
@@ -61,47 +59,20 @@ public sealed class RecordingStateMachine
         return pts < TimeSpan.Zero ? TimeSpan.Zero : pts;
     }
 
-    /// <summary>Idle → Countdown. Resets all timeline anchors for a fresh session.</summary>
-    public void BeginCountdown()
-    {
-        Require(RecordingState.Idle);
-        _recordingStartedAt = default;
-        _pausedAt = default;
-        _totalPaused = default;
-        Transition(RecordingState.Countdown);
-    }
-
-    /// <summary>Countdown → Idle (user cancelled during 3-2-1).</summary>
-    public void CancelCountdown()
-    {
-        Require(RecordingState.Countdown);
-        Transition(RecordingState.Idle);
-    }
-
-    /// <summary>
-    /// Countdown → Recording, or a direct Idle → Recording start (CLI/scheduler with no countdown).
-    /// Anchors the recording start to now.
-    /// </summary>
+    /// <summary>Idle → Recording. Resets all timeline anchors for a fresh session and anchors the start to now.</summary>
     public void StartRecording()
     {
-        if (State is not (RecordingState.Countdown or RecordingState.Idle))
-        {
-            throw InvalidTransition(nameof(StartRecording));
-        }
-
+        Require(RecordingState.Idle);
         _recordingStartedAt = _clock.Elapsed;
+        _pausedAt = default;
         _totalPaused = default;
         Transition(RecordingState.Recording);
     }
 
-    /// <summary>Recording/Degraded → Paused. Freezes the active-time reference.</summary>
+    /// <summary>Recording → Paused. Freezes the active-time reference.</summary>
     public void Pause()
     {
-        if (State is not (RecordingState.Recording or RecordingState.Degraded))
-        {
-            throw InvalidTransition(nameof(Pause));
-        }
-
+        Require(RecordingState.Recording);
         _pausedAt = _clock.Elapsed;
         Transition(RecordingState.Paused);
     }
@@ -114,24 +85,10 @@ public sealed class RecordingStateMachine
         Transition(RecordingState.Recording);
     }
 
-    /// <summary>Recording → Degraded (a source dropped / hw→sw fallback). Recording continues.</summary>
-    public void Degrade()
-    {
-        Require(RecordingState.Recording);
-        Transition(RecordingState.Degraded);
-    }
-
-    /// <summary>Degraded → Recording (capability restored).</summary>
-    public void Recover()
-    {
-        Require(RecordingState.Degraded);
-        Transition(RecordingState.Recording);
-    }
-
-    /// <summary>Recording/Paused/Degraded → Finalizing (flush, faststart/remux, library entry, toast).</summary>
+    /// <summary>Recording/Paused → Finalizing (flush, faststart/remux, library entry, toast).</summary>
     public void Stop()
     {
-        if (State is not (RecordingState.Recording or RecordingState.Paused or RecordingState.Degraded))
+        if (State is not (RecordingState.Recording or RecordingState.Paused))
         {
             throw InvalidTransition(nameof(Stop));
         }

@@ -8,6 +8,89 @@
 
 ---
 
+## Session 2026-07-07 (part 10) — Maintenance pass on the whole-app review findings
+
+**Goal:** user said to start with the real bugs (part 9, released as 0.9.5-beta), then progress through the
+maintenance/health findings from the same three-subagent review. Worked through the lower-risk items;
+deliberately deferred the largest/riskiest structural refactors rather than attempt everything in one pass.
+
+### Dead code: `RecordingStateMachine`'s `Countdown`/`Degraded` states
+Verified by grep across all of `src/` (not just trusting the analyzer's claim) that `BeginCountdown`,
+`CancelCountdown`, `Degrade`, and `Recover` are called nowhere in production — only from
+`RecordingStateMachineTests.cs`. Confirmed why: the real pre-roll countdown lives entirely in
+`ICountdownController`/`CountdownWindow` and runs *before* `StartRecording()` is ever called (the state
+machine goes straight `Idle → Recording`), and "degraded" is reported through `IErrorReporter.Degrade`
+(a completely different, unrelated extension method also named `Degrade` — confirmed it still exists and is
+still used, so the doc-comment cross-reference stays accurate) plus `RecordingProgress.IsHealthy`, while the
+state machine itself just stays in `Recording` throughout. Removed both enum values, all four dead methods,
+simplified `IsActive`/`Elapsed`/`StartRecording`/`Pause`/`Stop`'s guards accordingly, and updated
+`RecordingCoordinator`'s three defensive `or RecordingState.Degraded` checks (all now just
+`Recording or Paused`). Rewrote `RecordingStateMachineTests.cs` to match (115 → 113 Core tests — two removed,
+others simplified to call `StartRecording()` directly instead of `BeginCountdown()` first).
+
+### Per-app-audio: stopped enumerating audio processes on every navigation for a setting that can't take effect
+`RecordViewModel.OnNavigatedTo()` called `LoadPerAppAudioTargets()` (enumerates running audio-session
+processes, populates an `ObservableCollection`) on every single visit to the Record screen — but
+`PerAppAudioTargetPid`, the only thing actually consumed downstream (feeding `mixer.Start(...)`), is
+hardcoded to always return `null`, and the "Limit to app" combo it feeds is permanently
+`Visibility="Collapsed"` in `RecordView.xaml` (confirmed by reading the XAML directly, not just trusting the
+finding). So the enumeration's result was pure waste, every time. Removed the call with an explanatory
+comment; left the still-referenced `LoadPerAppAudioTargets()` method itself in place (unreferenced but ready
+for whenever the underlying per-app isolation bug is fixed) — confirmed via a real build that this doesn't
+produce an unused-method warning, since `EnforceCodeStyleInBuild=false` in `Directory.Build.props` means
+IDE0051-class analyzers aren't build-time here.
+
+### `SchedulerService` polling: documented as intentional, not mechanically "fixed"
+The review flagged the ~20s poll as an undocumented exception to §3.9's "event-driven, never polled" rule.
+On inspection this is **deliberate, load-bearing fault tolerance**, not an oversight:
+`ScheduleEvaluator.IsDue` matches at minute granularity, the timer runs at `DispatcherPriority.Background`,
+and polling ~3×/minute is specifically there so that if one tick is delayed past its target minute (plausible
+under UI-thread load, since Background priority yields to everything else), another tick within the same
+minute still catches it — a single precisely-armed timer would remove that margin and risk silently skipping
+a "Once" schedule entirely (Daily/Weekly would just slip a cycle). Rather than build a "more correct-looking"
+single-shot rearm scheme that trades away real correctness for architectural purity, documented the exception
+explicitly — expanded `SchedulerService`'s class doc comment with the full reasoning, and added an explicit
+carve-out note to `CLAUDE.md` §3.9 itself so future readers of that rule don't have to rediscover this.
+
+### SingleInstance pipe security: attempted, broke something real, reverted
+Tried restricting the single-instance named pipe's ACL to the current Windows user only (defense-in-depth
+against another same-user process sending `--record`/`--stop`/`--screenshot` unprompted) via
+`NamedPipeServerStream.SetAccessControl(PipeSecurity)` called after construction. Build was clean, but a live
+end-to-end test (`--tray` primary instance + a second `--screenshot` invocation) caught a real regression:
+the log filled with `UnauthorizedAccessException` from `SetAccessControl` on every single listener-loop
+iteration (creating a genuinely enormous, 468 MB log file in the process — cleaned up), because changing a
+pipe's DACL *after* creation needs `WRITE_DAC` access on the handle, which has to be requested at
+construction time via a specific `PipeSecurity`-accepting `NamedPipeServerStream` constructor overload — one
+that isn't available in this TFM without adding the `System.IO.Pipes.AccessControl` NuGet package. The
+practical effect: the listener loop threw immediately on every iteration before ever reaching
+`WaitForConnectionAsync`, so **CLI forwarding was completely broken** — confirmed by the screenshot file
+genuinely never appearing after a forwarded `--screenshot` command. Reverted `SingleInstance.cs` to its
+original state entirely, rebuilt, and re-verified the exact same live test now correctly produces a
+screenshot file. Given this was explicitly the lowest-severity finding in the whole review ("a same-user
+process already has far stronger capabilities anyway") and a correct fix needs a new dependency, decided the
+risk/dependency cost isn't justified — left it as-is rather than pull in a package for a nit. **This is a
+good example of why "verify live, not just build-clean" matters even for seemingly small, well-reasoned
+fixes** — this one looked completely safe on paper and in code review, and still broke a real, tested feature.
+
+### Deliberately deferred (not attempted this pass)
+The largest/highest-risk items from the original review — `RecordingCoordinator.Start()`'s ~250-line
+decomposition, `RecordViewModel`'s 1199-line/11-dependency decomposition, `Nv12Converter`/`BgraScaler` +
+`WgcCaptureEngine`/`WgcPreviewEngine`'s ~450 duplicated lines, and moving the `--selftest-*` scaffolding out
+of `App.xaml.cs` into a real test project — were all left for a separate, dedicated pass rather than
+attempted here. These touch the most central/critical files in the app (the recording pipeline, the GPU
+capture path) and warrant their own careful, isolated session with the user's explicit go-ahead, rather than
+being bundled into the same pass as smaller, more contained fixes — especially given the SingleInstance nit
+above just demonstrated that even small, well-reasoned changes can have non-obvious failure modes.
+
+### Verification
+Rebuilt clean (154/154 tests — 113 Core after the state-machine test consolidation — 0 warnings). Live-verified
+via `--selftest-record` (normal path), `--selftest-pause` (pause/resume guards), `--selftest-downgrade`
+(segment rotation, re-checked after the `RecordingCoordinator` `Degraded`-pattern edits), and a manual
+`--tray` + `--screenshot` CLI-forwarding check (both before catching the SingleInstance regression, and after
+reverting it). Released as 0.9.6-beta per the standing development-loop rule.
+
+---
+
 ## Session 2026-07-07 (part 9) — Whole-app review via subagents; fixed the two real bugs found
 
 **Goal:** user asked to use the subagents created earlier this session to review the entire app for issues.

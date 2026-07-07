@@ -375,7 +375,7 @@ public sealed class RecordingCoordinator : IDisposable
             return;
         }
 
-        if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused or RecordingState.Degraded)
+        if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused)
         {
             _stateMachine.Stop();
         }
@@ -410,7 +410,7 @@ public sealed class RecordingCoordinator : IDisposable
     /// <summary>Pauses the recording — the pacer stops writing; output has no gap for the paused span (§3.7).</summary>
     public void Pause()
     {
-        if (_stateMachine.State is RecordingState.Recording or RecordingState.Degraded)
+        if (_stateMachine.State == RecordingState.Recording)
         {
             _stateMachine.Pause();
             RaiseProgress();
@@ -643,7 +643,7 @@ public sealed class RecordingCoordinator : IDisposable
         // Drive the machine to a clean Idle and report whatever the session managed to finalize.
         try
         {
-            if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused or RecordingState.Degraded)
+            if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused)
             {
                 _stateMachine.Stop();
             }

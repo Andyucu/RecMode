@@ -515,7 +515,11 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
     {
         _isActivePage = true;
         LoadDevices();
-        LoadPerAppAudioTargets(); // refreshed every visit — the running-app list changes more than monitors/encoders
+        // LoadPerAppAudioTargets() is deliberately NOT called here: the "Limit to app" control it feeds is
+        // permanently hidden (RecordView.xaml — process-loopback isolation doesn't actually hold; see
+        // PerAppAudioTargetPid's doc comment) and PerAppAudioTargetPid always returns null regardless of
+        // what's selected, so enumerating running audio processes on every navigation would be pure waste
+        // until the underlying isolation bug is fixed and the feature is re-enabled.
         LoadWebcamDevices();
         StartPreview();
         StartMetering();
