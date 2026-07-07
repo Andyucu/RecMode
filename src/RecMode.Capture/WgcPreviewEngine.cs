@@ -1,8 +1,6 @@
 using RecMode.Capture.Webcam;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
-using Windows.Graphics.DirectX;
-using Windows.Graphics.DirectX.Direct3D11;
 
 namespace RecMode.Capture;
 
@@ -46,11 +44,13 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             Stop();
         }
 
-        (_device, _context) = CaptureInterop.CreateDevice();
-        IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(_device);
-        GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
+        WgcSessionFactory.Session session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived);
+        _device = session.Device;
+        _context = session.Context;
+        _framePool = session.FramePool;
+        _session = session.CaptureSession;
 
-        int srcW = Math.Max(2, item.Size.Width), srcH = Math.Max(2, item.Size.Height);
+        int srcW = Math.Max(2, session.Item.Size.Width), srcH = Math.Max(2, session.Item.Size.Height);
         // For a region, the preview should be sized to the region, not the whole monitor.
         int effectiveW = target.Region?.Width ?? srcW;
         int effectiveH = target.Region?.Height ?? srcH;
@@ -65,14 +65,6 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         _scratch = new byte[ByteSize];
         _hasLatest = false;
         _lastFrameTicks = 0;
-
-        _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            winrt, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
-        _framePool.FrameArrived += OnFrameArrived;
-
-        _session = _framePool.CreateCaptureSession(item);
-        CaptureSessionConfig.Apply(_session, captureCursor);
-        _session.StartCapture();
         IsRunning = true;
     }
 

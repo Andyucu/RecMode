@@ -121,6 +121,9 @@ public sealed class RecordingCoordinator : IDisposable
     /// <summary>Raised on stop/finalize with the outcome. Also raised (Success=false) on a fatal mid-recording failure.</summary>
     public event Action<RecordingResult>? Finished;
 
+    /// <summary>Result of a passed pre-flight — everything the rest of <see cref="Start"/> needs from it.</summary>
+    private readonly record struct PreflightResult(string OutputDir, string FfmpegPath, int SourceWidth, int SourceHeight);
+
     /// <summary>Starts a recording. Returns false (with a reported BlockingError) if pre-flight fails.</summary>
     public bool Start(CaptureTarget target, EncoderInfo encoder, MediaContainer container, int fps, int quality)
     {
@@ -131,84 +134,14 @@ public sealed class RecordingCoordinator : IDisposable
             return false;
         }
 
-        // --- Pre-flight (§3.6) ---
-        if (!MediaCompatibility.IsVideoCompatible(encoder.Codec, container))
+        if (RunPreflight(target, encoder, container) is not { } pf)
         {
-            _errors.Block("record.codec-container", MediaCompatibility.IncompatibilityReason(encoder.Codec, container),
-                "Pick a compatible container or encoder in Settings.");
-            return false;
-        }
-
-        FfmpegResolution ff = _ffmpeg.Resolve();
-        if (!ff.IsAvailable || ff.FfmpegPath is null)
-        {
-            _errors.Block("record.no-ffmpeg", "Recording needs ffmpeg, which wasn't found.",
-                ff.Error?.Suggestion ?? "Reinstall RecMode or set a custom ffmpeg path in Settings.");
-            return false;
-        }
-
-        string outputDir = _settings.Current.OutputFolder ?? _paths.RecordingsDirectory;
-        try
-        {
-            Directory.CreateDirectory(outputDir);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _errors.Block("record.output-unwritable", "The output folder can't be written to.",
-                "Choose a different folder in Settings.", ex);
-            return false;
-        }
-
-        // Disk-space pre-flight (§3.6): warn under 2 GB free on the output volume.
-        try
-        {
-            string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
-            _outputRoot = root;
-            if (root is not null)
-            {
-                var drive = new DriveInfo(root);
-                if (drive.IsReady && drive.AvailableFreeSpace < 2L * 1024 * 1024 * 1024)
-                {
-                    _errors.Warn("record.low-disk",
-                        $"Low disk space ({drive.AvailableFreeSpace / (1024 * 1024 * 1024)} GB free).",
-                        "The recording may stop early if the disk fills.");
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
-        {
-            // Free-space check is best-effort.
-        }
-
-        // Disk-speed pre-flight (§3.6, disk-speed signal): plenty of free space doesn't mean fast enough —
-        // catches network shares / old flash drives the free-space check alone would miss.
-        double diskMBps = _diskSpeed.MeasureWriteSpeedMBps(outputDir);
-        Log.Debug("Disk-speed probe: {Mbps:F1} MB/s for {Dir}", diskMBps, outputDir);
-        if (RecordingHealth.IsDiskTooSlow(diskMBps))
-        {
-            _errors.Warn("record.slow-disk",
-                $"The output folder's drive looks slow (~{diskMBps:F1} MB/s).",
-                "Recording may stutter or drop frames. Try a faster drive if this happens.");
-        }
-
-        // Battery pre-flight (§3.6 / Phase 9): recording is power-hungry — nudge laptop users to plug in.
-        if (_power.IsOnBattery)
-        {
-            string pct = _power.BatteryPercent is int b ? $" ({b}% left)" : "";
-            _errors.Warn("record.on-battery", $"You're recording on battery power{pct}.",
-                "Recording is power-hungry — plug in for long sessions.");
-        }
-
-        if (!CaptureCapabilities.TryGetSourceSize(target, out int srcW, out int srcH))
-        {
-            _errors.Block("record.source-unavailable", "The selected source couldn't be captured.",
-                "Pick a different display or window.");
             return false;
         }
 
         try
         {
-            (int dstW, int dstH) = CaptureSizing.Resolve(srcW, srcH, encoder);
+            (int dstW, int dstH) = CaptureSizing.Resolve(pf.SourceWidth, pf.SourceHeight, encoder);
 
             _capture = _captureFactory();
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
@@ -216,103 +149,14 @@ public sealed class RecordingCoordinator : IDisposable
             // Webcam picture-in-picture overlay (Phase 7): best-effort — a missing/busy camera warns but
             // never blocks the recording. Runs synchronously before capture is considered "started" so the
             // very first frame already carries the overlay, not just frames after it warms up.
-            if (_testForcedWebcamSource is { } forcedSource)
-            {
-                (int fx, int fy, int fw, int fh) = WebcamOverlayLayout.ComputeRect(
-                    dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
-                _capture.SetWebcamOverlay(forcedSource, new RegionRect(fx, fy, fw, fh));
-            }
-            else if (_settings.Current.WebcamEnabled && !string.IsNullOrEmpty(_settings.Current.WebcamDeviceId))
-            {
-                try
-                {
-                    var webcam = new WebcamCaptureSource();
-                    webcam.StartAsync(_settings.Current.WebcamDeviceId).GetAwaiter().GetResult();
-                    _webcamCapture = webcam;
-                    (int wx, int wy, int ww, int wh) = WebcamOverlayLayout.ComputeRect(
-                        dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
-                    _capture.SetWebcamOverlay(_webcamCapture, new RegionRect(wx, wy, ww, wh));
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or COMException)
-                {
-                    _webcamCapture = null;
-                    _errors.Warn("record.webcam-unavailable", "The webcam overlay couldn't be started.",
-                        "Recording will continue without the picture-in-picture.");
-                }
-            }
+            SetupWebcamOverlay(dstW, dstH);
 
-            // Safe recording (§3): capture to MKV (crash-safe) then remux to MP4 (-c copy) on stop.
-            _safeRemux = _settings.Current.SafeRecording && container is MediaContainer.Mp4 or MediaContainer.Mov;
-            MediaContainer actualContainer = _safeRemux ? MediaContainer.Mkv : container;
-
-            string sourceLabel = target.Kind switch
-            {
-                CaptureKind.Window => "Window",
-                CaptureKind.Region => "Region",
-                _ => "Display",
-            };
-            string fileName = FilenameBuilder.BuildFileName(
-                _settings.Current.FilenamePattern, DateTimeOffset.Now, sourceLabel, encoder.Codec.ToString(),
-                ContainerExtension(container));
-            _finalPath = FilenameBuilder.BuildUniquePath(outputDir, fileName);
-            _recordingPath = _safeRemux
-                ? Path.Combine(outputDir, Path.GetFileNameWithoutExtension(_finalPath) + ".recording.mkv")
-                : _finalPath;
-            _ffmpegPath = ff.FfmpegPath;
-
-            // Auto-split bookkeeping: remember enough to rebuild subsequent segment file names/paths.
-            _outputDir = outputDir;
-            _baseFileName = fileName;
-            _segmentIndex = 1;
-            _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
-            _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
-            _downgradeAttempted = false;
-            _testForceDowngrade = false;
-
-            // Snapshot metadata for the library index (written on successful finalize).
-            _metaSource = sourceLabel;
-            _metaCodec = encoder.Codec.ToString();
-            _metaContainer = container.ToString();
-            _metaWidth = dstW;
-            _metaHeight = dstH;
-            _metaFps = fps;
-
-            bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
-            string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
-
-            var job = new FfmpegJob
-            {
-                Encoder = encoder,
-                Container = actualContainer,
-                Width = dstW,
-                Height = dstH,
-                FrameRate = fps,
-                Quality = quality,
-                PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
-                OutputPath = _recordingPath,
-                AudioPipeName = audioPipeName,
-                AudioCodec = _settings.Current.AudioCodec,
-                AudioBitrateKbps = _settings.Current.AudioBitrateKbps,
-                CpuThreadCap = _settings.Current.CpuThreadCap,
-                BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
-                Effort = _settings.Current.Effort,
-            };
+            (FfmpegJob job, bool audioEnabled) = PrepareSession(
+                target, encoder, container, pf.OutputDir, pf.FfmpegPath, dstW, dstH, fps, quality);
 
             if (audioEnabled)
             {
-                bool captureSystem = _settings.Current.SystemAudioEnabled;
-
-                // Per-app audio targeting is disabled for now: WASAPI process-loopback activates cleanly
-                // but a controlled A/B test (2026-07-06) proved it doesn't actually isolate the target
-                // process's audio from the rest of the system, so PerAppAudioProcessName is ignored here
-                // rather than shipping a recording that silently captures more than the user asked for.
-                // The UI control that sets it is hidden too (RecordView.xaml). See PROJECT_MEMORY.md.
-                int? perAppPid = null;
-
-                _mixer = _mixerFactory();
-                _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
-                _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
-                _mixer.MicGain = _settings.Current.MicVolume / 100f;
+                StartAudioMixer();
             }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
@@ -354,6 +198,217 @@ public sealed class RecordingCoordinator : IDisposable
             SafeTeardown();
             return false;
         }
+    }
+
+    /// <summary>§3.6 pre-flight checks, run before anything is actually started. Returns null (having already
+    /// reported the specific BlockingError) on the first hard failure; warnings (disk space/speed, battery)
+    /// never block and are reported inline.</summary>
+    private PreflightResult? RunPreflight(CaptureTarget target, EncoderInfo encoder, MediaContainer container)
+    {
+        if (!MediaCompatibility.IsVideoCompatible(encoder.Codec, container))
+        {
+            _errors.Block("record.codec-container", MediaCompatibility.IncompatibilityReason(encoder.Codec, container),
+                "Pick a compatible container or encoder in Settings.");
+            return null;
+        }
+
+        FfmpegResolution ff = _ffmpeg.Resolve();
+        if (!ff.IsAvailable || ff.FfmpegPath is null)
+        {
+            _errors.Block("record.no-ffmpeg", "Recording needs ffmpeg, which wasn't found.",
+                ff.Error?.Suggestion ?? "Reinstall RecMode or set a custom ffmpeg path in Settings.");
+            return null;
+        }
+
+        string outputDir = _settings.Current.OutputFolder ?? _paths.RecordingsDirectory;
+        try
+        {
+            Directory.CreateDirectory(outputDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _errors.Block("record.output-unwritable", "The output folder can't be written to.",
+                "Choose a different folder in Settings.", ex);
+            return null;
+        }
+
+        WarnIfLowDiskSpace(outputDir);
+        WarnIfSlowDisk(outputDir);
+        WarnIfOnBattery();
+
+        if (!CaptureCapabilities.TryGetSourceSize(target, out int srcW, out int srcH))
+        {
+            _errors.Block("record.source-unavailable", "The selected source couldn't be captured.",
+                "Pick a different display or window.");
+            return null;
+        }
+
+        return new PreflightResult(outputDir, ff.FfmpegPath, srcW, srcH);
+    }
+
+    /// <summary>§3.6: warns under 2 GB free on the output volume. Also stashes the drive root for the
+    /// mid-recording disk-critical guard (<see cref="IsDiskCriticallyLow"/>).</summary>
+    private void WarnIfLowDiskSpace(string outputDir)
+    {
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
+            _outputRoot = root;
+            if (root is not null)
+            {
+                var drive = new DriveInfo(root);
+                if (drive.IsReady && drive.AvailableFreeSpace < 2L * 1024 * 1024 * 1024)
+                {
+                    _errors.Warn("record.low-disk",
+                        $"Low disk space ({drive.AvailableFreeSpace / (1024 * 1024 * 1024)} GB free).",
+                        "The recording may stop early if the disk fills.");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            // Free-space check is best-effort.
+        }
+    }
+
+    /// <summary>§3.6 disk-speed signal: plenty of free space doesn't mean fast enough — catches network
+    /// shares / old flash drives the free-space check alone would miss.</summary>
+    private void WarnIfSlowDisk(string outputDir)
+    {
+        double diskMBps = _diskSpeed.MeasureWriteSpeedMBps(outputDir);
+        Log.Debug("Disk-speed probe: {Mbps:F1} MB/s for {Dir}", diskMBps, outputDir);
+        if (RecordingHealth.IsDiskTooSlow(diskMBps))
+        {
+            _errors.Warn("record.slow-disk",
+                $"The output folder's drive looks slow (~{diskMBps:F1} MB/s).",
+                "Recording may stutter or drop frames. Try a faster drive if this happens.");
+        }
+    }
+
+    /// <summary>§3.6 / Phase 9: recording is power-hungry — nudge laptop users to plug in.</summary>
+    private void WarnIfOnBattery()
+    {
+        if (_power.IsOnBattery)
+        {
+            string pct = _power.BatteryPercent is int b ? $" ({b}% left)" : "";
+            _errors.Warn("record.on-battery", $"You're recording on battery power{pct}.",
+                "Recording is power-hungry — plug in for long sessions.");
+        }
+    }
+
+    /// <summary>Starts the webcam picture-in-picture overlay, if forced by a test seam or enabled in
+    /// settings. Best-effort: a missing/busy camera warns but never blocks the recording. Must run after
+    /// <see cref="_capture"/> has started, so the very first frame already carries the overlay.</summary>
+    private void SetupWebcamOverlay(int dstW, int dstH)
+    {
+        if (_testForcedWebcamSource is { } forcedSource)
+        {
+            (int fx, int fy, int fw, int fh) = WebcamOverlayLayout.ComputeRect(
+                dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
+            _capture!.SetWebcamOverlay(forcedSource, new RegionRect(fx, fy, fw, fh));
+        }
+        else if (_settings.Current.WebcamEnabled && !string.IsNullOrEmpty(_settings.Current.WebcamDeviceId))
+        {
+            try
+            {
+                var webcam = new WebcamCaptureSource();
+                webcam.StartAsync(_settings.Current.WebcamDeviceId).GetAwaiter().GetResult();
+                _webcamCapture = webcam;
+                (int wx, int wy, int ww, int wh) = WebcamOverlayLayout.ComputeRect(
+                    dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
+                _capture!.SetWebcamOverlay(_webcamCapture, new RegionRect(wx, wy, ww, wh));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or COMException)
+            {
+                _webcamCapture = null;
+                _errors.Warn("record.webcam-unavailable", "The webcam overlay couldn't be started.",
+                    "Recording will continue without the picture-in-picture.");
+            }
+        }
+    }
+
+    /// <summary>Builds the <see cref="FfmpegJob"/> for the first segment and snapshots everything the rest
+    /// of the recording (safe-remux, auto-split, library metadata) needs — as instance-field side effects,
+    /// same as the inline code this was extracted from.</summary>
+    private (FfmpegJob Job, bool AudioEnabled) PrepareSession(CaptureTarget target, EncoderInfo encoder,
+        MediaContainer container, string outputDir, string ffmpegPath, int dstW, int dstH, int fps, int quality)
+    {
+        // Safe recording (§3): capture to MKV (crash-safe) then remux to MP4 (-c copy) on stop.
+        _safeRemux = _settings.Current.SafeRecording && container is MediaContainer.Mp4 or MediaContainer.Mov;
+        MediaContainer actualContainer = _safeRemux ? MediaContainer.Mkv : container;
+
+        string sourceLabel = target.Kind switch
+        {
+            CaptureKind.Window => "Window",
+            CaptureKind.Region => "Region",
+            _ => "Display",
+        };
+        string fileName = FilenameBuilder.BuildFileName(
+            _settings.Current.FilenamePattern, DateTimeOffset.Now, sourceLabel, encoder.Codec.ToString(),
+            ContainerExtension(container));
+        _finalPath = FilenameBuilder.BuildUniquePath(outputDir, fileName);
+        _recordingPath = _safeRemux
+            ? Path.Combine(outputDir, Path.GetFileNameWithoutExtension(_finalPath) + ".recording.mkv")
+            : _finalPath;
+        _ffmpegPath = ffmpegPath;
+
+        // Auto-split bookkeeping: remember enough to rebuild subsequent segment file names/paths.
+        _outputDir = outputDir;
+        _baseFileName = fileName;
+        _segmentIndex = 1;
+        _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
+        _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
+        _downgradeAttempted = false;
+        _testForceDowngrade = false;
+
+        // Snapshot metadata for the library index (written on successful finalize).
+        _metaSource = sourceLabel;
+        _metaCodec = encoder.Codec.ToString();
+        _metaContainer = container.ToString();
+        _metaWidth = dstW;
+        _metaHeight = dstH;
+        _metaFps = fps;
+
+        bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
+        string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
+
+        var job = new FfmpegJob
+        {
+            Encoder = encoder,
+            Container = actualContainer,
+            Width = dstW,
+            Height = dstH,
+            FrameRate = fps,
+            Quality = quality,
+            PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
+            OutputPath = _recordingPath,
+            AudioPipeName = audioPipeName,
+            AudioCodec = _settings.Current.AudioCodec,
+            AudioBitrateKbps = _settings.Current.AudioBitrateKbps,
+            CpuThreadCap = _settings.Current.CpuThreadCap,
+            BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
+            Effort = _settings.Current.Effort,
+        };
+
+        return (job, audioEnabled);
+    }
+
+    /// <summary>Starts the recording's audio mixer (system loopback + mic, per current settings).</summary>
+    private void StartAudioMixer()
+    {
+        bool captureSystem = _settings.Current.SystemAudioEnabled;
+
+        // Per-app audio targeting is disabled for now: WASAPI process-loopback activates cleanly
+        // but a controlled A/B test (2026-07-06) proved it doesn't actually isolate the target
+        // process's audio from the rest of the system, so PerAppAudioProcessName is ignored here
+        // rather than shipping a recording that silently captures more than the user asked for.
+        // The UI control that sets it is hidden too (RecordView.xaml). See PROJECT_MEMORY.md.
+        int? perAppPid = null;
+
+        _mixer = _mixerFactory();
+        _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
+        _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
+        _mixer.MicGain = _settings.Current.MicVolume / 100f;
     }
 
     /// <summary>Stops the current recording and finalizes the file.</summary>

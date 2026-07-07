@@ -8,6 +8,89 @@
 
 ---
 
+## Session 2026-07-07 (part 11) — Deferred structural refactors from the whole-app review (0.9.7-beta)
+
+**Goal:** user said "continue" after part 10's maintenance pass, meaning: proceed into the 4 items that pass
+deliberately deferred as larger/riskier. All 4 done this session, released as 0.9.7-beta. No functional
+changes anywhere — every step verified build-clean (0 warnings) + 154/154 tests, plus live self-test/screenshot
+verification before moving to the next item.
+
+**1. `RecordingCoordinator.Start()` decomposition.** The ~250-line method split into `RunPreflight` (bundles
+codec/container check, ffmpeg resolution, output-dir creation, then `WarnIfLowDiskSpace`/`WarnIfSlowDisk`/
+`WarnIfOnBattery`, then source-size check — returns `null` on any hard failure), `SetupWebcamOverlay`,
+`PrepareSession` (builds the `FfmpegJob` + audio-enabled flag), `StartAudioMixer`. `Start()` itself is now a
+short orchestration of these plus the encoder-fallback/pacer-thread/audio-pump-thread startup. Exact same
+error codes/messages/field mutations — just named and separated. One nullable gotcha: extracting
+`SetupWebcamOverlay` lost the compiler's same-method flow-narrowing of `_capture` (non-null right after
+`_capture = _captureFactory();`), needing `_capture!` in the new method since `WarningsAsErrors=nullable` makes
+that a hard build error. Verified via `--selftest-record`, `--selftest-av` (ffprobe-confirmed h264+aac),
+`--selftest-webcam` (frame-extracted, magenta PIP pixel-confirmed at the right position), `--selftest-downgrade`
+(2 valid segments), `--selftest-region` (1280×720 h264+aac, ffprobe-confirmed).
+
+**2. `Nv12Converter`/`BgraScaler` dedup.** New `RecMode.Capture/VideoProcessorPipeline.cs` — abstract base
+holding device/VideoProcessor/enumerator/output-view/staging-texture setup, the allocation-free
+`Dictionary<IntPtr, ID3D11VideoProcessorInputView>` input-view cache (keyed by native pointer, since WGC's
+frame pool only cycles 2 physical textures per session — this is the exact allocation bug that had to be found
+and fixed independently in both files on 2026-07-06), the webcam-overlay Blt path, and teardown. Each subclass
+supplies only its output format/frame-rate (NV12/60fps vs BGRA/30fps) and its format-specific readback (NV12
+two-plane Y+UV vs BGRA single-plane). One build error along the way: `new Rational(frameRate, 1)` doesn't
+implicitly convert an `int` variable to `uint` (only literal constants do) — fixed with explicit `(uint)`
+casts. Verified via `--selftest-record`, `--selftest-webcam` (PIP overlay still composites correctly through
+the shared pipeline), `--selftest-region` (shared source-rect cropping still works), and a live-app screenshot
+confirming the preview (`BgraScaler`) renders with no corruption.
+
+**3. `WgcCaptureEngine`/`WgcPreviewEngine` dedup — lighter touch, deliberately.** These two have real behavioral
+differences (preview throttles to ≤30fps and auto-restarts on double-`Start`; capture throws on double-`Start`
+and has no throttling; different public interfaces/property sets) that make a full base-class merge riskier
+than the converter case for uncertain benefit. Instead extracted just the identical device/WinRT-device/
+capture-item/frame-pool/session bring-up into `RecMode.Capture/WgcSessionFactory.cs` — a static
+`Start(target, captureCursor, onFrameArrived)` returning a `readonly record struct Session` (Device, Context,
+Item, FramePool, CaptureSession). Both engines now call this, then build their own converter/scaler from
+`session.Item.Size` and wire their own `TryGetLatestFrame`/throttling logic. One subtlety: the WinRT
+`FrameArrived` event's delegate type is `TypedEventHandler<Direct3D11CaptureFramePool, object?>` — the nullable
+annotation matters, since both engines' handlers take `object? args` and a non-nullable `object` parameter type
+on the factory would have caused a nullable-mismatch build error (`WarningsAsErrors=nullable`). Verified via
+`--selftest-record`, `--selftest-webcam` (frame-extracted, magenta PIP still correct through both the new
+factory and the earlier `VideoProcessorPipeline` dedup), and a live-app screenshot of the Record screen showing
+the preview rendering correctly (1120×720 window, 5120×1440 source scaled down, no artifacts).
+
+**4. `RecordViewModel` decomposition — `partial class` split, not sub-ViewModels, deliberately.** The 1199-line
+file (11 constructor dependencies) was split into `RecordViewModel.cs` (core: construction, source
+selection/`CurrentTarget`, device loading, status properties, page lifecycle, shared static helpers) plus
+`RecordViewModel.Profiles.cs`, `.Audio.cs`, `.Webcam.cs`, `.Preview.cs`, `.Recording.cs` — same class, same
+public members, zero XAML changes. Considered and rejected splitting into real sub-ViewModels (e.g.
+`AudioViewModel`/`WebcamViewModel` exposed as bindable properties) because that would mean rewiring every
+XAML binding path in `RecordView.xaml` to go through the sub-object, a much larger blast radius for a
+readability-only win, in an environment (RDP) where interactive UI-binding regressions are the hardest class
+of bug to catch live. C# usings are file-scoped even within one partial class, so each new file needed its own
+explicit `using`s — a few types initially guessed wrong (`RecordingProgress`/`RecordingResult` aren't in
+`RecMode.Core.Recording` like `RecordingState` is — they're in `RecMode.App.Services` and
+`RecMode.Encoding.Ffmpeg` respectively; `WebcamOverlayPosition` is in `RecMode.Core.Settings`, not
+`RecMode.Capture.Webcam`; `WebcamOverlayLayout` is in `RecMode.Core.Recording`) — caught immediately by the
+compiler, no runtime risk. Verified via `--selftest-record` and a full-window `PrintWindow` capture of the
+live Record screen (Profile combo, encoder, format, frame rate, quality slider, disk-space text all rendering
+and bound correctly across the new file split).
+
+**5. `--selftest-*` scaffolding extraction — not a literal test project, and said so explicitly.** The original
+finding said "move into a real test project," but these hooks (`RunSelfTest` + the overlay/ripple/annotate
+async variants + the `SolidColorWebcamFrameSource` fake) need a live STA WPF `Application` with a fully-wired
+DI host, real WGC capture, and a real ffmpeg subprocess — not something a conventional xUnit/MSTest runner
+hosts cheaply (no natural per-test STA message pump, real GPU/display access needed). Extracted instead into
+`RecMode.App/SelfTest/SelfTestRunner.cs`, a plain class taking `IHost`, `IAppPaths`, `Dispatcher`, and an
+`Action<int> shutdown` callback via a primary constructor — `App.xaml.cs` shrank from ~594 to ~280 lines and no
+longer mixes production startup wiring with test-only scaffolding; the runner needs no access to `App`'s
+private fields at all. Verified via `--selftest-record`, `--selftest-screenshot`, and `--selftest-ripple` (the
+last one specifically exercises the moved `ClickRippleOverlay` WPF-window-creation code path) — all completed
+successfully end to end through the new class.
+
+**Released as 0.9.7-beta.** `Directory.Build.props` + `publish-portable.ps1` bumped together per the standing
+versioning rule. `CHANGELOG.md` updated (single `[0.9.7-beta]` entry covering all 5 items, since they're one
+cohesive pass). No further deferred items remain from the original whole-app review; the standing gaps are the
+hardware-gated ones already tracked in `CLAUDE.md` (NVENC/QSV vendor re-check, mic-on-real-hardware, Narrator
+pass, Win10 2004 regression pass).
+
+---
+
 ## Session 2026-07-07 (part 10) — Maintenance pass on the whole-app review findings
 
 **Goal:** user said to start with the real bugs (part 9, released as 0.9.5-beta), then progress through the

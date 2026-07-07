@@ -1,8 +1,6 @@
 using RecMode.Capture.Webcam;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
-using Windows.Graphics.DirectX;
-using Windows.Graphics.DirectX.Direct3D11;
 
 namespace RecMode.Capture;
 
@@ -46,11 +44,13 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this OS.");
         }
 
-        (_device, _context) = CaptureInterop.CreateDevice();
-        IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(_device);
-        GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
+        WgcSessionFactory.Session session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived);
+        _device = session.Device;
+        _context = session.Context;
+        _framePool = session.FramePool;
+        _session = session.CaptureSession;
 
-        int srcW = item.Size.Width, srcH = item.Size.Height;
+        int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
         _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
         _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
         OutputWidth = dstW;
@@ -60,14 +60,6 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         _scratch = new byte[Nv12ByteSize];
         _hasLatest = false;
         _capturedFrames = 0;
-
-        _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            winrt, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
-        _framePool.FrameArrived += OnFrameArrived;
-
-        _session = _framePool.CreateCaptureSession(item);
-        CaptureSessionConfig.Apply(_session, captureCursor);
-        _session.StartCapture();
         IsRunning = true;
     }
 
