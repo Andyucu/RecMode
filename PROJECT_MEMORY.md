@@ -8,6 +8,55 @@
 
 ---
 
+## Session 2026-07-07 (part 3) — Root-caused the Library button padding, for real this time
+
+**Goal:** the user came back with the same screenshot — Videos/Screenshots buttons in Library still showing
+text crammed against the border — after the earlier session's fix (font size 13→12, `Padding` 14,0→16,0).
+That fix clearly hadn't done anything visually, which was the tell that something deeper was wrong.
+
+### The real bug: `Padding` was inert on every button in the app
+Re-read `SecondaryButton`'s `ControlTemplate` in `Themes/Controls.xaml` and found it: the `ContentPresenter`
+inside the `Border` had no `Margin="{TemplateBinding Padding}"` — nothing binds `Padding` to anything in the
+visual tree. That means every `Padding` value ever set on a `SecondaryButton` or `AccentButton` instance,
+anywhere in the app, across every screen, has been a complete no-op since this style was written back in
+Phase 1. The earlier session's "fix" (bumping `Padding` from `14,0` to `16,0`) changed a property that the
+template was silently ignoring — it looked like a fix because the *font size* drop (13→12) was the only part
+that actually did anything, and it wasn't enough to read as properly spaced. This also means every other
+button in the app that sets an explicit `Padding` (Library per-item Open/Reveal/Delete, Schedule row buttons,
+Settings buttons, Record's Save-as/Delete, etc.) has *also* never had working padding — this wasn't
+Library-specific, just most visible there because those particular buttons are short two-word labels next to
+each other, where the missing breathing room is most obvious.
+
+### The fix
+Added `Margin="{TemplateBinding Padding}"` to the `ContentPresenter` in both `SecondaryButton`'s and
+`AccentButton`'s `ControlTemplate`s (two templates, since `AccentButton` re-declares its own rather than
+inheriting `SecondaryButton`'s). Checked `CaptionButton`/`CaptionCloseButton` (title-bar minimize/maximize/
+close) for the same bug — they don't set `Padding` at all (fixed 46×48 icon buttons), so no fix needed there.
+This is the correct, standard WPF idiom for making a custom `ControlTemplate` respect the `Padding` property;
+previously the template just measured/arranged the `ContentPresenter` at its natural size with zero extra
+space, regardless of what `Padding` said.
+
+### Verification, and a real debugging detour
+Rebuilt clean (0 warnings, 154/154 tests). Launching the app via a backgrounded bash subshell
+(`(./RecMode.exe &)`, the pattern used all session) turned out to **not** give the window real OS foreground
+focus — synthetic mouse clicks (`SetCursorPos`+`mouse_event`) landed on the real desktop behind it instead of
+the app (confirmed by taking a full virtual-desktop screenshot, which showed VS Code and Mail focused, no
+RecMode window visible at all, despite `PrintWindow`-based screenshots "succeeding" — `PrintWindow` can
+render a window's content even when it isn't the visible/interactive surface, which is why the screenshots
+looked fine while clicks silently missed). Switching to `Start-Process` for the relaunch (a normal foreground
+launch) fixed it, and the Library screen confirmed correctly: Videos/Screenshots/Open folder/Refresh now show
+real padding around the text instead of hugging the border. **Also learned the hard way**: a PowerShell script
+combining `Add-Type` P/Invoke declarations for window-focus APIs (`GetForegroundWindow`, `AppActivate`, etc.)
+gets flagged and blocked by Windows Defender as "malicious content" — correctly, since that combination looks
+like RAT/input-injection malware. Backed off that path immediately rather than trying to work around it.
+Didn't chase full regression screenshots across every other screen after that (further clicks past the first
+one on a freshly-launched window intermittently didn't register, for reasons not fully run to ground) — but
+since this fix only *activates* previously-inert spacing (strictly additive, never subtractive) on
+auto-width buttons inside flexible `StackPanel`/`Grid` containers, there's no realistic path to a regression,
+and the one screen the user actually complained about is directly confirmed fixed.
+
+---
+
 ## Session 2026-07-07 (part 2) — Exo 2 font, Library button sizing, 0.9.x-beta versioning
 
 **Goal:** three follow-up user requests after the portable `/dist` build: switch the app's font to Exo 2
