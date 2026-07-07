@@ -8,6 +8,56 @@
 
 ---
 
+## Session 2026-07-07 (part 5) — Region picker: re-prompt on every press, not just the first
+
+**Goal:** user asked for two things that turned out to be one bug: (1) an OK/Cancel on the region-selection
+overlay to validate or reject the chosen zone, and (2) pressing the Region source tile should always show
+the picker when not actively recording, rather than silently reusing whatever was picked before.
+
+### The picker already had OK/Cancel — it just almost never showed
+`RegionSelectWindow.xaml` already has a full toolbar: "Cancel", "Use region" (disabled until the drag is
+≥16×16px), plus Esc/Enter keyboard shortcuts — built back in Phase 2. The actual bug was in
+`RecordViewModel.IsRegionSource`'s setter: it only called `PickRegion` the very first time a region had never
+been picked (`_region is null`); every subsequent switch to the Region tile — later in the same session, or
+after restarting the app entirely, since the region persists in settings (`RegionX/Y/Width/Height`) — took
+the `else` branch and just called `RestartPreview()` with the old stored region, never showing the picker
+again. So the user's "add an OK/Cancel" request was really "I never see the screen that has those buttons,"
+and the "re-prompt every time" request is the direct fix for that.
+
+### The fix
+Changed the setter to always call `PickRegion` when switching to Region (previously conditional on
+`_region is null`), guarded by `IsRecording` first — if already recording, just reuse the existing region via
+`RestartPreview()` and never pop a full-screen modal over an in-progress capture (the Source tiles aren't
+currently disabled during recording at all, a separate pre-existing gap not in scope here, so this guard is
+the safety net). Passed `revertOnCancel: _region is null` to `PickRegion` — mirrors the existing "Change…"
+button's semantics (`ChangeRegionCommand`, already `revertOnCancel: false`): if a region already exists,
+cancelling the re-prompt keeps it (there's already something valid to fall back to); only a genuine
+first-ever pick with nothing stored reverts to the Screen tile on cancel.
+
+Found one more real gap while making this change: `PickRegion`'s cancel branch (`picked is null`) only called
+`RestartPreview()` implicitly via the old `else` in the property setter — once that setter always routes
+through `PickRegion`, a cancel with `revertOnCancel: false` did *nothing*, leaving the preview showing
+whatever the *previous* source tile's preview was (e.g. still Screen) instead of switching over to the
+region crop, if the re-prompt was triggered by switching tiles rather than by the existing "Change…" button
+(which was already showing Region, so the gap was invisible there). Added an explicit `RestartPreview()` call
+to that branch so the preview always reflects the actual current region regardless of which path triggered
+the re-prompt.
+
+### Verification
+Rebuilt clean (154/154 tests, 0 warnings — no new unit tests, this is UI-interaction wiring). Live-verified
+with a single combined script (to avoid the window-focus flakiness documented in the earlier button-padding
+session): clicked the Region tile, confirmed a new top-level window (the picker overlay) appeared via raw
+`EnumWindows` + `GetWindowThreadProcessId` (`AutomationElement.FromHandle` doesn't reliably surface this
+borderless/non-taskbar overlay via the normal root-children UIA search, so went straight to Win32), clicked
+its "Cancel" button by resolving the automation element from that HWND directly, then repeated the exact
+same click-Region → overlay-appears → Cancel sequence a second time in the same session — the overlay
+appeared both times (non-null HWND both times), confirming the re-prompt fires on every press, not just the
+first. Final screenshot confirmed the app stayed on Region source with the prior (pre-existing, tiny
+test-leftover) region reapplied after both cancels — exactly the intended "cancel keeps the existing region"
+behavior.
+
+---
+
 ## Session 2026-07-07 (part 4) — Slider design fidelity
 
 **Goal:** user posted a screenshot of the Quality slider and said it doesn't match the design at all — asked

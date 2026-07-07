@@ -192,15 +192,18 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
                 return;
             }
 
-            // On first switch to Region, pick immediately if none stored yet.
-            if (_region is null)
-            {
-                PickRegion(revertOnCancel: true);
-            }
-            else
+            // While actively recording, just reuse whatever region is already set — never pop the
+            // full-screen picker over an in-progress capture.
+            if (IsRecording)
             {
                 RestartPreview();
+                return;
             }
+
+            // Re-prompt every time the Region tile is pressed (not just the first time ever). If a region
+            // is already stored, cancelling keeps it (nothing forces a fallback); otherwise cancelling
+            // reverts to Screen since there's no prior region to fall back to.
+            PickRegion(revertOnCancel: _region is null);
         }
     }
 
@@ -231,6 +234,12 @@ public sealed class RecordViewModel : ObservableObject, INavigationAware
         else if (revertOnCancel)
         {
             RevertToScreen();
+        }
+        else
+        {
+            // Cancelled with an existing region to fall back to — (re-)apply it so the preview reflects
+            // Region source even if this pick was triggered by switching tiles rather than "Change…".
+            RestartPreview();
         }
     }
 
