@@ -8,6 +8,43 @@
 
 ---
 
+## Session 2026-07-07 (part 7) — CHANGELOG restructured into real version sections; released 0.9.3-beta
+
+**Goal:** user asked for CHANGELOG.md entries to also record the version number. Asked which of three
+approaches (proper Keep-a-Changelog version sections / inline per-entry version tags / going-forward-only)
+since this affects ~100 historical lines and the file already claims to follow the Keep-a-Changelog format
+without actually using version sections (everything sat under one `[Unreleased]` heading since the project's
+start). User chose proper version sections.
+
+### The restructure
+Rewrote `CHANGELOG.md` from one big `[Unreleased]` block into real `## [x.y.z] - date` sections, mapped from
+git history: `0.9.2-beta` (sliders fix, commit `05fd184`), `0.9.1-beta` (button-Padding root-cause fix,
+`ea8a8f1`), `0.9.0-beta` (Exo 2 font + adopting the versioning scheme itself, `f1c4acd`) — each section
+containing exactly the entry that shipped in that build. Everything before the versioning scheme existed
+(all of 2026-07-03 through the "UI polish pass" entry on 2026-07-07, which happened *before* `f1c4acd`) got
+bucketed into one retroactive `## [0.1.0] - 2026-07-03 to 2026-07-07` section — that was the actual
+`Directory.Build.props` value for that entire span, so it's not a fabricated number, just never split into
+its own build/publish the way 0.9.x has been. Within `[0.1.0]`, the previously-repeated category headers
+(the file had "### Added"/"### Fixed" appearing many times, once per session, because entries were prepended
+chronologically) were merged into one instance per category, concatenating bullets in their original
+newest-first order across the merge — so nothing reads out of order, it's just no longer split into a dozen
+redundant same-named headers.
+
+**Verified no content was lost or duplicated**: `grep -c "^- 2026-07-0"` on the pre-restructure file (via
+`git show HEAD:CHANGELOG.md`) and the new file both returned exactly **68** — every bullet survived, none
+duplicated, all just regrouped.
+
+### Released 0.9.3-beta for the still-outstanding region-picker fix
+The region-picker re-prompt fix (commit `0c1a25f`, from the request right before the new "build+version+docs
+after every request" standing rule existed) had never actually been bumped/published to its own version —
+it sat as a source-only commit under `0.9.2-beta`. Since the new standing rule says every code change gets
+its own version, bumped now to `0.9.3-beta` (`Directory.Build.props` + `publish-portable.ps1` default),
+rebuilt (154/154 tests, 0 warnings), republished to `/dist`, and gave that fix its own
+`## [0.9.3-beta]` CHANGELOG section — retroactively catching it up to the rule that started right after it
+was written. Verified the packaged `RecMode.exe`'s embedded `ProductVersion` reads exactly `0.9.3-beta`.
+
+---
+
 ## Session 2026-07-07 (part 6) — Standing rule: build+version+docs after every request, unprompted
 
 **No code changed this entry** — a workflow directive from the user: from now on, every code-changing request
