@@ -51,11 +51,23 @@ Modern Windows 11 screen recorder (Bandicam-class). **.NET 10 · WPF · Fluent d
 - [x] **UI polish pass (2026-07-07, direct user complaints, not a plan phase item).** Real multi-res app icon built from the adopted logo SVG with zero external tools (WPF rasterizer + hand-written ICO writer), wired to exe/window/tray; Minimize/Maximize/Close caption buttons (previously rendering as empty "tofu" boxes — an icon-font glyph failure never conclusively root-caused) replaced with hand-drawn vector-`Path` icons, matching the design file's actual FluentUI-SVG spec rather than a system font; app-wide thin-Fluent scrollbar theme (one global `x:Key="{x:Type ScrollBar}"` style, matches `_ds/tokens/base.css` `.mr-scroll` exactly); Record screen now shows disk space used/free on the output drive alongside the elapsed timer (`RecordViewModel.DiskSpaceText` via `DriveInfo`); tooltips added across every icon-only/ambiguous control on Record/Library/Schedule/Settings + the floating toolbar. Design-fidelity pass (compared live against `RecMode.dc.html` in a browser) found and fixed one real gap: Settings' file-name-pattern row now shows a live resolved-example preview (`SettingsViewModel.FilenamePatternPreview`) instead of only a static tokens hint. All verified live (UIA + PrintWindow, both themes). Full writeup in `PROJECT_MEMORY.md`. 154 tests, 0 warnings.
 - [x] **App font switched to Exo 2 + Library button sizing fix (2026-07-07, direct user request).** Replaced the `Segoe UI Variable Text, Segoe UI` system-font stack with **Exo 2** (SIL OFL), embedded rather than system-dependent (portable-first §3.5): static Regular/Medium/SemiBold/Bold TTFs in `src/RecMode.App/Assets/Fonts/`, `AppFontFamily` in `Themes/Controls.xaml` repointed to `pack://application:,,,/Assets/Fonts/#Exo 2, Segoe UI` — one change reskinned nearly the whole app since almost everything already flows through that resource or the implicit `TextBlock` style; `licenses/Exo2/OFL.txt` added. Library header buttons (Videos/Screenshots/Open folder/Refresh) font size 13→12 + padding 14→16 + explicit centering, since they looked cramped at the new font's metrics. Verified live via UIA + screenshots.
 
-## Versioning (standing rule — read before every build/release)
-**Scheme: `0.9.x-beta`, x bumped on every new build or release (user directive, 2026-07-07 — always apply, don't wait to be asked).** Two places must move together:
-- `Directory.Build.props` → `<Version>0.9.x-beta</Version>` (drives the actual built exe's `AssemblyInformationalVersionAttribute`, shown in Settings via `SettingsViewModel.VersionInfo`).
-- `publish-portable.ps1`'s default `-Version` param (drives the release folder/zip name, and is passed through to `dotnet publish -p:Version=` so the packaged binary matches). `publish-installer.ps1` takes `-Version` as a required argument with no default — pass the same value explicitly when cutting an installer release.
-`IncludeSourceRevisionInInformationalVersion` is set `false` in `Directory.Build.props` — leave it off, or the SDK appends a `+<git-sha>` suffix that leaks into the Settings version display.
+## Development loop (standing rule — follow after every code-changing request, unprompted)
+**User directive, 2026-07-07: after each new input/task that changes code, always — without being asked —
+(1) build + run the test suite, (2) bump the version, (3) update `CHANGELOG.md` and `PROJECT_MEMORY.md`, and
+(4) update auto-memory (`C:\Users\andyu\.claude\projects\e--Projects-RecMode\memory\`) so it reflects current
+status.** Don't wait for an explicit "build this" or "update the docs" request — treat every task that
+touches `src/` as ending with this checklist. (Pure doc/chat-only turns with no code change don't need a
+version bump, but still update `PROJECT_MEMORY.md` if something notable was learned or decided.)
+
+1. **Build + test:** `./build.ps1` — must be 0 warnings, all tests passing, before considering a task done.
+2. **Bump the version — scheme `0.9.x-beta`, x incremented by 1 each time (user directive, 2026-07-07).** Two places move together:
+   - `Directory.Build.props` → `<Version>0.9.x-beta</Version>` (drives the built exe's `AssemblyInformationalVersionAttribute`, shown in Settings via `SettingsViewModel.VersionInfo`).
+   - `publish-portable.ps1`'s default `-Version` param (drives the release folder/zip name, passed through to `dotnet publish -p:Version=` so the packaged binary matches). `publish-installer.ps1` takes `-Version` as a required argument with no default — pass the same value explicitly when cutting an installer release.
+   `IncludeSourceRevisionInInformationalVersion` is set `false` in `Directory.Build.props` — leave it off, or the SDK appends a `+<git-sha>` suffix that leaks into the Settings version display.
+3. **Update `CHANGELOG.md`** — a new dated entry under `[Unreleased]` describing what changed, per this file's established verbose convention (see existing entries).
+4. **Update `PROJECT_MEMORY.md`** — a new dated session entry (newest-at-top) with what was built/decided/learned, per the existing per-session convention.
+5. **Update auto-memory** (`recmode-status.md` at minimum) so a cold session start reflects current reality — the index (`MEMORY.md`) is stale if left pointing at superseded status.
+6. Commit locally (never push without explicit permission, per the standing git rule below).
 
 ## Working notes
 - Git repo initialized. **Local commits only — do NOT push to GitHub until the user says so.**

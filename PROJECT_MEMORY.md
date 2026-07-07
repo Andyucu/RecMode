@@ -8,6 +8,25 @@
 
 ---
 
+## Session 2026-07-07 (part 6) — Standing rule: build+version+docs after every request, unprompted
+
+**No code changed this entry** — a workflow directive from the user: from now on, every code-changing request
+should end with build+test, a version bump (`0.9.x-beta`, +1), a `CHANGELOG.md` entry, a `PROJECT_MEMORY.md`
+session entry, and an auto-memory refresh — all without waiting to be asked each time. Previously the version
+was only bumped when the user explicitly said "build as 0.9.x"; now that's the default behavior for any task
+that touches `src/`.
+
+Recorded as a standing rule in `CLAUDE.md` under a new "Development loop" section (replacing the narrower
+"Versioning" section, folded in as step 2 of the loop) — that file is the authoritative, always-loaded source
+future sessions will read. Also refreshed the auto-memory system, which had drifted badly stale: `recmode-status.md`
+still said "next action is Phase 0 scaffolding (no code yet as of 2026-07-03)" despite MVP having been reached
+and Phases 6–10 mostly complete since — rewrote it to reflect current reality (0.9.2-beta, recent session
+highlights, standing gaps), added a new `recmode-dev-loop.md` feedback memory carrying this rule forward
+independently of `CLAUDE.md` in case that file isn't loaded for some reason, and updated `MEMORY.md`'s index
+lines to point at both accurately.
+
+---
+
 ## Session 2026-07-07 (part 5) — Region picker: re-prompt on every press, not just the first
 
 **Goal:** user asked for two things that turned out to be one bug: (1) an OK/Cancel on the region-selection
