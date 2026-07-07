@@ -21,14 +21,16 @@
                     <StackPanel Margin="0,0,8,0">
                         <Button Content="{x:Static res:Strings.Library_Videos}" Command="{Binding ShowVideosCommand}"
                                 ToolTip="Show recorded videos"
-                                Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
+                                Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowVideos, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                     <StackPanel>
                         <Button Content="{x:Static res:Strings.Library_Screenshots}" Command="{Binding ShowScreenshotsCommand}"
                                 ToolTip="Show saved screenshots"
-                                Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
+                                Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
                                 Visibility="{Binding ShowScreenshots, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
@@ -38,10 +40,12 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                 <Button Content="{x:Static res:Strings.Library_OpenFolder}" Command="{Binding OpenFolderCommand}"
                         ToolTip="Open this folder in File Explorer"
-                        Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" />
+                        Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                 <Button Content="{x:Static res:Strings.Library_Refresh}" Command="{Binding RefreshCommand}"
                         ToolTip="Rescan the folder for new files"
-                        Style="{StaticResource SecondaryButton}" FontSize="13" Height="32" Padding="14,0" Margin="8,0,0,0" />
+                        Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0" Margin="8,0,0,0"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
             </StackPanel>
         </Grid>
 

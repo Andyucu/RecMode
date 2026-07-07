@@ -6,6 +6,7 @@
 [Oo]ut/
 publish/
 artifacts/
+/dist/
 *.user
 *.suo
 *.userosscache

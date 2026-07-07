@@ -8,6 +8,73 @@
 
 ---
 
+## Session 2026-07-07 (part 2) — Exo 2 font, Library button sizing, 0.9.x-beta versioning
+
+**Goal:** three follow-up user requests after the portable `/dist` build: switch the app's font to Exo 2
+(Google Font, linked directly), fix the Library header buttons' text looking oversized/cramped in their
+boxes, and adopt a `0.9.x-beta` version scheme with x bumped on every future build — the user was explicit
+that this last one is a standing rule ("remember to always update the version"), not a one-off.
+
+### Exo 2: embedded, not system-installed
+Exo 2 isn't a Windows system font, and this is a portable-first app (§3.5 — nothing should depend on
+anything outside the app folder), so the font had to be bundled rather than just referenced by name and
+hoped-for. Tried Google's own `fonts.google.com/download?family=...` endpoint first — it now returns an HTML
+page instead of a zip (confirmed via `file`/`head -c` on the response), so that path is dead. Fell back to
+the `google-webfonts-helper` API (`gwfh.mranftl.com/api/fonts/exo-2`), which lists direct `.ttf` URLs per
+static weight instance on Google's own CDN (`fonts.gstatic.com`) — pulled Regular/Medium/SemiBold/Bold
+(400/500/600/700) rather than the variable-font `Exo2[wght].ttf` from the `google/fonts` GitHub repo, since
+WPF's font stack has historically had rockier support for variable-font weight-axis selection than for
+plain static instances with real per-weight name-table/OS-2 metadata — didn't want to risk SemiBold/Bold
+silently rendering as Regular. Files went into `src/RecMode.App/Assets/Fonts/*.ttf`, added as WPF
+`<Resource>` items in the csproj, and `Themes/Controls.xaml`'s `AppFontFamily` resource repointed to
+`pack://application:,,,/Assets/Fonts/#Exo 2, Segoe UI` (comma-fallback in case pack resolution ever fails).
+Because `Controls.xaml` is merged at the `Application` level and almost everything already went through
+`AppFontFamily` or the implicit default `TextBlock` style, this was a **one-line change that reskinned nearly
+the whole app** — the only holdout was `CountdownWindow.xaml`'s big number, which had its own hardcoded
+`Segoe UI Variable Display` override, fixed to reference the same resource. Icon-glyph fonts (`Segoe Fluent
+Icons`/`Segoe MDL2 Assets`, used for nav/card icons) were deliberately left alone — different concern
+entirely, not affected by "the app's font." Copied `OFL.txt` (SIL Open Font License — free to bundle/
+redistribute) to `licenses/Exo2/` for the eventual About screen. Verified live: launched the dev build,
+screenshotted Record and Library — Exo 2's distinct geometric letterforms are clearly visible (most obvious
+in the "00:00" timer digits and page titles), both Light/Dark unaffected structurally since this is a font
+swap, not a theme change.
+
+### Library header buttons: font size + explicit centering
+The Videos/Screenshots tabs and Open folder/Refresh buttons (`LibraryView.xaml`) looked oversized/cramped
+against the new font's metrics — `FontSize="13"` with `Padding="14,0"` on a `Height="32"` button left little
+breathing room. Reduced to `FontSize="12"`, bumped padding to `16,0`, and added explicit
+`HorizontalContentAlignment`/`VerticalContentAlignment="Center"` (technically redundant — `SecondaryButton`'s
+`ControlTemplate` already hardcodes `ContentPresenter` to `Center`/`Center` regardless of these properties —
+but added for clarity and as a safety net if the template ever changes). Verified live via a real coordinate
+click on the Library nav (UIA `InvokePattern`/`SelectionItemPattern` don't fire the sidebar's Command-bound
+navigation — a gotcha from the 2026-07-06 a11y session, still holds) — screenshot confirms the four buttons
+now read as properly sized and centered rather than crowding their borders.
+
+### Versioning: 0.9.x-beta, and a latent inconsistency fixed along the way
+Set `Directory.Build.props`'s `<Version>` to `0.9.0-beta` (was `0.1.0`) and `publish-portable.ps1`'s default
+`-Version` param to match. While wiring this up, found and fixed a real gap: `publish-portable.ps1` never
+passed `-p:Version=$Version` to `dotnet publish` — the folder/zip name used the script parameter, but the
+actual built exe's version came unconditionally from `Directory.Build.props`, so the two could silently
+drift apart (they'd only ever matched by coincidence, both defaulting to `0.1.0`). Now the publish step passes
+`-p:Version=$Version` explicitly, so a single `-Version` argument drives the folder name, the zip name, and
+the binary's actual version consistently. Also had to fix the *display*: `SettingsViewModel.VersionInfo` read
+`Assembly.GetEntryAssembly()?.GetName().Version` (the 4-part numeric `AssemblyVersion`), which would have
+silently dropped the `-beta` suffix entirely (numeric-only, no semver pre-release component) — switched to
+`AssemblyInformationalVersionAttribute`, which carries the full semver string. That in turn exposed a second
+issue: the .NET SDK appends a `+<git-commit-sha>` build-metadata suffix to `InformationalVersion` by default,
+which would have made the Settings screen show something like `RecMode 0.9.0-beta+a09d35b...` instead of the
+clean string the user asked for — set `IncludeSourceRevisionInInformationalVersion` to `false` in
+`Directory.Build.props` to suppress it. Verified live via UI Automation: Settings now reads exactly
+`RecMode 0.9.0-beta · .NET 10 · WPF`. **Standing rule going forward (recorded in `CLAUDE.md`): bump the `x` in
+`0.9.x-beta` on every new build/release** — both `Directory.Build.props`'s `<Version>` and the
+`publish-portable.ps1`/`publish-installer.ps1` `-Version` argument need to move together.
+
+### Verification
+`./build.ps1`: 0 warnings, 154/154 tests pass (no new unit tests — this is XAML/glue + a version-string
+formatting change, verified live per convention, not something worth a test for a hardcoded fallback string).
+
+---
+
 ## Session 2026-07-07 — UI polish pass (app icon, caption buttons, scrollbar, disk space, tooltips)
 
 **Goal:** the user gave a direct, concrete list of visual/UX complaints rather than a phase item: tooltips

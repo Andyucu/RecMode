@@ -44,6 +44,9 @@
     <!-- Embedded so Window.Icon (pack URI) and the title-bar logo can reference it; TrayIconService loads
          the same bytes via GetResourceStream rather than duplicating the asset as a loose file. -->
     <Resource Include="Assets\AppIcon.ico" />
+    <!-- App-wide font (Exo 2, SIL OFL — licenses\Exo2\OFL.txt): static Regular/Medium/SemiBold/Bold
+         instances embedded so the portable build never depends on a system font install. -->
+    <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

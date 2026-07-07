@@ -150,9 +150,9 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get
         {
-            Version? v = Assembly.GetEntryAssembly()?.GetName().Version;
-            string version = v is null ? "1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
-            return $"RecMode {version} · .NET 10 · WPF";
+            string? version = Assembly.GetEntryAssembly()?
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            return $"RecMode {version ?? "0.9.0-beta"} · .NET 10 · WPF";
         }
     }
 

@@ -15,7 +15,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0',
+    # 0.9.x-beta scheme: bump x on every new build (see CLAUDE.md working notes).
+    [string]$Version = '0.9.0-beta',
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'artifacts')
 )
 
@@ -31,7 +32,7 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Write-Host "==> Publishing self-contained win-x64 (ReadyToRun)" -ForegroundColor Cyan
 dotnet publish $app -c Release -r win-x64 --self-contained true `
-    -p:PublishReadyToRun=true -p:IsPublishable=true `
+    -p:PublishReadyToRun=true -p:IsPublishable=true -p:Version=$Version `
     -o $stage
 
 # portable.marker ships via CopyToOutputDirectory, but guarantee it here too.
