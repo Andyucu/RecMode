@@ -17,6 +17,7 @@
     <Color x:Key="StrokeDividerColor">#15000000</Color>
     <Color x:Key="StrokeCardColor">#0F000000</Color>
     <Color x:Key="StrokeControlColor">#14000000</Color>
+    <Color x:Key="StrokeControlStrongColor">#72000000</Color>
     <Color x:Key="SubtleHoverColor">#09000000</Color>
     <Color x:Key="SubtlePressedColor">#06000000</Color>
 
@@ -36,6 +37,7 @@
     <SolidColorBrush x:Key="StrokeDividerBrush" Color="{StaticResource StrokeDividerColor}" />
     <SolidColorBrush x:Key="StrokeCardBrush" Color="{StaticResource StrokeCardColor}" />
     <SolidColorBrush x:Key="StrokeControlBrush" Color="{StaticResource StrokeControlColor}" />
+    <SolidColorBrush x:Key="StrokeControlStrongBrush" Color="{StaticResource StrokeControlStrongColor}" />
     <SolidColorBrush x:Key="SubtleHoverBrush" Color="{StaticResource SubtleHoverColor}" />
     <SolidColorBrush x:Key="SubtlePressedBrush" Color="{StaticResource SubtlePressedColor}" />
     <SolidColorBrush x:Key="CriticalBrush" Color="{StaticResource CriticalColor}" />

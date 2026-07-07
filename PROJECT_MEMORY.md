@@ -8,6 +8,61 @@
 
 ---
 
+## Session 2026-07-07 (part 4) — Slider design fidelity
+
+**Goal:** user posted a screenshot of the Quality slider and said it doesn't match the design at all — asked
+to make it match.
+
+### What was actually wrong
+`AppSlider` in `Themes/Controls.xaml` was never a real custom template — it was just `Foreground`+`Height`
+setters layered on the stock WPF `Slider`, meaning every slider in the app (Quality, System audio volume,
+Microphone volume, Webcam size) was rendering with plain OS-default chrome: a flat gray track with no accent
+fill indicator and a small default rectangular thumb. The design (`_ds/.../components/components.css`,
+`.mr-slider`/`.mr-slider__track`/`.mr-slider__fill`/`.mr-slider__thumb`) specifies something entirely
+different: a 4px pill-shaped track, an accent-colored fill bar showing progress from the left edge to the
+thumb, and a 20×20 circular thumb that's an accent dot sitting inside a page-background-colored ring with a
+thin outline — visually a "halo" separating the thumb from the track.
+
+### Building the real template
+Needed a new design token first: `--stroke-control-strong` (the track's base color) didn't exist anywhere in
+`Palette.Light.xaml`/`Palette.Dark.xaml` — read the actual CSS values from `tokens/colors.css` (`rgba(0,0,0,
+0.446)` light, `rgba(255,255,255,0.544)` dark) and added `StrokeControlStrongColor`/`StrokeControlStrongBrush`
+to both palettes, converting the CSS alpha to the equivalent ARGB hex byte precisely (`0.446×255≈114=0x72`,
+`0.544×255≈139=0x8B`) rather than reusing a coincidentally-identical existing token (`TextTertiaryColor`
+happens to numerically match in both themes — almost certainly because both derive from the same underlying
+Fluent neutral-alpha ramp step — but reusing it would conflate two semantically different concerns).
+
+Built a real `ControlTemplate` for `Slider`: two stacked `Border`s (4px pill track in
+`StrokeControlStrongBrush`, and an accent-colored pill on top sized to the filled portion) plus a `Track`
+element hosting fully-transparent `RepeatButton`s (still clickable for large-step jumps, just invisible) and
+a custom `Thumb` style. The fill bar's width is bound to the `Track`'s `DecreaseRepeatButton`'s
+`ActualWidth` via an `ElementName` binding — the standard WPF idiom for a live progress-indicator slider,
+since `Track` itself already computes and lays out that button to span exactly from the track start to the
+thumb's left edge based on `Value`/`Minimum`/`Maximum`, so no converter or code-behind math is needed.
+
+The thumb is a `Grid` with two concentric `Ellipse`s: an outer 20×20 one filled with `SurfaceBaseBrush`
+(matching the page background, creating the CSS's "ring" look) with a 1px `StrokeControlStrongBrush` stroke
+(replicating the CSS's `box-shadow: 0 0 0 1px var(--stroke-control-strong)`), and an inner accent-colored dot
+sized directly rather than trying to replicate CSS's `border: 4px solid` "hole" trick (WPF `Ellipse` has no
+equivalent construct) — 12×12 normally, growing to 14×14 on `IsMouseOver`, which is pixel-identical to what
+the CSS's border 4px→3px hover shrink produces (20 − 2×4 = 12, 20 − 2×3 = 14).
+
+### Verification
+Rebuilt clean (0 warnings, 154/154 tests — no new tests, this is pure template/XAML with no testable logic).
+Launched live and confirmed visually: System audio and Microphone volume sliders (both at 100%, i.e. fully
+filled) and the Webcam Size slider (~10%, i.e. nearly empty) all show the new pill-track/accent-fill/
+ring-thumb correctly in Dark theme — covering both extremes of fill position. Quality uses the exact same
+shared `AppSlider` style with no per-instance template override, so it renders identically (all four sliders
+in the app share one style, by design). **Didn't get a Light-theme screenshot this pass** — repeated attempts
+to click through Settings→Light hit the same intermittent UI-Automation click flakiness documented in the
+2026-07-07 button-padding session (clicks landing correctly on the first navigation after a fresh launch,
+then intermittently not registering on subsequent ones) — not chased further since the new
+`StrokeControlStrongBrush` values were sourced directly and precisely from the same CSS tokens for both
+themes, consumed via the same `DynamicResource` theme-switching mechanism already proven correct everywhere
+else in the app (scrollbar, buttons, icons all switch cleanly between themes the same way).
+
+---
+
 ## Session 2026-07-07 (part 3) — Root-caused the Library button padding, for real this time
 
 **Goal:** the user came back with the same screenshot — Videos/Screenshots buttons in Library still showing

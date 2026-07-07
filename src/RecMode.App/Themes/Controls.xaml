@@ -425,10 +425,84 @@
         </Setter>
     </Style>
 
-    <!-- ===================== Slider (themed, default template) ===================== -->
+    <!-- ===================== Slider (design: components.css .mr-slider/__track/__fill/__thumb) =====================
+         4px pill track, accent fill from the left edge to the thumb, 20x20 thumb = accent dot inside a
+         surface-base ring (a 12x12 inner circle, growing to 14x14 on hover — the CSS achieves this via a
+         shrinking 4px→3px border; WPF has no border-on-ellipse "hole", so the inner dot is resized directly
+         for the same visual result). -->
+    <Style x:Key="SliderRepeatButtonTransparent" TargetType="RepeatButton">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Rectangle Fill="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SliderThumbStyle" TargetType="Thumb">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Width="20" Height="20" Cursor="Hand">
+                        <Ellipse Fill="{DynamicResource SurfaceBaseBrush}"
+                                 Stroke="{DynamicResource StrokeControlStrongBrush}" StrokeThickness="1" />
+                        <Ellipse x:Name="InnerDot" Width="12" Height="12" Fill="{DynamicResource AccentBrush}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="InnerDot" Property="Width" Value="14" />
+                            <Setter TargetName="InnerDot" Property="Height" Value="14" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="AppSlider" TargetType="Slider">
-        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
         <Setter Property="Height" Value="32" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                Background="{DynamicResource StrokeControlStrongBrush}" />
+                        <Border Height="4" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                Background="{DynamicResource AccentBrush}" IsHitTestVisible="False"
+                                Width="{Binding ElementName=PART_DecreaseButton, Path=ActualWidth}" />
+                        <Track x:Name="PART_Track" VerticalAlignment="Center"
+                               Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                               Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                               IsDirectionReversed="{TemplateBinding IsDirectionReversed}"
+                               Orientation="{TemplateBinding Orientation}">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton x:Name="PART_DecreaseButton" Style="{StaticResource SliderRepeatButtonTransparent}"
+                                              Command="Slider.DecreaseLarge" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource SliderRepeatButtonTransparent}" Command="Slider.IncreaseLarge" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SliderThumbStyle}" />
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===================== Toggle switch (ToggleButton) ===================== -->
