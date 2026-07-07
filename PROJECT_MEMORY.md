@@ -8,6 +8,75 @@
 
 ---
 
+## Session 2026-07-07 (part 8) — Draw-mode exit button; discovered an RDP-specific testing quirk
+
+**Goal:** user asked for a way to exit draw mode via a visible button in addition to a key (suggested Esc).
+
+### Esc already worked — the real gap was that nothing on screen said so
+`AnnotationOverlay` already exits on Esc and clears on right-click (built in the original Phase 8 work). The
+actual problem: the overlay is a fullscreen, zero-chrome window *by design* — it's deliberately **not**
+excluded from capture (the ink needs to be part of the recording), so it can't host a visible button without
+that button also ending up in the recording. With no on-screen hint at all, Esc was undiscoverable.
+
+### The fix
+New `AnnotationHintWindow` (+ `.xaml.cs`) — a small floating pill ("Drawing on screen" + "Exit draw mode"
+button), built on the exact same proven pattern as `RecordingToolbarWindow`: `WindowStyle=None`,
+`ShowActivated=False`, `Topmost`, capture-excluded via the existing `CaptureExclusion.Apply()` helper,
+positioned via `SystemParameters.WorkArea` on `Loaded`. `AnnotationService` (which already toggles
+`AnnotationOverlay` show/hide off `RecordViewModel.IsAnnotating`) now also shows/hides this hint window
+alongside it — created *after* the overlay so it lands above the full-screen ink surface in the topmost
+z-order. Clicking the button calls the same `record.StopAnnotating` the Esc key already used.
+
+### A real debugging odyssey to verify it — worth recording in detail
+Getting a reliable live verification of this took most of the session, and surfaced a genuinely useful
+finding, not just wasted motion:
+1. **Interactive UI-Automation clicking was hopelessly flaky** in this environment — clicks landing correctly
+   once, then silently missing on later attempts; `Process.MainWindowHandle` reporting 0 for a window that
+   was actually visible (a known .NET heuristic quirk when a process owns multiple top-level windows);
+   `PrintWindow`-based screenshots returning solid black. Tried increasingly elaborate fixes (`SetForegroundWindow`,
+   `AppActivate`, raw `EnumWindows`) — one script combining P/Invoke window-focus calls got **flagged and
+   blocked by Windows Defender as malicious content** (correctly — that exact API combination looks like
+   input-injection malware). Backed off immediately rather than working around it.
+2. Switched strategy entirely: added a temporary self-test seam (`--selftest-drawhint`, mirroring the existing
+   `--selftest-annotate`/`--selftest-ripple` pattern) that drives the real code path directly — shows both
+   windows, raises a genuine routed `Click` event on the button (`hint.ExitButton.RaiseEvent(new
+   RoutedEventArgs(ButtonBase.ClickEvent))`), and records whether the exit callback fired. This confirmed the
+   **functional** wiring correctly (`exitCalled=True`) with no UI-automation flakiness involved at all.
+3. Getting a **visual** confirmation (is the button actually visible, not covered by the ink overlay?) turned
+   into its own investigation. Repeated attempts to screenshot the real desktop while the self-test was
+   running kept coming up empty — no hint window, no error. Ruled out, in order: timing races (fixed by
+   switching from guessed `Sleep` delays to actually polling/confirming the process was alive immediately
+   before *and* after each capture); a "different tool sandbox" theory (Bash-launched vs. PowerShell-queried
+   processes — disproved once a `Get-Process` from PowerShell reliably found and killed processes started
+   from Bash); and stale/orphaned result files from many rapid repeated attempts overwriting each other
+   (real cause of several inconsistent early timings — fixed by explicitly deleting the result file and
+   confirming zero RecMode processes before each clean attempt).
+4. **The actual cause, found by elimination**: temporarily swapped in a stand-in `IOsCapabilities` reporting
+   `SupportsExcludeFromCapture = false` (so `CaptureExclusion.Apply()` became a no-op) for one diagnostic run.
+   With exclusion off, the hint window appeared immediately — correctly positioned top-centre, correctly
+   styled, sitting above the ink overlay as intended. **`SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` is
+   also stripping the window from this environment's own remote-desktop transmission**, not just from WGC
+   capture (its actual, intended effect) — this dev environment is itself being observed over a remote/RDP
+   session (confirmed by Remote Desktop Manager and multiple nested remote sessions visible in every full-
+   desktop screenshot taken this session), and RDP's screen-transmission path apparently respects the same
+   affinity flag WGC does. **This is an artifact of how this specific dev machine is being remotely observed
+   during development, not a bug in the window or a real-world problem for an actual local user** — and it
+   isn't specific to the new hint window either: the exact same thing would be true of the already-shipped
+   `RecordingToolbarWindow`/`CountdownWindow`, which use the identical `CaptureExclusion.Apply()` call. Worth
+   remembering for any *future* live-UI verification attempt in this same remote session: a capture-excluded
+   overlay window's on-screen presence can't be confirmed via a normal screenshot taken over this connection,
+   full stop — fall back to a self-test-style functional check (as done here) or temporarily and deliberately
+   disable capture-exclusion for that one diagnostic pass, exactly as done here, then revert it.
+5. Removed all temporary diagnostic scaffolding afterward (`RunDrawHintSelfTestAsync`, the `NoCaptureExclusionOs`
+   diagnostic stub, the `--selftest-drawhint` dispatch) — same clean-removal convention used for the earlier
+   app-icon-building self-test hook. Kept `x:Name="ExitButton"` on the button (harmless, matches the
+   codebase's existing convention of naming interactive elements).
+
+Rebuilt clean (154/154 tests, 0 warnings) after cleanup. Bumped to 0.9.4-beta per the standing development-loop
+rule, republished to `/dist`, verified the packaged exe's `ProductVersion` reads exactly `0.9.4-beta`.
+
+---
+
 ## Session 2026-07-07 (part 7) — CHANGELOG restructured into real version sections; released 0.9.3-beta
 
 **Goal:** user asked for CHANGELOG.md entries to also record the version number. Asked which of three

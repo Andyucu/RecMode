@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.4-beta] - 2026-07-07
+
+### Added
+- 2026-07-07 — **Draw mode: a real "Exit draw mode" button, and re-verified Esc still works (user-requested).** The full-screen ink annotation overlay (`AnnotationOverlay`) already had Esc-to-exit wired, but nothing on screen ever told you that — the overlay has zero visible chrome by design (it's deliberately not excluded from capture, so any chrome drawn on it would show up in the recording), and it covers the entire monitor, so once draw mode was on there was no obvious way out except a keyboard shortcut nobody could discover. Added a small separate `AnnotationHintWindow` — a floating "Drawing on screen · Exit draw mode" pill, shown alongside the ink overlay and closed with it (`AnnotationService`), positioned top-centre and capture-excluded like the recording toolbar/countdown so it never appears in the recording itself. Clicking it calls the same exit path as Esc (`RecordViewModel.StopAnnotating`). Verified correctness (button click → exit callback fires) via a temporary self-test seam exercising the real routed `Click` event end-to-end, then removed the seam once confirmed. Visual placement (top-centre, above the ink overlay, not covered by it) was verified with capture-exclusion temporarily disabled in a throwaway diagnostic build — `WDA_EXCLUDEFROMCAPTURE` was found to also hide the window from this environment's own remote-desktop transmission (not just from WGC-based recording capture, which is its intended effect), so a real screenshot taken over the remote session couldn't show it with exclusion active; this only affects how the *dev machine* was observed remotely during this session, not how the window behaves for a real local user, and isn't specific to this new window — the same would be true of the existing recording toolbar/countdown under the same remote-viewing conditions. 154 tests pass; zero warnings.
+
 ## [0.9.3-beta] - 2026-07-07
 
 ### Fixed
