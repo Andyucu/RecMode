@@ -8,6 +8,97 @@
 
 ---
 
+## Session 2026-07-07 (part 9) — Whole-app review via subagents; fixed the two real bugs found
+
+**Goal:** user asked to use the subagents created earlier this session to review the entire app for issues.
+Dispatched three in parallel (`code-analyzer`, `code-reviewer`, `arch-enforcer` — the other four don't fit a
+review task: `spec-writer`/`implementer` are pre/post-implementation, `test-runner` writes tests rather than
+auditing coverage, `db-migration-reviewer` doesn't apply, RecMode has no database). Synthesized their reports,
+presented a prioritized summary, and the user asked to start with the real bugs, then progress through the
+maintenance findings. This entry covers the real-bug pass; maintenance fixes are a separate, later entry.
+
+### What the three agents found (full reports not reproduced here — see the conversation transcript)
+- **`code-analyzer`** (broad health scan): `RecordingCoordinator.Start()` as a ~250-line god-method;
+  `RecordingStateMachine`'s `Countdown`/`Degraded` states dead in production; ~320 lines of permanent
+  self-test scaffolding in `App.xaml.cs`; `Nv12Converter`/`BgraScaler` and `WgcCaptureEngine`/
+  `WgcPreviewEngine` ~450 duplicated lines (with a proven history of the same allocation bug needing two
+  separate fixes); `RecordViewModel` as a 1199-line, 11-dependency "god" ViewModel; `SchedulerService`
+  polling every 20s contradicting the project's own "event-driven, never polled" rule; several smaller
+  duplication/dead-code nits. **Crucially, also caught that the Phase 10 audio-thread hardening fix only
+  landed in one of its two copies** (see below).
+- **`code-reviewer`** (security/correctness, whole-codebase not just-diff): the `Stop()`/pacer-thread race
+  (below); two ffmpeg-subprocess hang risks in `EncoderProbe`/`Remuxer` (below); `Stop()` running the whole
+  finalize/remux pipeline synchronously on the UI thread (flagged Should-fix, not fixed this pass — see
+  "deferred" below); nits on `ProcessLoopbackCapture` dead code (already known/documented) and the
+  single-instance named pipe's default security. Everything else it checked (ffmpeg arg construction/
+  injection safety, settings serialization, file I/O, the update-checker) came back clean.
+- **`arch-enforcer`**: clean bill of health. No NetArchTest suite exists (confirmed by checking `tests/`), so
+  this was a manual `.csproj`-reference-graph + `using`-statement audit — `Core` has zero project references
+  and no UI/hardware dependencies, `Capture`/`Encoding`/`Audio` are fully WPF-agnostic, the reference graph is
+  a clean DAG (`Core ← Interop ← {Capture, Encoding, Audio} ← App`) with no cycles. No plugin-loading
+  mechanism exists in the codebase at all, so that specific check had nothing to apply to.
+
+### Real bug #1: `RecordingCoordinator.Stop()` could race the pacer thread's own fatal-error path
+If the encoder died (`EncoderPipeBrokenException` or any other exception escaping `PaceLoop`) at almost the
+same instant the user clicked Stop, two independent paths could both try to finalize: `Stop()` on the UI
+thread, and `HandleFatalPipeBreak` running synchronously inside the pacer thread's own catch block. Since
+`_pacer.Join(3000)`'s return value was never checked, `Stop()` proceeded identically whether the pacer
+thread had actually finished or was still mid-flight past the join timeout. Worst case: `_stateMachine.Stop()`
+called twice (the second call throwing `InvalidOperationException` straight out of a UI command handler,
+since `RecordingStateMachine.Stop()`'s transition guard only allows it from Recording/Paused/Degraded),
+`Finalize()` running concurrently on two threads mutating the same unlocked instance fields (`_session`,
+`_capture`, `_mixer`, `_finalPath`), and the `Finished` event firing twice.
+
+**Fix:** added `TryClaimFinalize()` — a `Lock` (the new .NET 9+ `System.Threading.Lock` type) plus a
+`_finalizeStarted` flag, reset per-recording in `Start()`. Both `Stop()` and `HandleFatalPipeBreak` now call
+it before doing any state-machine transition or `Finalize()` work; whichever reaches it first proceeds, the
+other returns immediately (the winner already drives the state machine and raises `Finished`, so there's
+nothing left for the loser to do). Also tightened `Stop()`'s state-transition calls to the same defensive
+`if (State is Recording or Paused or Degraded)` / `if (State == Finalizing)` pattern `HandleFatalPipeBreak`
+already used, rather than calling `_stateMachine.Stop()`/`CompleteFinalization()` unconditionally.
+
+**Scoped deliberately narrow:** the reviewer separately flagged that `Stop()` runs the whole finalize/remux
+pipeline synchronously on the UI thread as its own (Should-fix, not Blocking) issue — making `Stop()` truly
+async would be a bigger, separate change touching the ViewModel's calling convention too. Left that for a
+future pass; this fix only closes the specific double-finalize/duplicate-event race, which was the Blocking
+finding.
+
+### Real bug #2: the Phase 10 audio-thread hardening fix didn't cover `RotateSegment()`
+`code-analyzer` caught this by comparing the two nearly-identical audio-pump thread bodies in `Start()` (line
+~344, broad `catch (Exception ex)` — the actual Phase 10 fix) and `RotateSegment()` (line ~775, still the old
+narrow `catch (Exception ex) when (ex is IOException or ObjectDisposedException)`). Since `RotateSegment`
+is exactly the auto-split and mid-stream hw→sw downgrade code path — the two features specifically meant to
+keep a recording alive under stress — this was a real, live gap in a fix already documented as complete.
+
+**Fix:** extracted a single shared `StartAudioPumpThread(NamedPipeServerStream audioPipe)` used by both call
+sites, so there's now exactly one copy of this thread body (and one place to get its exception handling
+right) instead of two that can silently drift apart.
+
+### Two related ffmpeg-subprocess hang risks, fixed while in the area
+- `EncoderProbe.RunEncodersList` and `TrialEncode` each redirected a process stream (`stderr` in the first
+  case, `stdout` in the second) that the code never actually reads — a classic .NET `Process` gotcha: if the
+  child writes enough to an undrained redirected pipe to fill the OS buffer, it blocks, and the parent
+  (blocked in `ReadToEnd()` on the *other* stream) deadlocks with it. Fixed by simply not redirecting the
+  unused stream in each case, since neither method needed it for anything.
+- `Remuxer.RemuxToMp4`'s stderr drain used a plain `ReadToEnd()` with no timeout of its own, so the method's
+  own `timeoutMs` parameter — which `RecordingCoordinator.Finalize()`/`RotateSegment()` both pass and rely on
+  — never actually took effect if ffmpeg hung without exiting. Since remux runs synchronously on the UI
+  thread, a hang here would have frozen the whole app. Fixed using the same async `ErrorDataReceived`/
+  `BeginErrorReadLine()` drain pattern `FfmpegRecordingSession` already uses for its long-running stderr
+  capture, with `WaitForExit(timeoutMs)` now actually bounding the call — and a `Kill(entireProcessTree: true)`
+  if it expires.
+
+### Verification
+Rebuilt clean (154/154 tests, 0 warnings). Live-verified via the existing self-test hooks rather than
+interactive UI (per the RDP-environment lesson from the previous session — see
+[[recmode-rdp-capture-exclusion]]): `--selftest-record` for an ordinary record→stop cycle (unaffected by the
+`Stop()` guard change), and `--selftest-downgrade` specifically to exercise the refactored `RotateSegment`
+audio-pump path (system audio was enabled in settings, so this genuinely exercised
+`StartAudioPumpThread` across a segment rotation) — both completed successfully, and ffprobe confirmed both
+resulting segments as clean h264+aac MP4s. Released as 0.9.5-beta per the standing development-loop rule.
+
+---
+
 ## Session 2026-07-07 (part 8) — Draw-mode exit button; discovered an RDP-specific testing quirk
 
 **Goal:** user asked for a way to exit draw mode via a visible button in addition to a key (suggested Esc).

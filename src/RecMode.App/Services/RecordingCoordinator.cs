@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using RecMode.Audio;
 using RecMode.Capture;
@@ -37,6 +38,12 @@ public sealed class RecordingCoordinator : IDisposable
     private FfmpegRecordingSession? _session;
     private Thread? _pacer;
     private volatile bool _stopRequested;
+
+    // Guards Finalize() against running twice — Stop() (UI thread) and the pacer thread's own fatal-error
+    // path (HandleFatalPipeBreak) can both reach a finalize attempt if the encoder dies right as the user
+    // clicks Stop; only the first to claim the lock actually finalizes/transitions state/raises Finished.
+    private readonly Lock _finalizeLock = new();
+    private bool _finalizeStarted;
 
     // Safe-recording remux (record to MKV, convert to MP4 on stop).
     private string? _ffmpegPath;
@@ -322,6 +329,7 @@ public sealed class RecordingCoordinator : IDisposable
 
             _stateMachine.StartRecording();
             _stopRequested = false;
+            _finalizeStarted = false;
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
             _targetFps = fps;
@@ -333,24 +341,7 @@ public sealed class RecordingCoordinator : IDisposable
             // video stream (which needs frames flowing), so we start video pacing first, then wait + pump.
             if (_mixer is not null && _session.AudioPipe is { } audioPipe)
             {
-                _audioStop = new CancellationTokenSource();
-                _audioThread = new Thread(() =>
-                {
-                    try
-                    {
-                        audioPipe.WaitForConnection();
-                        _mixer.PumpUntil(audioPipe, () => _stateMachine.Elapsed, _audioStop.Token);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Runs on a dedicated background Thread: anything unhandled here is a genuinely
-                        // unhandled thread exception, which terminates the whole process (unlike Task
-                        // exceptions). The video pacer is the source of truth for stopping the recording;
-                        // losing audio mid-recording is degraded, not fatal, so just log and stop pumping.
-                        Log.Warning(ex, "Audio pump ended");
-                    }
-                }) { IsBackground = true, Name = "recmode-audio" };
-                _audioThread.Start();
+                StartAudioPumpThread(audioPipe);
             }
 
             Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} audio={Audio} -> {Path}",
@@ -376,11 +367,44 @@ public sealed class RecordingCoordinator : IDisposable
         _stopRequested = true;
         _pacer?.Join(3000);
 
-        _stateMachine.Stop();
+        if (!TryClaimFinalize())
+        {
+            // The pacer thread's own fatal-error path (HandleFatalPipeBreak) already claimed finalize —
+            // e.g. the encoder died right as Stop() was called. It already drove the state machine to Idle
+            // and raised Finished; nothing more to do here.
+            return;
+        }
+
+        if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused or RecordingState.Degraded)
+        {
+            _stateMachine.Stop();
+        }
+
         RecordingResult result = Finalize();
-        _stateMachine.CompleteFinalization();
+        if (_stateMachine.State == RecordingState.Finalizing)
+        {
+            _stateMachine.CompleteFinalization();
+        }
 
         Finished?.Invoke(result);
+    }
+
+    /// <summary>Atomically claims the single finalize attempt for the current recording — guards against
+    /// Stop() (UI thread) and the pacer thread's fatal-error path both trying to finalize/transition state
+    /// concurrently, which could otherwise double-finalize, throw from a state-machine guard, or fire
+    /// Finished twice. Reset per-recording in Start().</summary>
+    private bool TryClaimFinalize()
+    {
+        lock (_finalizeLock)
+        {
+            if (_finalizeStarted)
+            {
+                return false;
+            }
+
+            _finalizeStarted = true;
+            return true;
+        }
     }
 
     /// <summary>Pauses the recording — the pacer stops writing; output has no gap for the paused span (§3.7).</summary>
@@ -413,6 +437,32 @@ public sealed class RecordingCoordinator : IDisposable
             mixer.SystemGain = systemGain;
             mixer.MicGain = micGain;
         }
+    }
+
+    /// <summary>Starts the audio-pump thread for the given pipe — shared by <see cref="Start"/> and
+    /// <see cref="RotateSegment"/> (auto-split / hw→sw downgrade), which each open a fresh audio pipe per
+    /// segment. Runs on a dedicated background <see cref="Thread"/> (not a <see cref="System.Threading.Tasks.Task"/>):
+    /// anything unhandled here would otherwise be a genuinely unhandled thread exception, which terminates
+    /// the whole process immediately — so the catch is deliberately broad. The video pacer is the source of
+    /// truth for stopping the recording; losing audio mid-recording is degraded, not fatal, so this just logs
+    /// and stops pumping.</summary>
+    private void StartAudioPumpThread(NamedPipeServerStream audioPipe)
+    {
+        _audioStop = new CancellationTokenSource();
+        CancellationTokenSource stopSource = _audioStop;
+        _audioThread = new Thread(() =>
+        {
+            try
+            {
+                audioPipe.WaitForConnection();
+                _mixer!.PumpUntil(audioPipe, () => _stateMachine.Elapsed, stopSource.Token);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Audio pump ended");
+            }
+        }) { IsBackground = true, Name = "recmode-audio" };
+        _audioThread.Start();
     }
 
     private void PaceLoop(int fps)
@@ -582,6 +632,13 @@ public sealed class RecordingCoordinator : IDisposable
     {
         Log.Error(ex, "Recording pacer loop failed. ffmpeg stderr:\n{Stderr}", _session?.StandardError);
         _errors.Fatal("record.encoder-died", message, suggestion, ex);
+
+        if (!TryClaimFinalize())
+        {
+            // Stop() (UI thread) already claimed finalize concurrently — it will drive the state machine
+            // and raise Finished; nothing more to do here.
+            return;
+        }
 
         // Drive the machine to a clean Idle and report whatever the session managed to finalize.
         try
@@ -763,21 +820,7 @@ public sealed class RecordingCoordinator : IDisposable
 
         if (_mixer is not null && _session.AudioPipe is { } audioPipe)
         {
-            _audioStop = new CancellationTokenSource();
-            var stopToken = _audioStop;
-            _audioThread = new Thread(() =>
-            {
-                try
-                {
-                    audioPipe.WaitForConnection();
-                    _mixer.PumpUntil(audioPipe, () => _stateMachine.Elapsed, stopToken.Token);
-                }
-                catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-                {
-                    Log.Warning(ex, "Audio pump ended");
-                }
-            }) { IsBackground = true, Name = "recmode-audio" };
-            _audioThread.Start();
+            StartAudioPumpThread(audioPipe);
         }
 
         Log.Information("Segment rotation: started segment {Index} (encoder={Enc}) -> {Path}",

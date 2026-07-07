@@ -33,8 +33,19 @@ public static class Remuxer
                 return false;
             }
 
-            process.StandardError.ReadToEnd(); // drain so ffmpeg doesn't block on a full pipe
-            return process.WaitForExit(timeoutMs) && process.ExitCode == 0 && File.Exists(mp4Path);
+            // Drain stderr asynchronously rather than ReadToEnd() (which has no timeout of its own — if
+            // ffmpeg ever hung without exiting, that call would block forever regardless of timeoutMs,
+            // freezing the caller; RemuxToMp4 runs synchronously on the UI thread via Stop() → Finalize()).
+            process.ErrorDataReceived += static (_, _) => { };
+            process.BeginErrorReadLine();
+
+            if (!process.WaitForExit(timeoutMs))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return false;
+            }
+
+            return process.ExitCode == 0 && File.Exists(mp4Path);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {

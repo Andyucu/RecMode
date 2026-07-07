@@ -64,11 +64,13 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) 
 
     private static string RunEncodersList(string ffmpegPath)
     {
+        // Only stdout is redirected — we don't read stderr, and redirecting a stream without ever draining
+        // it risks a classic deadlock if ffmpeg writes enough there to fill the OS pipe buffer (it would
+        // block on a full stderr pipe while ReadToEnd() below blocks waiting for more stdout/process exit).
         var psi = new ProcessStartInfo(ffmpegPath, "-hide_banner -encoders")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
-            RedirectStandardError = true,
             CreateNoWindow = true,
         };
         using Process process = Process.Start(psi)
@@ -88,7 +90,6 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) 
             {
                 UseShellExecute = false,
                 RedirectStandardError = true,
-                RedirectStandardOutput = true,
                 CreateNoWindow = true,
             };
             using Process? process = Process.Start(psi);
