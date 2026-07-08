@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\RecMode.Core\RecMode.Core.csproj" />
     <ProjectReference Include="..\..\src\RecMode.Encoding\RecMode.Encoding.csproj" />
+    <ProjectReference Include="..\..\src\RecMode.App\RecMode.App.csproj" />
   </ItemGroup>
 
 </Project>

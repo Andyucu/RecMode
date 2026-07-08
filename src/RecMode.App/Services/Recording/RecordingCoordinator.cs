@@ -58,6 +58,7 @@ public sealed class RecordingCoordinator : IDisposable
     private CancellationTokenSource? _audioStop;
 
     private readonly IEncoderProbe _encoderProbe;
+    private readonly EncoderFallbackChain _fallbackChain;
     private readonly IPowerStatus _power;
     private readonly IDiskSpeedProbe _diskSpeed;
     private readonly RecMode.Core.Library.ILibraryIndex _libraryIndex;
@@ -106,6 +107,7 @@ public sealed class RecordingCoordinator : IDisposable
         _errors = errors;
         _stateMachine = stateMachine;
         _encoderProbe = encoderProbe;
+        _fallbackChain = new EncoderFallbackChain(encoderProbe);
         _power = power;
         _diskSpeed = diskSpeed;
         _libraryIndex = libraryIndex;
@@ -160,7 +162,7 @@ public sealed class RecordingCoordinator : IDisposable
             }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
-            _encoderChain = BuildFallbackChain(encoder);
+            _encoderChain = _fallbackChain.Build(encoder);
             _jobTemplate = job;
             _session = TryStartAnyEncoder(_encoderChain, job, _capture.Nv12ByteSize);
             if (_session is null)
@@ -582,7 +584,7 @@ public sealed class RecordingCoordinator : IDisposable
                 // Black-frame watchdog (§3.6): exclusive-fullscreen games / DRM windows capture as black.
                 if (!blackWarned && (framesWritten & 15) == 0)
                 {
-                    if (IsLikelyBlack(frame, lumaLength))
+                    if (BlackFrameDetector.IsLikelyBlack(frame, lumaLength))
                     {
                         if (blackSince == 0)
                         {
@@ -896,29 +898,6 @@ public sealed class RecordingCoordinator : IDisposable
             _segmentIndex, _activeEncoder?.FfmpegId, _finalPath);
     }
 
-    /// <summary>Builds a software-only fallback chain for the same codec (last resort: libx264), for the hw→sw downgrade.</summary>
-    private List<EncoderInfo> BuildSoftwareFallbackChain(EncoderInfo current)
-    {
-        IReadOnlyList<EncoderInfo> available = _encoderProbe.GetAvailableEncoders();
-        var chain = new List<EncoderInfo>();
-
-        void Add(EncoderInfo? e)
-        {
-            if (e is not null && !chain.Exists(c => c.FfmpegId == e.FfmpegId))
-            {
-                chain.Add(e);
-            }
-        }
-
-        foreach (EncoderInfo e in available.Where(x => x.Codec == current.Codec && !x.IsHardware))
-        {
-            Add(e);
-        }
-        Add(available.FirstOrDefault(x => x.FfmpegId == "libx264")); // last-resort software
-
-        return chain;
-    }
-
     /// <summary>
     /// Mid-stream hw→sw Degraded fallback (§3.6): rotates to a new segment encoded in software, once per
     /// recording. Called from the pacer thread only — either by the sustained-behind health check or the
@@ -933,7 +912,7 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         _downgradeAttempted = true;
-        List<EncoderInfo> swChain = BuildSoftwareFallbackChain(activeEncoder);
+        List<EncoderInfo> swChain = _fallbackChain.BuildSoftwareOnly(activeEncoder);
         if (swChain.Count == 0)
         {
             return; // no software encoder available for this codec — nothing to fall back to
@@ -948,32 +927,6 @@ public sealed class RecordingCoordinator : IDisposable
     /// <summary>Test-only seam (mirrors the temporary --selftest-* hooks): forces the hw→sw downgrade path
     /// deterministically instead of waiting for a genuine sustained encoder stall.</summary>
     internal void TestForceDowngrade() => _testForceDowngrade = true;
-
-    private List<EncoderInfo> BuildFallbackChain(EncoderInfo selected)
-    {
-        IReadOnlyList<EncoderInfo> available = _encoderProbe.GetAvailableEncoders();
-        var chain = new List<EncoderInfo> { selected };
-
-        void Add(EncoderInfo? e)
-        {
-            if (e is not null && !chain.Exists(c => c.FfmpegId == e.FfmpegId))
-            {
-                chain.Add(e);
-            }
-        }
-
-        foreach (EncoderInfo e in available.Where(x => x.Codec == selected.Codec))
-        {
-            Add(e); // same codec, other backends
-        }
-        foreach (EncoderInfo e in available.Where(x => x is { Codec: VideoCodec.H264, IsHardware: true }))
-        {
-            Add(e); // any hardware H.264
-        }
-        Add(available.FirstOrDefault(x => x.FfmpegId == "libx264")); // last-resort software
-
-        return chain;
-    }
 
     private FfmpegRecordingSession? TryStartAnyEncoder(List<EncoderInfo> chain, FfmpegJob template, int frameBytes)
     {
@@ -1078,28 +1031,6 @@ public sealed class RecordingCoordinator : IDisposable
         ProgressChanged?.Invoke(new RecordingProgress(
             _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0, mbps, size,
             IsHealthy: !_encoderBehind));
-    }
-
-    /// <summary>Cheap black-frame test: sample the NV12 luma plane; near-zero everywhere ≈ black.</summary>
-    private static bool IsLikelyBlack(byte[] nv12, int lumaLength)
-    {
-        if (lumaLength <= 0)
-        {
-            return false;
-        }
-
-        const int samples = 256;
-        int stepSize = Math.Max(1, lumaLength / samples);
-        byte max = 0;
-        for (int i = 0; i < lumaLength; i += stepSize)
-        {
-            if (nv12[i] > max)
-            {
-                max = nv12[i];
-            }
-        }
-
-        return max < 20; // studio-black luma is ~16
     }
 
     private void SafeTeardown()

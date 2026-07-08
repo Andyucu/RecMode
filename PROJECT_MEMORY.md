@@ -8,6 +8,52 @@
 
 ---
 
+## Session 2026-07-08 (part 7) — Architecture cleanup pass 3/4: decompose RecordingCoordinator further (0.9.13-beta)
+
+**Goal:** continue the user's "focus on 1 through 4 improvements" instruction — item 3, decompose the
+`RecordingCoordinator` god object further (item 3 of the 6-point review in the part-6 entry below).
+
+**Scoping decision:** rather than attempt a full decomposition (segment rotation / audio pump / pacer loop /
+downgrade orchestration are all tightly coupled to a dozen+ mutable instance fields — a full extraction there
+would either need a large shared-mutable-context object, which isn't real decoupling, or risk a subtle
+threading/lifecycle bug in one of the app's most safety-critical files), extracted only the two pieces of logic
+that were already genuinely pure and stateless:
+- **`EncoderFallbackChain`** (`src/RecMode.App/Services/Recording/EncoderFallbackChain.cs`, new) — `Build`
+  (selected → same-codec alternates → any hardware H.264 → software `libx264` last resort) and
+  `BuildSoftwareOnly` (same-codec software-only, for the mid-stream hw→sw Degraded downgrade). Depends only on
+  the already-injected `IEncoderProbe`; `RecordingCoordinator` self-constructs one from it in the constructor
+  rather than taking a 12th DI dependency. Replaced the old private `BuildFallbackChain`/`BuildSoftwareFallbackChain`
+  methods (both deleted from `RecordingCoordinator.cs`; their call sites in `Start()` and `AttemptDowngrade()`
+  now call `_fallbackChain.Build(...)`/`_fallbackChain.BuildSoftwareOnly(...)`).
+- **`BlackFrameDetector`** (`src/RecMode.App/Services/Recording/BlackFrameDetector.cs`, new) — static
+  `IsLikelyBlack(byte[] nv12, int lumaLength)`, the §3.6 black-frame-watchdog heuristic (sample the NV12 luma
+  plane at 256 points, flag likely-black if max < 20). Replaced the old private static `IsLikelyBlack` method
+  (deleted); its one call site in `PaceLoop()` now calls `BlackFrameDetector.IsLikelyBlack(...)`.
+
+**Testing debt closed for these two classes specifically** (a down payment on item 4, not the full item):
+added `EncoderFallbackChainTests` (7 tests, fake `IEncoderProbe` test double covering same-codec fallback,
+any-hardware-H.264 fallback, de-duplication across tiers, missing-libx264, and the software-only downgrade
+chain) and `BlackFrameDetectorTests` (6 tests, including the studio-black-threshold boundary at 19/20) in
+`RecMode.Recording.Tests`. Both new classes are `internal`, so this needed a `RecMode.App` `ProjectReference`
+added to `RecMode.Recording.Tests.csproj` plus a new `src/RecMode.App/Properties/AssemblyInfo.cs` with
+`[assembly: InternalsVisibleTo("RecMode.Recording.Tests")]` — the first `InternalsVisibleTo` anywhere in the
+solution. Removed the now-superseded Phase-0 `PlaceholderTests.cs` smoke test from that project (its one
+purpose — proving the project was real and wired in — is now moot).
+
+**Verification:** build clean (0 warnings). Full suite: 164/164 pass (152 existing + 13 new — was expecting
+12 new but landed on 13; the exact count doesn't matter, all green). Live-verified through the real pipeline,
+not just unit tests: `--selftest-record` still produces a valid 360-frame MP4; `--selftest-downgrade` still
+succeeds and produces a 2-segment output, which specifically exercises `EncoderFallbackChain.BuildSoftwareOnly`
+via the mid-stream hw→sw downgrade path (`RecordingCoordinator.AttemptDowngrade`) — confirming the extraction
+didn't change behavior, only where the logic lives.
+
+**Item 3 status: done** (scoped as above — the pure/stateless slice extracted and tested; the remaining
+tightly-coupled logic in `RecordingCoordinator` deliberately left in place). **Item 4 (broader testing debt for
+Capture/Services/ViewModels) still pending** — this session made a small dent in it but the bulk of the gap
+(WGC/GPU/WASAPI-heavy `Capture`, most `Services`, every `ViewModel`) remains manual-self-test-only.
+
+---
+
 ## Session 2026-07-08 (part 6) — Architecture review + cleanup pass 1/4: eliminate RecMode.Interop, reorganize Services/ (0.9.12-beta)
 
 **Goal:** the user asked for a whole-app architecture review ("use the architect"), then to act on the findings.

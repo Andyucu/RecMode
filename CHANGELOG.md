@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.13-beta] - 2026-07-08
+
+### Changed
+- 2026-07-08 — **Architecture cleanup pass, item 3 of 4: decomposed `RecordingCoordinator` further.** Extracted the pure, stateless encoder-fallback-chain logic into a new `EncoderFallbackChain` class (`Build` — selected encoder → same-codec alternates → any hardware H.264 → software `libx264` last resort; `BuildSoftwareOnly` — the same-codec software-only chain used by the mid-stream hw→sw Degraded downgrade) and the black-frame-watchdog heuristic into a new static `BlackFrameDetector.IsLikelyBlack` (§3.6 — samples the NV12 luma plane, flags near-zero-everywhere as likely black). Both depend on nothing but their inputs (`IEncoderProbe` for the former), so unlike almost everything else in `RecordingCoordinator` they're independently unit-testable without driving a real recording. `RecordingCoordinator` now self-constructs an `EncoderFallbackChain` from its already-injected `IEncoderProbe` rather than taking a 12th constructor dependency. Left the rest of the class (segment rotation, audio pump, pacer loop, downgrade orchestration) alone — those methods are tightly coupled to a dozen+ mutable instance fields, and a full extraction there would either need a large shared-mutable-context object (not real decoupling) or risk a subtle threading/lifecycle bug in one of the most safety-critical files in the app, which isn't the goal of a low-risk cleanup pass.
+- 2026-07-08 — Added 13 new unit tests for the two extracted classes in `RecMode.Recording.Tests` (`EncoderFallbackChainTests`, `BlackFrameDetectorTests` — a fake `IEncoderProbe` test double, no real ffmpeg/GPU involved), replacing that project's Phase-0 `PlaceholderTests.cs` smoke test now that it has real content. Required adding a `RecMode.App` project reference to the test project and an `[assembly: InternalsVisibleTo("RecMode.Recording.Tests")]` in `RecMode.App` (new `Properties/AssemblyInfo.cs`) since both extracted classes are `internal`. Verified: build clean (0 warnings), 164/164 tests pass (up from 152), `--selftest-record` and `--selftest-downgrade` both still succeed end-to-end through the real pipeline (the latter specifically exercises `EncoderFallbackChain.BuildSoftwareOnly` via the mid-stream hw→sw downgrade path).
+
 ## [0.9.12-beta] - 2026-07-08
 
 ### Changed
