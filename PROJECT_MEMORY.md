@@ -8,6 +8,50 @@
 
 ---
 
+## Session 2026-07-08 (part 5) — Portable zip release cut (0.9.11-beta)
+
+**Goal:** fifth of the user's 5 "doable right now" items — cut the portable zip release. Originally framed as
+"1.0.0," but given part 4's freshly-discovered open bug (full-system audio recordings are silently silent —
+see above), asked the user how to handle the version label; **user chose to stay in the `0.9.x-beta` scheme**
+(0.9.11-beta, matching the version already current from part 4) rather than call it "1.0.0" with a known,
+unresolved core-feature bug — same build/package/verify work either way, just an honest label.
+
+**Built via the existing `publish-portable.ps1`** (no changes needed) — self-contained win-x64 ReadyToRun
+publish + bundled `tools/ffmpeg` + `licenses/` + zip. Output: `artifacts/RecMode-0.9.11-beta-portable-win-x64/`
+(+ `.zip`, ~200 MB, matching the size of prior releases).
+
+**Verified via a full relocated-folder smoke test** (plan §3.5's actual acceptance bar, not just "it built"):
+copied the entire portable folder to a location completely outside the repo (session scratchpad, a different
+drive letter's worth of free space than the dev machine's main drive) and ran it from there.
+- `--selftest-record` succeeded — bundled `ffmpeg` resolved correctly from a relocated path, wrote
+  `.\Recordings\...mp4` and `.\Data\...` relative to the *relocated* folder, not the repo.
+- Confirmed nothing was written to `%AppData%`/`%LocalAppData%` (the only hits there were normal Windows
+  Explorer "Recent files" shortcut tracking — OS-level, not RecMode writing state — no actual RecMode data
+  folder appeared outside the relocated copy).
+- Launched normally (no CLI flags) and screenshotted the live UI: Record screen renders correctly, live
+  preview works, disk-space indicator correctly shows the *relocated* drive's free space (71.09 GB free —
+  visibly different from the dev machine's main drive — proof it's genuinely reading from where it's
+  actually running, not some cached/hardcoded path).
+- Checked the compiled `RecMode.dll`'s `FileVersionInfo.ProductVersion` directly (UI-Automation-clicking into
+  Settings to read the version label on-screen hit the same pre-existing RadioButton-navigation-via-automation
+  quirk noted earlier this session — not a real bug, just an automation limitation for this one interaction;
+  reading the assembly metadata directly is the more reliable check anyway): **`0.9.11-beta`**, no
+  `+<git-sha>` suffix — confirming `IncludeSourceRevisionInInformationalVersion=false` still holds.
+
+**Known, deliberately-not-blocking gaps for this release** (all pre-existing, all already tracked, none
+introduced this session): the full-system-audio-silence bug from part 4 (open); NVENC/QSV vendor-gate
+re-check (needs real NVIDIA/Intel hardware); mic-on-real-hardware and true multi-monitor All-Displays
+compositing (needs 2+ real monitors — this dev machine has one); a real Narrator screen-reader pass; Win10
+2004 regression pass. None of these are new; all were already the standing gaps noted in `CLAUDE.md` before
+this session started, plus the two features shipped *during* this session that are implemented-but-not-yet-
+verified-on-real-multi-monitor-hardware (all-displays capture) or real-camera-hardware (webcam, pre-existing
+gap).
+
+**No code changes for this step** — packaging only, so no version bump beyond what part 4 already set, no
+new build/test cycle beyond the one already run for part 4's commit.
+
+---
+
 ## Session 2026-07-08 (part 4) — ±40ms A/V soak sync test: built the methodology, surfaced a real audio bug instead of closing the gap
 
 **Goal:** fourth of the user's 5 "doable right now" items — the ±40ms soak sync test (plan §1/Phase 4's last

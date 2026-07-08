@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [0.9.11-beta] - 2026-07-08
 
+### Release
+- 2026-07-08 — Portable zip cut and verified via a full relocated-folder smoke test (copied outside the repo, `--selftest-record` succeeded with bundled ffmpeg resolved correctly, wrote all state under its own relocated `.\Data\`/`.\Recordings\`, nothing written to `%AppData%`/`%LocalAppData%`, live UI renders correctly, disk-space indicator correctly reflects the relocated drive, embedded version string confirmed `0.9.11-beta` with no git-sha suffix). Originally framed as "1.0.0," kept in the `0.9.x-beta` scheme instead given the open full-system-audio bug below — same verification bar, honest label.
+
 ### Added
 - 2026-07-08 — **A/V soak test infrastructure** (`--selftest-avsync`): a 10-minute real recording with a hard-edged full-monitor flash marker fired every 60s, verifying CFR video frame pacing holds over a duration ~100× longer than any other self-test. Result: 36,005 frames over 600.093s — essentially exact 60fps with no accumulating drift; both the first and last of 10 markers detected cleanly via `ffmpeg signalstats` with no growing latency between them.
 
