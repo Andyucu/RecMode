@@ -17,15 +17,21 @@ public sealed class TrayIconService : IDisposable
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
 
     private readonly RecordViewModel _record;
-    private TaskbarIcon? _tray;
+    private ShellPresenter? _presenter;
     private Window? _window;
+    private TaskbarIcon? _tray;
     private Icon? _icon;
 
     public TrayIconService(RecordViewModel record) => _record = record;
 
-    public void Attach(Window window)
+    /// <summary>Attaches to whichever window <see cref="ShellPresenter"/> currently shows for the app, and
+    /// re-wires minimize-to-tray whenever it swaps (e.g. entering/leaving Compact layout).</summary>
+    public void Attach(ShellPresenter presenter)
     {
-        _window = window;
+        _presenter = presenter;
+        RewireWindow(presenter.Current);
+        presenter.CurrentChanged += () => RewireWindow(presenter.Current);
+
         _icon = BuildIcon();
 
         var menu = new ContextMenu();
@@ -43,8 +49,17 @@ public sealed class TrayIconService : IDisposable
         };
         _tray.TrayMouseDoubleClick += (_, _) => ShowWindow();
         _tray.ForceCreate();
+    }
 
-        window.StateChanged += OnStateChanged;
+    private void RewireWindow(Window window)
+    {
+        if (_window is not null)
+        {
+            _window.StateChanged -= OnStateChanged;
+        }
+
+        _window = window;
+        _window.StateChanged += OnStateChanged;
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -55,17 +70,7 @@ public sealed class TrayIconService : IDisposable
         }
     }
 
-    private void ShowWindow()
-    {
-        if (_window is null)
-        {
-            return;
-        }
-
-        _window.Show();
-        _window.WindowState = WindowState.Normal;
-        _window.Activate();
-    }
+    private void ShowWindow() => _presenter?.Show();
 
     private static MenuItem MenuItem(string header, Action action)
     {

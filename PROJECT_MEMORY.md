@@ -8,6 +8,73 @@
 
 ---
 
+## Session 2026-07-08 (part 3) — Compact launcher layout (0.9.10-beta)
+
+**Goal:** third of the user's 5 "doable right now" items — the compact launcher / mini-window layout, the
+last of the plan's 3 shell layouts (Sidebar/Top bar shipped in Phase 6; Compact was deferred). Spec came from
+`DOCS/IMPLEMENTATION_PLAN.md`: "392px card: source tiles, 2 quick audio rows, Record/Screenshot, summary line"
+plus the actual mockup in `RecMode.dc.html`'s `COMPACT LAUNCHER` block (header with icon/title/theme-toggle/
+expand button, 4 icon-only source tiles, 2 audio rows with icon+slider+mute, Record/Screenshot+summary).
+
+**Design decision: reuse `RecordViewModel`/`ShellViewModel` directly, no parallel ViewModel.** `ShellViewModel`
+already exposes `Record` (the `RecordViewModel` singleton) and `ToggleThemeCommand` — exactly what
+`ShellWindow.xaml` itself already binds through (`{Binding Record.StatusText}`). `CompactWindow`'s DataContext
+is `ShellViewModel` too, so every control (source tiles → `Record.IsScreenSource` etc., audio → `Record.SystemVolume`/
+`MicVolume`/`SystemAudioEnabled`/`MicEnabled`, Record/Screenshot → `Record.RecordCommand`/`ScreenshotCommand`)
+binds to state that already exists and is already correctly wired end-to-end (mixer, coordinator, everything) —
+zero new business logic, only a new visual surface over it.
+
+**Icon-glyph risk, learned from this session's own history.** The main Record screen's 4 source-tile glyphs
+(E7F4/E737/EF20/E960, Segoe Fluent Icons) were already proven rendering correctly (confirmed via this
+session's own screenshots), so those were reused verbatim for the compact tiles. But CLAUDE.md's Phase-10/
+UI-polish notes record that this exact codebase previously hit real icon-font rendering failures (tofu boxes)
+for caption buttons, fixed by switching to hand-drawn vector paths — so for anything *not already proven*
+(the "expand" button, audio mute toggles), guessed Fluent glyph codepoints were deliberately avoided in favor
+of either the same plain-Unicode-symbol trick the theme toggle already uses ("◐", not a font glyph) or plain
+text content ("Expand", "System"/"Mic" labels, "On"/"Off" toggle text) — lower risk than a second guess-and-hope
+round with an unfamiliar codepoint table.
+
+**New `ShellPresenter` service** (`RecMode.App.Services`) owns which top-level window represents the app:
+```
+Current = settings.Layout == Compact ? EnsureCompact() : shell;
+settings.SettingsChanged += (_, _) => ApplyLayout(); // hide old, show new, only on the Compact boundary
+```
+Sidebar↔TopTab changes still route through `ShellViewModel.Layout` reactively updating *inside* `ShellWindow`
+(unchanged, pre-existing mechanism) — `ShellPresenter` only acts when crossing into or out of Compact, since
+that's the only transition that swaps the actual top-level window rather than rearranging widgets within one.
+Also syncs `Application.Current.MainWindow` on every swap, since `RegionPicker`/`CountdownController` use it
+as their dialog Owner.
+
+**Two existing services needed updating to stay presenter-aware rather than holding a raw `Window` reference:**
+`TrayIconService.Attach(ShellPresenter)` (was `Attach(Window)`) re-wires its `StateChanged`
+(minimize-to-tray) subscription every time `ShellPresenter.CurrentChanged` fires, and its "Show RecMode" tray
+action now calls `presenter.Show()` instead of holding a stale window; `App.xaml.cs`'s `ShowMainWindow()`
+(used by CLI-forwarded `--record`/`--stop`/`--screenshot` on a second launch) likewise now just calls
+`_presenter.Show()`. Removed the `_shell` field entirely from `App.xaml.cs` — every place that used it went
+through the presenter instead.
+
+**Settings UI:** added "Compact" as a third option to the existing Sidebar/Top bar segmented control
+(`SettingsViewModel.Layouts` + a third `RadioButton` in `SettingsView.xaml`) — the persistence path
+(`SelectedLayout` setter → `_settings.Current.Layout = value; _settings.Save()`) already existed and needed
+no changes; it's the same mechanism `CompactWindow`'s new `ExpandCommand` on `ShellViewModel` uses too (always
+lands on Sidebar, not "whatever was active before Compact" — simplest predictable behavior).
+
+**Verified live, not just built:** launched with `Layout: Compact` in `Data/settings.json` → real
+392×240 window, all 4 source tiles + 2 audio rows (System "On" slider-full, Mic "Off" slider-disabled,
+matching actual settings) + Record/Screenshot/elapsed rendered correctly. Clicked "Expand to full window" via
+UI Automation's `InvokePattern` → confirmed via `Get-Process`'s `MainWindowHandle` that it genuinely changed
+to a *different* window (not just a repaint) → screenshotted that window and confirmed it's the real
+1120×720 Sidebar shell → confirmed `settings.json` now reads `"Layout": "Sidebar"` (the command actually
+persisted, not just a visual swap). One hiccup along the way unrelated to this feature: the very first launch
+attempt produced a process with `MainWindowHandle=0` (window created but never made visible) — killed and
+relaunched, worked normally the second time; given every subsequent launch across this whole session (many
+dozens of `--selftest-*` runs) behaved correctly, treated as an isolated environment fluke rather than
+chased further. Regression-checked `--selftest-record` (plain Sidebar layout, unaffected) — still passes.
+Build clean (0 warnings), 152 tests pass throughout (none of this is unit-testable — window lifecycle/UI,
+verified entirely live). Released as **0.9.10-beta**.
+
+---
+
 ## Session 2026-07-08 (part 2) — All-displays capture via DXGI Desktop Duplication (0.9.9-beta)
 
 **Goal:** second of the user's 5 "doable right now" items — all-displays capture (Phase 2's last remaining

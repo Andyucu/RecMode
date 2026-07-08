@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.10-beta] - 2026-07-08
+
+### Added
+- 2026-07-08 — **Compact launcher layout** (plan §1: 3-layout design — Sidebar/Top bar/Compact — the last one deferred since Phase 6). A new small always-on-top `CompactWindow` (392px card, per the design spec: source tiles, 2 quick audio rows, Record/Screenshot, elapsed-time summary) is selectable as a third "Navigation layout" option in Settings → Appearance, alongside the existing Sidebar/Top bar. Reuses `RecordViewModel`/`ShellViewModel` directly (source tiles bind to the same `IsScreenSource`/`IsWindowSource`/`IsRegionSource`/`WebcamEnabled`, audio to `SystemVolume`/`MicVolume`/`SystemAudioEnabled`/`MicEnabled`, Record/Screenshot to the same commands) — no parallel view-model logic. New `ShellPresenter` service owns which top-level window represents the app (the full `ShellWindow` or the small `CompactWindow`) and swaps between them live when the layout setting changes, without restarting the app; `TrayIconService` and the CLI-forwarding path were updated to go through it instead of holding a direct window reference, so tray restore/minimize-to-tray and `--record`/`--stop`/`--screenshot` forwarding keep working regardless of which layout is active. "Expand to full window" (compact) and the Settings segmented control both just set the persisted layout — `ShellPresenter` reacts to the same `SettingsChanged` event both `ShellViewModel` (Sidebar↔TopTab) and this already used. Verified live via a real launch (392×240 window, source tiles/audio rows/Record/Screenshot all correct) and a live layout swap (compact → clicked "Expand" → confirmed the window handle changed to the full 1120×720 Sidebar shell, and the setting persisted). Build clean (0 warnings), 152 tests pass (no new unit-testable logic — this is UI/window-lifecycle wiring, verified live per this codebase's convention for that class of change).
+
 ## [0.9.9-beta] - 2026-07-08
 
 ### Added

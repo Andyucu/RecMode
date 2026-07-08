@@ -88,7 +88,7 @@ public sealed class SettingsViewModel : ObservableObject
         ApplyUpdateCommand = new AsyncRelayCommand(ApplyUpdateAsync, () => _canApplyUpdate);
     }
 
-    public IReadOnlyList<ShellLayout> Layouts { get; } = [ShellLayout.Sidebar, ShellLayout.TopTab];
+    public IReadOnlyList<ShellLayout> Layouts { get; } = [ShellLayout.Sidebar, ShellLayout.TopTab, ShellLayout.Compact];
     public IReadOnlyList<AppTheme> Themes { get; } = [AppTheme.System, AppTheme.Light, AppTheme.Dark];
     public IReadOnlyList<AccentColor> Accents { get; } =
         [AccentColor.Blue, AccentColor.Red, AccentColor.Purple, AccentColor.Teal, AccentColor.Orange];

@@ -18,7 +18,7 @@ public partial class App : Application
     private IHost? _host;
     private ICrashReporter? _crash;
     private Services.SingleInstance? _singleInstance;
-    private ShellWindow? _shell;
+    private Services.ShellPresenter? _presenter;
 
     /// <summary>
     /// Hand-written entry point (App.xaml is a Page, not an ApplicationDefinition, so this replaces the
@@ -119,19 +119,22 @@ public partial class App : Application
 
         var options = Services.CommandLineOptions.Parse(e.Args);
 
-        _shell = _host.Services.GetRequiredService<ShellWindow>();
-        MainWindow = _shell;
+        // ShellPresenter resolves either the full ShellWindow (Sidebar/TopTab) or the small CompactWindow
+        // (Compact layout — plan §1 "compact launcher") based on the current setting, and swaps between them
+        // live if the setting changes later.
+        _presenter = _host.Services.GetRequiredService<Services.ShellPresenter>();
+        MainWindow = _presenter.Current;
 
         // --tray starts headless: the window stays hidden and the app is kept alive by the tray HWND (no
         // shown window ever closes, so OnLastWindowClose doesn't fire). Everything else shows the window.
         if (!options.Tray)
         {
-            _shell.Show();
+            _presenter.Show();
         }
 
         // MVP UX: global hotkeys + tray icon (Phase 5). Resolved on the UI thread (hotkeys need a message pump).
         _host.Services.GetRequiredService<Services.HotkeyBindings>().Register();
-        _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_shell);
+        _host.Services.GetRequiredService<Services.TrayIconService>().Attach(_presenter);
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
         _host.Services.GetRequiredService<Services.SchedulerService>().Start();
         _host.Services.GetRequiredService<Services.ClickHighlightService>().Attach();
@@ -207,17 +210,7 @@ public partial class App : Application
         }
     }
 
-    private void ShowMainWindow()
-    {
-        if (_shell is null)
-        {
-            return;
-        }
-
-        _shell.Show();
-        _shell.WindowState = WindowState.Normal;
-        _shell.Activate();
-    }
+    private void ShowMainWindow() => _presenter?.Show();
 
     private static void ConfigureLogging(AppPaths paths)
     {

@@ -78,6 +78,9 @@ internal static class Composition
 
         // Windows.
         services.AddTransient<ShellWindow>();
+        services.AddTransient<CompactWindow>();
+        services.AddSingleton<Func<CompactWindow>>(sp => sp.GetRequiredService<CompactWindow>);
+        services.AddSingleton<ShellPresenter>();
 
         return services;
     }

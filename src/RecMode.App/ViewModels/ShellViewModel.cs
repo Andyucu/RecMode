@@ -49,6 +49,13 @@ public sealed class ShellViewModel : ObservableObject
         NavigateCommand = new RelayCommand<string>(Navigate);
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         DismissSnackbarCommand = new RelayCommand(() => SnackbarVisible = false);
+        ExpandCommand = new RelayCommand(() =>
+        {
+            // "Expand to full window" (compact launcher): always lands on Sidebar — the default full layout
+            // — rather than trying to remember whatever non-Compact layout was active before switching in.
+            _settings.Current.Layout = ShellLayout.Sidebar;
+            _settings.Save();
+        });
 
         _snackbarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _snackbarTimer.Tick += (_, _) => { _snackbarTimer.Stop(); SnackbarVisible = false; };
@@ -101,6 +108,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public ICommand NavigateCommand { get; }
     public ICommand ToggleThemeCommand { get; }
+    public ICommand ExpandCommand { get; }
 
     public object CurrentPage
     {

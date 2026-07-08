@@ -98,6 +98,9 @@
                                          IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=Sidebar}" />
                             <RadioButton GroupName="layout" Style="{StaticResource SegmentedButton}" Content="Top bar"
                                          IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=TopTab}" />
+                            <RadioButton GroupName="layout" Style="{StaticResource SegmentedButton}" Content="Compact"
+                                         ToolTip="A small always-on-top launcher instead of the full window"
+                                         IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=Compact}" />
                         </StackPanel>
                     </Border>
                 </Grid>
