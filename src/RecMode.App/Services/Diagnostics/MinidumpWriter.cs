@@ -1,9 +1,10 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using RecMode.Core.Infrastructure;
 
-namespace RecMode.Interop.Diagnostics;
+namespace RecMode.App.Services;
 
 /// <summary>
 /// Writes a process minidump via <c>dbghelp!MiniDumpWriteDump</c> (plan §3.6). Opt-in only; the crash

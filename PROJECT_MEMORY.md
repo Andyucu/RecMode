@@ -8,6 +8,69 @@
 
 ---
 
+## Session 2026-07-08 (part 6) — Architecture review + cleanup pass 1/4: eliminate RecMode.Interop, reorganize Services/ (0.9.12-beta)
+
+**Goal:** the user asked for a whole-app architecture review ("use the architect"), then to act on the findings.
+Ran the `architect-review` skill against the actual project graph (not generic advice) and found, among other
+things: a near-empty `RecMode.Interop` project and a flat 27-file `RecMode.App/Services/` folder. User said to
+work through improvements 1–4 from that review before moving to new features; this session covers the first
+two.
+
+**Architecture review findings (full list, for reference):**
+1. `RecMode.Interop` is 2 files — disproportionate assembly overhead.
+2. `RecMode.App/Services/` is a flat 27-file bag with no sub-grouping.
+3. `RecordingCoordinator` is the de facto god object (capture + encoder fallback + audio mixer + CFR pacer +
+   segment rotation + health/downgrade all in one class).
+4. Testing debt is structural — 152 unit tests cover only `Core`/encoding-args/audio-math; `Capture`, most of
+   `Services`, and every `ViewModel` are verified exclusively via manual `--selftest-*` + eyeballed screenshots.
+5. (Also flagged, not part of the "1–4" the user asked for): the open full-system-audio-silence bug is
+   architecturally interesting — per-app (`ProcessLoopbackCapture`) and full-system (`WasapiLoopbackCapture`)
+   feed the *identical* `MixSource`/`AudioMixer`/pipe code, so the bug is almost certainly in `MixSource`'s
+   format-detection reacting differently to the two capture objects' actual `WaveFormat`s — a concrete lead
+   for whoever picks that up.
+6. The replay buffer (backlog #1) directly conflicts with §3.9's "nothing runs unless visible or recording" —
+   a product decision to make deliberately, not a small implementation detail.
+
+### Item 1: eliminated `RecMode.Interop`
+Checked whether the project was actually providing an enforced boundary before touching anything: grepped for
+`DllImport` across the whole tree and found raw P/Invoke already living directly in 11 `RecMode.App` files
+and in `RecMode.Capture/CaptureInterop.cs` — so "Interop = the P/Invoke layer" was never actually true anywhere
+except by accident for these 2 files. Also found `RecMode.Capture`/`Audio`/`Encoding` all had a
+`ProjectReference` to `RecMode.Interop` in their `.csproj` that **nothing in those projects ever used** — dead
+references costing real (if small) build overhead for zero benefit. Moved `MinidumpWriter.cs` →
+`RecMode.App/Services/Diagnostics/` and `WindowBackdrop.cs` → `RecMode.App/Themes/` (matching where equivalent
+code already lives), updated the 2 consuming files' `using`s (both already had a `using RecMode.App.Services;`/
+`using RecMode.App.Themes;` in place from other imports, so the fix was just deleting the now-redundant
+`RecMode.Interop.*` lines), removed the dead `ProjectReference`s from all 4 dependent `.csproj`s, removed the
+project from `RecMode.slnx`, and `git rm -r`'d the folder (asked the user first — the permission system
+correctly blocked an unprompted `rm -rf` on a git-tracked directory as an irreversible action the agent
+inferred itself rather than one the user explicitly named; asked, got approval, used `git rm -r` instead of
+raw deletion so it stays reversible via git history). One build error along the way: `MinidumpWriter.cs`'s new
+home (`RecMode.App`) has a different global-usings set than its old one (`RecMode.Interop`) — needed an
+explicit `using System.IO;` for `FileStream`/`FileMode`/etc. that had been implicit before.
+
+### Item 2: reorganized `Services/` into 8 subfolders
+Deliberately a **pure physical move** — every file kept its exact `namespace RecMode.App.Services;` declaration,
+so this needed zero changes to any `using` statement or DI registration anywhere in the codebase (modern
+SDK-style `.csproj`s auto-glob all `.cs` files recursively regardless of subfolder). Grouped by concern:
+`Capture/` (CaptureExclusion, CaptureSizing, RegionPicker+IRegionPicker, ScreenshotService, ScreenshotFlash,
+CountdownController), `Lifecycle/` (SingleInstance, StartupManager, TrayIconService, ShellPresenter,
+CommandLineOptions), `Input/` (GlobalHotkeys, GlobalMouseHook, HotkeyBindings, ClickHighlightService), `Power/`
+(PowerStatus, DiskSpeedProbe), `Recording/` (RecordingCoordinator, RecordingProgress, RecordingToolbar,
+AnnotationService, OrphanRecoveryService), `Prompts/` (ProfileNamePrompt, ScheduleEditor), `Scheduling/`
+(SchedulerService), `Update/` (UpdateChecker), plus the `Diagnostics/` folder item 1 already created. Used
+`git mv` for every move so history/blame survives per-file.
+
+**Verified after each step, not just at the end:** build clean (0 warnings) after item 1, again after item 2;
+152 tests pass both times; `--selftest-record` still records successfully; a live-launched window screenshot
+confirmed Mica + dark title bar still render correctly (the actual functional proof that `WindowBackdrop`'s
+move didn't break anything, since that's UI chrome with no unit-test coverage).
+
+Released as **0.9.12-beta**. Items 3 (`RecordingCoordinator` further decomposition) and 4 (testing debt) are
+next, before moving to new feature work.
+
+---
+
 ## Session 2026-07-08 (part 5) — Portable zip release cut (0.9.11-beta)
 
 **Goal:** fifth of the user's 5 "doable right now" items — cut the portable zip release. Originally framed as

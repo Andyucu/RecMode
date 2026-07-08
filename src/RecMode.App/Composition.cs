@@ -11,7 +11,6 @@ using RecMode.Core.Recording;
 using RecMode.Core.Settings;
 using RecMode.Encoding.Encoders;
 using RecMode.Encoding.Ffmpeg;
-using RecMode.Interop.Diagnostics;
 
 namespace RecMode.App;
 

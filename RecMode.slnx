@@ -5,7 +5,6 @@
     <Project Path="src/RecMode.Capture/RecMode.Capture.csproj" />
     <Project Path="src/RecMode.Core/RecMode.Core.csproj" />
     <Project Path="src/RecMode.Encoding/RecMode.Encoding.csproj" />
-    <Project Path="src/RecMode.Interop/RecMode.Interop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RecMode.Audio.Tests/RecMode.Audio.Tests.csproj">

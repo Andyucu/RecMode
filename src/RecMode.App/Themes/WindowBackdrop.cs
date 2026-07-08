@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
-namespace RecMode.Interop.Windowing;
+namespace RecMode.App.Themes;
 
 /// <summary>
 /// Applies the Win11 Mica backdrop and immersive dark title bar via DWM (plan §2). No-ops gracefully on

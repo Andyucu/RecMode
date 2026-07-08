@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.12-beta] - 2026-07-08
+
+### Changed
+- 2026-07-08 — **Architecture cleanup pass** (first 2 of 4 items from a whole-app architecture review): (1) **Eliminated the `RecMode.Interop` project.** It held only 2 files (`MinidumpWriter`, `WindowBackdrop`) and was the only project actually consumed by anything — `RecMode.Capture`/`Audio`/`Encoding` all referenced it in their `.csproj` but never used a single type from it, meaning the reference was dead weight. Meanwhile raw P/Invoke already lives directly in `RecMode.App` (11 files) and `RecMode.Capture` (`CaptureInterop.cs`) — so "Interop" wasn't actually enforcing an isolation boundary anywhere else in the codebase, just adding an extra assembly for 2 files. Moved both files into `RecMode.App` (`Services/Diagnostics/MinidumpWriter.cs`, `Themes/WindowBackdrop.cs`, matching where equivalent code already lives), removed the dead `ProjectReference`s from the three projects that never used them, and removed the project from the solution. (2) **Reorganized `RecMode.App/Services/`** from a flat 27-file listing into 8 subfolders by concern (`Capture/`, `Lifecycle/`, `Input/`, `Power/`, `Recording/`, `Prompts/`, `Scheduling/`, `Update/`, plus the new `Diagnostics/`) — a pure physical move with the namespace kept as `RecMode.App.Services` throughout, so zero consuming code (`using` statements, DI registrations) needed to change. Verified live after each step: build clean (0 warnings), 152 tests pass, `--selftest-record` still records correctly, and a live-launched window screenshot confirms Mica/dark-title-bar chrome still renders (proving `WindowBackdrop`'s new home works).
+
 ## [0.9.11-beta] - 2026-07-08
 
 ### Release

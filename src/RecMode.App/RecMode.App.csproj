@@ -67,7 +67,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RecMode.Core\RecMode.Core.csproj" />
-    <ProjectReference Include="..\RecMode.Interop\RecMode.Interop.csproj" />
     <ProjectReference Include="..\RecMode.Capture\RecMode.Capture.csproj" />
     <ProjectReference Include="..\RecMode.Audio\RecMode.Audio.csproj" />
     <ProjectReference Include="..\RecMode.Encoding\RecMode.Encoding.csproj" />

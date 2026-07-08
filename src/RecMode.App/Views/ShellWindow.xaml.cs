@@ -3,7 +3,6 @@ using System.Windows.Interop;
 using RecMode.App.Themes;
 using RecMode.App.ViewModels;
 using RecMode.Core.Infrastructure;
-using RecMode.Interop.Windowing;
 
 namespace RecMode.App.Views;
 
