@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.8-beta] - 2026-07-08
+
+### Fixed
+- 2026-07-08 — **Per-app audio isolation re-investigated and re-enabled — the original "leak" was a test-harness artifact, not a real bug.** The 2026-07-06 A/B test that disabled this feature used two PowerShell windows as "independent" processes, but every console window spawned in this environment is actually hosted inside the same `WindowsTerminal.exe` — so `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` was *correctly* capturing both, since they shared one process tree; that looked like a leak but wasn't one. Re-tested with two genuinely independent, freshly-launched standalone processes (not console-hosted) each playing a distinct sine tone: full-system loopback showed both tones mixed (RMS 0.300); targeting either process's PID individually captured only that one tone (RMS 0.211, matching the theoretical single-tone value almost exactly); targeting an unrelated silent process correctly read zero even while both tones played system-wide. Re-verified through the full production recording pipeline too (`RecordingCoordinator` → `AudioMixer` → ffmpeg → AAC → MP4, not just raw WASAPI capture) — the recorded file's audio level matched the isolated tone's signature exactly. **Re-enabled the feature:** `RecordViewModel.PerAppAudioTargetPid` now resolves the live UI selection instead of a hardcoded `null`; `RecordingCoordinator.StartAudioMixer` resolves the persisted target process *name* to a live PID at record-start time (settings persist by name since PIDs don't survive relaunches) and fails closed — no system audio, rather than silently falling back to full-system — if that app isn't currently running; the "Limit to app" control in the Record screen's Audio card is unhidden. Build clean (0 warnings), 152 tests pass (no behavior here was unit-testable — verified live via a throwaway two-process tone-isolation probe and an end-to-end recording).
+
 ## [0.9.7-beta] - 2026-07-07
 
 ### Changed

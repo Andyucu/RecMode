@@ -62,12 +62,9 @@ public sealed partial class RecordViewModel
         }
     }
 
-    /// <summary>
-    /// The PID to narrow system-audio capture to, or null for the whole system. Always null for now — the
-    /// "Limit to app" control is hidden (see RecordView.xaml) because process-loopback isolation doesn't
-    /// actually hold, so metering must reflect the same full-system behavior a real recording will use.
-    /// </summary>
-    private int? PerAppAudioTargetPid => null;
+    /// <summary>The PID to narrow system-audio capture to, or null for the whole system ("All apps" sentinel
+    /// has <c>ProcessId == 0</c>, which also maps to null here).</summary>
+    private int? PerAppAudioTargetPid => SelectedPerAppAudioTarget is { ProcessId: > 0 } t ? t.ProcessId : null;
 
     public bool SystemAudioEnabled
     {

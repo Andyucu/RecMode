@@ -8,6 +8,72 @@
 
 ---
 
+## Session 2026-07-08 (part 1) — Per-app audio isolation re-investigated with a real controlled test, re-enabled (0.9.8-beta)
+
+**Goal:** user asked for the 5 "doable right now" items from the standing-gaps review — this is the first:
+re-investigate per-app audio isolation (disabled since 2026-07-06) now that `WebSearch`/`web_search_prime` are
+reliably available, per the recommendation left at the end of that day's inconclusive re-investigation.
+
+**Web research first, to rule out an interop bug.** Fetched current Microsoft docs
+(`AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS`, `PROCESS_LOOPBACK_MODE`, `ActivateAudioInterfaceAsync`) plus several
+real-world implementations (a minimal C++ sample, `win-capture-audio`, an OBS Studio issue). Confirmed: the
+`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` "gotcha" that's actually documented/reported in the wild
+is specifically about **parent/child process-tree relationships** (e.g. OBS launched from Streamer.bot gets
+swept into Streamer.bot's capture) — nothing in current docs or real bug reports describes audio leaking in
+from a genuinely *unrelated* process. This matched the 2026-07-06 follow-up session's own hypothesis (recorded
+in this file) that the original "leak" was likely a test-harness artifact, not a real bug — worth actually
+proving rather than leaving as a hypothesis.
+
+**Built a clean, controlled, reproducible test instead of relying on someone else's browser tab.** Two new
+throwaway projects in the session scratchpad (never touched the repo):
+- `TonePlayer` — a real standalone `WinExe` (WinForms, so it's never console/terminal-hosted) that plays a
+  continuous sine tone via NAudio `WaveOutEvent`+`SignalGenerator` at a given frequency, showing its own PID
+  in the title bar. Launching two instances (440 Hz, 880 Hz) gives two genuinely independent, freshly-spawned
+  top-level processes — unlike the original test's two PowerShell windows, which this session confirmed (via
+  `Get-Process`) are *all* hosted under one shared `WindowsTerminal.exe` PID in this environment, meaning
+  `INCLUDE_TARGET_PROCESS_TREE` was correctly capturing both as one process tree all along.
+- `PerAppAudioProbe` — a tiny console app referencing `RecMode.Audio` directly, capturing either full-system
+  `WasapiLoopbackCapture` or `ProcessLoopbackCapture` targeted at a given PID for 3s and printing peak/RMS.
+
+**Results were unambiguous:**
+| Target | Peak | RMS | Expected |
+|---|---|---|---|
+| Full system (both tones) | 0.528 | 0.300 | mixed |
+| PID A alone (440 Hz) | 0.300 | 0.211 | single tone (theoretical RMS = peak/√2 ≈ 0.212) |
+| PID B alone (880 Hz) | 0.300 | 0.211 | single tone, symmetric |
+| Unrelated silent PID (`explorer.exe`) | 0.000 | 0.000 | silence, packets still arrived (287,040 samples) |
+
+Isolation is genuinely correct — the interop code was never the problem. The original 2026-07-06 test's
+"leak" really was the two PowerShell windows sharing a host process, exactly as hypothesized that same day.
+
+**Re-verified through the full production pipeline, not just raw capture.** Set `PerAppAudioProcessName` to
+the tone player's process name via the debug build's `Data/settings.json` (gitignored, local-only), launched
+one `TonePlayer` instance, ran `--selftest-av` (forces `SystemAudioEnabled=true`), then measured the resulting
+MP4's actual encoded audio track with `ffmpeg -af astats`: peak −9.86 dB (≈0.32 linear) / RMS −13.68 dB
+(≈0.21 linear) — matching the isolated single-tone signature through `RecordingCoordinator` →
+`AudioMixer` → named pipe → ffmpeg AAC encode → MP4 mux, the part of the stack the original investigation
+never actually exercised (it only ever tested raw NAudio capture in isolation).
+
+**Code changes — re-enabled the feature:**
+- `RecordViewModel.Audio.cs` — `PerAppAudioTargetPid` now resolves `SelectedPerAppAudioTarget.ProcessId`
+  (with the "All apps" sentinel's `ProcessId == 0` mapping to `null`) instead of a hardcoded `null`.
+- `RecordViewModel.cs` — `OnNavigatedTo()` now calls `LoadPerAppAudioTargets()` again (previously skipped
+  since the control it fed was permanently hidden).
+- `RecordingCoordinator.StartAudioMixer()` — resolves the persisted `PerAppAudioProcessName` (settings store
+  by *name*, since PIDs don't survive relaunches) to a live PID via `CaptureCapabilities.EnumerateAudioProcesses()`
+  at record-start time; if the named app isn't running, **fails closed** (disables system audio for that
+  recording entirely) rather than silently substituting full-system capture — matching `AudioMixer.Start`'s
+  own existing fail-closed behavior on activation failure, so a stale/gone target can't silently over-capture.
+- `RecordView.xaml` — un-hid the "Limit to app" label/combo, replaced the stale disabling comment.
+
+Build clean (0 warnings), 152 tests pass (unchanged — none of this is unit-testable; verified entirely live,
+per this codebase's established convention for WASAPI/WinRT interop code). Released as **0.9.8-beta**.
+
+**Cleaned up:** both scratchpad test projects and their spawned processes; `Data/settings.json`'s
+`PerAppAudioProcessName` value is local debug-build test data only (gitignored under `bin/`), not committed.
+
+---
+
 ## Session 2026-07-07 (part 11) — Deferred structural refactors from the whole-app review (0.9.7-beta)
 
 **Goal:** user said "continue" after part 10's maintenance pass, meaning: proceed into the 4 items that pass

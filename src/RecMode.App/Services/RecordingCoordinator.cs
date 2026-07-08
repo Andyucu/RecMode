@@ -398,12 +398,26 @@ public sealed class RecordingCoordinator : IDisposable
     {
         bool captureSystem = _settings.Current.SystemAudioEnabled;
 
-        // Per-app audio targeting is disabled for now: WASAPI process-loopback activates cleanly
-        // but a controlled A/B test (2026-07-06) proved it doesn't actually isolate the target
-        // process's audio from the rest of the system, so PerAppAudioProcessName is ignored here
-        // rather than shipping a recording that silently captures more than the user asked for.
-        // The UI control that sets it is hidden too (RecordView.xaml). See PROJECT_MEMORY.md.
+        // Per-app audio targeting (plan §7): settings persist the target by process NAME (PIDs don't
+        // survive relaunches), so resolve it to a live PID at record-start time. If the targeted app
+        // isn't running right now, fail closed (no system audio) rather than silently falling back to
+        // full-system capture, which the user didn't ask for — same philosophy as AudioMixer.Start's
+        // own activation-failure fallback.
         int? perAppPid = null;
+        string? targetName = _settings.Current.PerAppAudioProcessName;
+        if (captureSystem && !string.IsNullOrEmpty(targetName))
+        {
+            AudioProcessTarget? target = CaptureCapabilities.EnumerateAudioProcesses()
+                .FirstOrDefault(p => string.Equals(p.ProcessName, targetName, StringComparison.OrdinalIgnoreCase));
+            if (target is not null)
+            {
+                perAppPid = target.ProcessId;
+            }
+            else
+            {
+                captureSystem = false;
+            }
+        }
 
         _mixer = _mixerFactory();
         _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
