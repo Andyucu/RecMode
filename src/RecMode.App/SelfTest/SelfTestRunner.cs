@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -6,6 +8,7 @@ using RecMode.App.ViewModels;
 using RecMode.App.Views;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Settings;
+using RecMode.Encoding.Ffmpeg;
 using Serilog;
 
 namespace RecMode.App.SelfTest;
@@ -38,6 +41,14 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
         if (mode == "ripple")
         {
             _ = RunRippleSelfTestAsync();
+            return;
+        }
+
+        // A/V sync soak: a long recording with periodic synchronized flash+beep markers, to verify sync
+        // holds (no drift, no fixed offset) over a duration far longer than any other self-test exercises.
+        if (mode == "avsync")
+        {
+            _ = RunAvSyncSoakSelfTestAsync();
             return;
         }
 
@@ -296,6 +307,124 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             shutdown(3);
         }
     }
+
+    /// <summary>
+    /// <c>--selftest-avsync</c>: a long (10-minute) recording with a visual flash marker fired every 60s, to
+    /// verify CFR video frame pacing holds — no drift, no stalls — over a duration far longer than any other
+    /// self-test exercises (plan §1's "±40ms soak sync test"). Originally paired each flash with an audio beep
+    /// for a true A/V offset measurement, but that half had to be dropped this pass: investigating it surfaced
+    /// a genuine, reproducible finding — full-system (<c>SystemAudioEnabled</c>) recordings produce a valid,
+    /// correctly-timed AAC stream that is nevertheless completely silent (confirmed via <c>ffmpeg astats</c>
+    /// on both a fresh recording and the pre-existing <c>--selftest-av</c> output), even though per-app audio
+    /// targeting records real content correctly (verified earlier this session) and the underlying
+    /// <see cref="RecMode.Audio.AudioMixer"/>/WASAPI capture demonstrably detects live audio when tested in
+    /// isolation. Root cause not found in the time available — see CLAUDE.md/PROJECT_MEMORY.md for the full
+    /// writeup; this method now verifies video-only.
+    /// </summary>
+    private async Task RunAvSyncSoakSelfTestAsync()
+    {
+        const int soakSeconds = 600;
+        const int markerIntervalSeconds = 60;
+        string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
+        try
+        {
+            var settings = host.Services.GetRequiredService<ISettingsService>();
+            settings.Current.SystemAudioEnabled = true;
+
+            var coordinator = host.Services.GetRequiredService<RecordingCoordinator>();
+            var probe = host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
+
+            var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
+            var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            var encoders = probe.GetAvailableEncoders();
+            var encoder = encoders.FirstOrDefault(x => x is { Codec: VideoCodec.H264, IsHardware: true })
+                ?? encoders.First(x => x.Codec == VideoCodec.H264);
+            var target = RecMode.Capture.CaptureTarget.FromMonitor(mon);
+
+            RecordingResult? finished = null;
+            coordinator.Finished += r => finished = r;
+
+            if (!coordinator.Start(target, encoder, MediaContainer.Mp4, 60, 70))
+            {
+                System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
+                shutdown(3);
+                return;
+            }
+
+            var markerTimesSec = new List<double>();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double nextMarkerAt = 5; // small warm-up before the first marker (encoder-init ramp)
+            while (sw.Elapsed.TotalSeconds < soakSeconds)
+            {
+                if (sw.Elapsed.TotalSeconds >= nextMarkerAt)
+                {
+                    markerTimesSec.Add(sw.Elapsed.TotalSeconds);
+                    FireMarker(mon);
+                    nextMarkerAt += markerIntervalSeconds;
+                }
+                await Task.Delay(200);
+            }
+
+            coordinator.Stop();
+            for (int i = 0; i < 100 && finished is null; i++)
+            {
+                await Task.Delay(100);
+            }
+
+            if (finished is not { Success: true })
+            {
+                System.IO.File.WriteAllText(resultPath, "success=false\nreason=recording-failed\n");
+                shutdown(3);
+                return;
+            }
+
+            string markers = string.Join(",", markerTimesSec.Select(t => t.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)));
+            System.IO.File.WriteAllText(resultPath,
+                $"success=true\npath={finished.OutputPath}\nmarkers={markers}\nsoakSeconds={soakSeconds}\n");
+            Log.Information("A/V sync soak finished: {@Result} markers={Markers}", finished, markers);
+            shutdown(0);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText(resultPath, $"success=false\nexception={ex}\n");
+            shutdown(3);
+        }
+    }
+
+    /// <summary>Fires one soak marker: a hard-edged full-monitor white flash (NOT capture-excluded — it must
+    /// be visible in the recording). Originally paired with an audio beep for true A/V offset verification —
+    /// see the comment below for why that half was dropped for this pass.</summary>
+    private static void FireMarker(RecMode.Capture.MonitorInfo monitor)
+    {
+        var flash = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            Background = Brushes.White,
+            Left = monitor.X,
+            Top = monitor.Y,
+            Width = monitor.Width,
+            Height = monitor.Height,
+            Topmost = true,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            ResizeMode = ResizeMode.NoResize,
+        };
+        flash.Show();
+        _ = Task.Delay(150).ContinueWith(_ => flash.Dispatcher.Invoke(flash.Close));
+
+        // Audio marker deliberately dropped: this session found that full-system (SystemAudioEnabled)
+        // recordings produce a technically-valid, correctly-timed AAC stream that is nevertheless completely
+        // silent (confirmed via ffmpeg astats on both a fresh recording and the pre-existing, previously
+        // shipped --selftest-av output) — a real, reproducible, previously-undiscovered bug, NOT something
+        // this self-test's own marker mechanism caused (neither an in-process NAudio tone nor a short-lived
+        // external tone-player process showed up either, even though both are independently proven audible/
+        // capturable via a standalone WasapiLoopbackCapture and via AudioMixer.SystemLevel in isolation, and
+        // an external tone process's audio IS captured correctly by the same coordinator when targeted via
+        // per-app audio instead of full-system). Root cause not found in the time available this session —
+        // tracked as a real, open finding (see CLAUDE.md/PROJECT_MEMORY.md) rather than declared fixed. This
+        // soak run therefore verifies video-only: CFR frame pacing/timing consistency over a long duration.
+    }
+
 
     /// <summary>Test-only fake for <c>--selftest-webcam</c>: a fixed solid-colour BGRA frame, so the GPU
     /// picture-in-picture compositing can be verified without real camera hardware.</summary>

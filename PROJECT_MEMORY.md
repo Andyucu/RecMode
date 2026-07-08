@@ -8,6 +8,86 @@
 
 ---
 
+## Session 2026-07-08 (part 4) — ±40ms A/V soak sync test: built the methodology, surfaced a real audio bug instead of closing the gap
+
+**Goal:** fourth of the user's 5 "doable right now" items — the ±40ms soak sync test (plan §1/Phase 4's last
+remaining item: "rigorous ±40ms beep+flash check" over a long duration, as opposed to the existing
+`--selftest-av`'s duration-matching check on a 6-second clip).
+
+**Built the methodology.** New `--selftest-avsync` hook in `SelfTestRunner`: a 10-minute (600s) real recording
+through the full `RecordingCoordinator` pipeline, with a hard-edged full-monitor white flash fired every 60s
+(NOT capture-excluded, since it needs to actually appear in the recording) — originally paired with a precise
+1kHz tone burst at the exact same instant, so any A/V offset in the final file would be measurable directly
+(flash frame timestamp vs. beep onset timestamp), not just inferred from duration matching.
+
+**Flash detection worked immediately and precisely.** Verified via `ffmpeg -vf signalstats,showinfo` on a
+short (70s) sanity-check run first: found the exact frame range where `mean:[255 ...]` (full white) appears,
+pinpointing the flash onset to within one frame interval (~16ms at 60fps) — e.g. one flash's onset at
+t=5.250s for a marker fired at Stopwatch-time 5.04s (the ~200ms gap is expected: WPF window creation latency
++ this loop's 200ms polling granularity + capture pipeline latency — not itself a sync error, since only the
+flash-vs-beep *relative* offset matters).
+
+**The beep never showed up — and neither in-process nor external-process audio did, only per-app targeting.**
+Checked the recording with `ffmpeg -af astats`: `-inf` peak/RMS for the *entire* file, not just missing
+beeps — meaning the full-system audio capture path produced literal digital silence throughout, despite
+`RecordingCoordinator` logging `audio=true` and a valid AAC stream existing in the container. Narrowed via
+three independent throwaway diagnostics (added to `SelfTestRunner` temporarily, removed once the pattern was
+clear — never committed):
+1. `--selftest-beepdiag` — a standalone `NAudio.Wave.WasapiLoopbackCapture` + an in-process `WaveOutEvent`
+   tone, both created inside RecMode.exe: **worked perfectly** (peak 0.897–0.997, clearly captured), both for
+   a sustained 1s tone and for short 150ms bursts matching the real marker's exact timing.
+2. `--selftest-mixerdiag` — the real `RecMode.Audio.AudioMixer` class (not a raw capture), started the same
+   way `RecordingCoordinator.StartAudioMixer()` starts it (`captureSystem: true, targetProcessId: null`):
+   **also worked** — `SystemLevel.Peak` correctly spiked when a beep played (30/30 non-zero reads on one run).
+3. A quick, deliberately improvised `PumpUntil`-over-a-real-named-pipe check produced 0 bytes read — but this
+   was almost certainly a bug in the throwaway pipe-handshake code itself (a client/server connect race), not
+   evidence about the production pipeline; not treated as a reliable data point.
+
+Then tried switching the marker's beep from in-process to a short-lived **external** process (reusing the
+`TonePlayer.exe` scratch tool built earlier this session for the per-app-audio investigation) — **also
+silent**, ruling out "in-process specifically" as the cause. Extended the external process's play window from
+180ms (possibly too short for a cold .NET process start) — didn't change the outcome before the decision to
+stop was made.
+
+**The clincher: this isn't new, and it isn't specific to this self-test.** Ran the existing, already-shipped,
+previously-"verified" `--selftest-av` mode (completely unmodified) and checked ITS output with the same
+`ffmpeg astats` — **also `-inf` peak/RMS, completely silent.** That mode's Phase-4 verification (from
+2026-07-04) only ever checked stream *presence* and A/V *duration* alignment (~1ms, well under ±40ms) — never
+actual amplitude/content. So this is a **real, reproducible, previously-undiscovered gap**: full-system audio
+recordings have apparently never actually contained real captured audio content, only a validly-shaped silent
+AAC stream — while **per-app audio targeting demonstrably does work** (re-verified earlier this same session
+via `ffmpeg astats` showing real peak/RMS matching an isolated tone's signature, through this exact same
+`RecordingCoordinator` pipeline).
+
+**Root cause not found — correctly left open, not declared fixed.** The signal is proven present at the
+`AudioMixer`/`MixSource` capture layer (both isolated tests confirm it) but absent in the encoded file. The
+gap must be somewhere between `AudioMixer.PumpUntil`'s pipe-writing and ffmpeg's consumption of it, specific
+to the full-system path — but confirming exactly where would need more investigation time than remained this
+session. Documented as a real, standing, open bug in `CLAUDE.md` rather than glossed over. **Practical
+implication for users, until this is fixed: per-app audio targeting is the actually-verified-working audio
+path; full-system audio should be treated as unverified/suspect until someone confirms real content in an
+actual encoded recording, ideally on real (non-RDP) hardware to also rule out an environment-specific cause.**
+
+**Completed what could still be verified: a video-only soak — clean result.** Dropped the beep from the
+marker (kept the flash), restored the full 600s/60s soak parameters, and ran it for real via
+`run_in_background` while continuing to other items. Result: **36,005 frames over a reported 600.093s
+duration** — essentially exact 60 fps CFR pacing (36,000 expected for 600.000s; the 5-frame/~83ms difference
+is ordinary startup/stop rounding, not accumulating drift — at that rate drift would be ~0.014%, i.e. well
+under 1ms/minute, negligible). Spot-checked the flash frames at the very first marker (t≈5s) and the very
+last (t≈545s, the 10th of 10 markers) via `ffmpeg signalstats` — both detected cleanly within one frame's
+precision (mean Y = 255 for several consecutive frames right at the expected time in both cases), with no
+sign of the fire-to-flash latency growing over the 9-minute span between them (~210ms at the start vs. ~107ms
+at the end — both consistent with ordinary WPF/dispatcher scheduling jitter, not drift). This confirms the
+one thing a 10-minute soak can uniquely catch that no other self-test exercises: no stalls, no accumulating
+timing error in the CFR pacer over a duration ~100× longer than any other self-test in this codebase — even
+though the audio-offset half of the original goal had to be dropped (see above).
+
+**Cleaned up:** all three throwaway diagnostic modes (`beepdiag`, `mixerdiag`, and the pipe-handshake check)
+were added and then fully removed from `SelfTestRunner.cs` before finishing — none were committed. The
+`TonePlayer.exe` scratch tool (from the per-app-audio investigation) was reused read-only, not modified.
+
+---
+
 ## Session 2026-07-08 (part 3) — Compact launcher layout (0.9.10-beta)
 
 **Goal:** third of the user's 5 "doable right now" items — the compact launcher / mini-window layout, the

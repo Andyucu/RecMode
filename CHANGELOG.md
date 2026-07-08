@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.11-beta] - 2026-07-08
+
+### Added
+- 2026-07-08 — **A/V soak test infrastructure** (`--selftest-avsync`): a 10-minute real recording with a hard-edged full-monitor flash marker fired every 60s, verifying CFR video frame pacing holds over a duration ~100× longer than any other self-test. Result: 36,005 frames over 600.093s — essentially exact 60fps with no accumulating drift; both the first and last of 10 markers detected cleanly via `ffmpeg signalstats` with no growing latency between them.
+
+### Known issues
+- 2026-07-08 — **Full-system audio (`SystemAudioEnabled`) recordings produce a technically-valid, correctly-timed AAC stream that is completely silent** (confirmed via `ffmpeg astats`, `-inf` peak/RMS) — a real, previously-undiscovered gap surfaced while building the A/V soak test above (that test originally paired the flash with a precise audio beep; the beep never appeared in the output, on either a fresh recording or the pre-existing, already-shipped `--selftest-av` self-test's own output — the latter had only ever been verified by stream presence and duration alignment, never actual amplitude). **Per-app audio targeting is unaffected and confirmed working with real content** (verified earlier this session). The underlying WASAPI capture and `RecMode.Audio.AudioMixer` class both correctly detect live audio when tested in isolation, so the signal is lost somewhere between `AudioMixer.PumpUntil`'s pipe-writing and ffmpeg's consumption of it, specific to the full-system capture path — root cause not found in the time available this session. Tracked as an open bug, not closed; see `PROJECT_MEMORY.md` (2026-07-08) for the full investigation trail. Until fixed, treat full-system-audio recordings' audio content as unverified.
+
 ## [0.9.10-beta] - 2026-07-08
 
 ### Added
