@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.9-beta] - 2026-07-08
+
+### Added
+- 2026-07-08 — **All-displays capture** (plan §1: "Full screen (per display + all displays)"), the last capture-source gap from Phase 2. WGC has no native multi-monitor capture item, so a new `DesktopDuplicationCaptureSource` composites every monitor into one virtual-desktop-sized canvas via DXGI Desktop Duplication, feeding the same `Nv12Converter`/`BgraScaler` GPU pipeline used everywhere else. Surfaces as an "All Displays" entry in the Record screen's Display picker (only shown with 2+ real monitors); wired into recording, live preview, and screenshots. Found and fixed two real bugs verifying this live: (1) this dev machine's one physical GPU enumerates as two adapter entries with identical VRAM, only one of which has any display output — the existing VRAM-based adapter picker (correct for WGC, which doesn't need output ownership) silently chose the output-less one for Desktop Duplication, which does require it; produced valid frames with no exception, but every one was black. Fixed by having the new capture source select its own adapter based on which one actually owns the target monitors' outputs. (2) The composited canvas texture needed `BindFlags.RenderTarget` in addition to `ShaderResource` — the same `CreateVideoProcessorInputView` gotcha already found once for the webcam overlay (2026-07-06). Deliberate, documented scope cut: a monitor genuinely driven by a different physical GPU than the one selected just never updates that region (fails closed, not a crash) — covers the rare split-GPU case, not the common single-GPU setup. Verified end-to-end via a `--selftest-alldisplays` hook (real recording through the full pipeline, frame-extracted and visually confirmed showing real desktop content) and a screenshot probe, both at the correct virtual-desktop bounds. This dev machine has only one physical monitor, so the true multi-real-monitor compositing case (correctly offsetting 2+ distinct images) is implemented but not verified on real multi-monitor hardware. Build clean (0 warnings), 152 tests pass.
+
 ## [0.9.8-beta] - 2026-07-08
 
 ### Fixed

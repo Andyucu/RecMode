@@ -45,6 +45,13 @@ public static class CaptureCapabilities
     /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>
     public static bool TryGetSourceSize(CaptureTarget target, out int width, out int height)
     {
+        if (target.Kind == CaptureKind.AllDisplays)
+        {
+            width = target.VirtualDesktopBounds?.Width ?? 0;
+            height = target.VirtualDesktopBounds?.Height ?? 0;
+            return width > 0 && height > 0;
+        }
+
         if (target.Region is { } region)
         {
             width = region.Width;

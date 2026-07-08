@@ -23,6 +23,11 @@ public static class ScreenshotCapturer
             return null;
         }
 
+        if (target.Kind == CaptureKind.AllDisplays)
+        {
+            return CaptureAllDisplays();
+        }
+
         (ID3D11Device device, ID3D11DeviceContext context) = CaptureInterop.CreateDevice();
         using (device)
         using (context)
@@ -59,6 +64,27 @@ public static class ScreenshotCapturer
             session.StartCapture();
             got.Wait(2000);
             return result;
+        }
+    }
+
+    /// <summary>"All Displays": no WGC item exists for this, so grab one composited frame via DXGI Desktop
+    /// Duplication instead (same primitive the recording/preview engines use).</summary>
+    private static ScreenshotImage? CaptureAllDisplays()
+    {
+        IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
+        using var dda = new DesktopDuplicationCaptureSource(monitors);
+        using (dda.Device)
+        using (dda.Context)
+        {
+            // The very first AcquireNextFrame per output can legitimately time out rather than deliver
+            // current content immediately (DXGI only signals on an actual desktop change) — a few extra
+            // pulls make sure every output has produced at least one real frame before the readback below.
+            ID3D11Texture2D canvas = dda.AcquireNextFrame(timeoutMs: 500);
+            for (int i = 0; i < 4; i++)
+            {
+                canvas = dda.AcquireNextFrame(timeoutMs: 200);
+            }
+            return Readback(dda.Device, dda.Context, canvas, region: null);
         }
     }
 

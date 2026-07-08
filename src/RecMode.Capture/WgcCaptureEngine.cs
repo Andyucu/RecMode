@@ -18,6 +18,9 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private Nv12Converter? _converter;
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
+    private DesktopDuplicationCaptureSource? _ddaSource;
+    private Thread? _ddaThread;
+    private volatile bool _ddaStopping;
     private byte[] _latest = [];
     private byte[] _scratch = [];
     private bool _hasLatest;
@@ -42,6 +45,12 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         if (!CaptureCapabilities.IsSupported())
         {
             throw new NotSupportedException("Windows.Graphics.Capture is not supported on this OS.");
+        }
+
+        if (target.Kind == CaptureKind.AllDisplays)
+        {
+            StartAllDisplays(dstW, dstH);
+            return;
         }
 
         WgcSessionFactory.Session session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived);
@@ -82,6 +91,49 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         Interlocked.Increment(ref _capturedFrames);
     }
 
+    /// <summary>"All Displays" source: no WGC item exists for this, so <see cref="DesktopDuplicationCaptureSource"/>
+    /// composites every monitor via DXGI Desktop Duplication instead, pulled from a dedicated thread (DDA has no
+    /// event-driven callback like WGC's <c>FrameArrived</c> — <c>AcquireNextFrame</c> is a blocking wait, not a
+    /// busy-poll, so this doesn't run against plan §3.9's "event-driven, never polled" rule).</summary>
+    private void StartAllDisplays(int dstW, int dstH)
+    {
+        IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
+        _ddaSource = new DesktopDuplicationCaptureSource(monitors);
+        _device = _ddaSource.Device;
+        _context = _ddaSource.Context;
+
+        _converter = new Nv12Converter(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
+        _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+        OutputWidth = dstW;
+        OutputHeight = dstH;
+        Nv12ByteSize = _converter.Nv12ByteSize;
+        _latest = new byte[Nv12ByteSize];
+        _scratch = new byte[Nv12ByteSize];
+        _hasLatest = false;
+        _capturedFrames = 0;
+
+        _ddaStopping = false;
+        _ddaThread = new Thread(DdaPumpLoop) { IsBackground = true, Name = "recmode-dda" };
+        _ddaThread.Start();
+        IsRunning = true;
+    }
+
+    private void DdaPumpLoop()
+    {
+        while (!_ddaStopping)
+        {
+            ID3D11Texture2D canvas = _ddaSource!.AcquireNextFrame(timeoutMs: 16);
+            _converter!.Convert(canvas, _scratch);
+            lock (_sync)
+            {
+                (_scratch, _latest) = (_latest, _scratch);
+                _hasLatest = true;
+            }
+
+            Interlocked.Increment(ref _capturedFrames);
+        }
+    }
+
     public bool TryGetLatestFrame(byte[] dest)
     {
         lock (_sync)
@@ -117,14 +169,20 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             _framePool.FrameArrived -= OnFrameArrived;
         }
 
+        _ddaStopping = true;
+        _ddaThread?.Join(1000);
+
         _session?.Dispose();
         _framePool?.Dispose();
+        _ddaSource?.Dispose();
         _converter?.Dispose();
         _context?.Dispose();
         _device?.Dispose();
 
         _session = null;
         _framePool = null;
+        _ddaSource = null;
+        _ddaThread = null;
         _converter = null;
         _context = null;
         _device = null;

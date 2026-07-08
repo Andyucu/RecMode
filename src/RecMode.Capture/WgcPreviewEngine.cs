@@ -21,6 +21,9 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     private BgraScaler? _scaler;
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
+    private DesktopDuplicationCaptureSource? _ddaSource;
+    private Thread? _ddaThread;
+    private volatile bool _ddaStopping;
     private byte[] _latest = [];
     private byte[] _scratch = [];
     private bool _hasLatest;
@@ -42,6 +45,12 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         if (IsRunning)
         {
             Stop();
+        }
+
+        if (target.Kind == CaptureKind.AllDisplays)
+        {
+            StartAllDisplays();
+            return;
         }
 
         WgcSessionFactory.Session session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived);
@@ -96,6 +105,58 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         FrameAvailable?.Invoke();
     }
 
+    /// <summary>"All Displays" preview: same DXGI Desktop Duplication composite as <see cref="WgcCaptureEngine"/>,
+    /// pulled from a dedicated thread and throttled to the same ≤ 30 fps as the WGC path.</summary>
+    private void StartAllDisplays()
+    {
+        IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
+        _ddaSource = new DesktopDuplicationCaptureSource(monitors);
+        _device = _ddaSource.Device;
+        _context = _ddaSource.Context;
+
+        (int dstW, int dstH) = FitPreview(Math.Max(2, _ddaSource.VirtualWidth), Math.Max(2, _ddaSource.VirtualHeight));
+        _scaler = new BgraScaler(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
+        _scaler.SetWebcamOverlay(_webcamSource, _webcamRect);
+        Width = dstW;
+        Height = dstH;
+        Stride = _scaler.Stride;
+        ByteSize = _scaler.ByteSize;
+        _latest = new byte[ByteSize];
+        _scratch = new byte[ByteSize];
+        _hasLatest = false;
+        _lastFrameTicks = 0;
+
+        _ddaStopping = false;
+        _ddaThread = new Thread(DdaPumpLoop) { IsBackground = true, Name = "recmode-preview-dda" };
+        _ddaThread.Start();
+        IsRunning = true;
+    }
+
+    private void DdaPumpLoop()
+    {
+        long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+        while (!_ddaStopping)
+        {
+            ID3D11Texture2D canvas = _ddaSource!.AcquireNextFrame(timeoutMs: 16);
+
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastFrameTicks != 0 && now - _lastFrameTicks < minTicks)
+            {
+                continue;
+            }
+            _lastFrameTicks = now;
+
+            _scaler!.Scale(canvas, _scratch);
+            lock (_sync)
+            {
+                (_scratch, _latest) = (_latest, _scratch);
+                _hasLatest = true;
+            }
+
+            FrameAvailable?.Invoke();
+        }
+    }
+
     public bool TryGetLatestFrame(byte[] dest)
     {
         lock (_sync)
@@ -130,13 +191,19 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             _framePool.FrameArrived -= OnFrameArrived;
         }
 
+        _ddaStopping = true;
+        _ddaThread?.Join(1000);
+
         _session?.Dispose();
         _framePool?.Dispose();
+        _ddaSource?.Dispose();
         _scaler?.Dispose();
         _context?.Dispose();
         _device?.Dispose();
         _session = null;
         _framePool = null;
+        _ddaSource = null;
+        _ddaThread = null;
         _scaler = null;
         _context = null;
         _device = null;

@@ -114,8 +114,8 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 var encoder = encoders.FirstOrDefault(x => x is { Codec: VideoCodec.H264, IsHardware: true })
                     ?? encoders.First(x => x.Codec == VideoCodec.H264);
 
-                var target = region
-                    ? RecMode.Capture.CaptureTarget.FromRegion(monitor, new RecMode.Capture.RegionRect(100, 100, 1280, 720))
+                var target = mode == "alldisplays" ? RecMode.Capture.CaptureTarget.FromAllDisplays(monitors)
+                    : region ? RecMode.Capture.CaptureTarget.FromRegion(monitor, new RecMode.Capture.RegionRect(100, 100, 1280, 720))
                     : RecMode.Capture.CaptureTarget.FromMonitor(monitor);
                 int quality = mode == "split" ? 100 : 70;
                 if (!coordinator.Start(target, encoder, MediaContainer.Mp4, 60, quality))

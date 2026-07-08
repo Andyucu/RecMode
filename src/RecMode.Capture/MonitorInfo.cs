@@ -19,5 +19,10 @@ public sealed record MonitorInfo
     public int Height { get; init; }
     public bool IsPrimary { get; init; }
 
+    /// <summary>True for the synthetic "All Displays" entry appended to the Record screen's display picker
+    /// when more than one real monitor is present (plan §1: "Full screen (per display + all displays)").
+    /// <see cref="Handle"/> is unused for this entry; X/Y/Width/Height carry the virtual-desktop bounding box.</summary>
+    public bool IsAllDisplays { get; init; }
+
     public override string ToString() => DisplayName;
 }

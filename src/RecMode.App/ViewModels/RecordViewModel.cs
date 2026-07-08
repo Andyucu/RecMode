@@ -194,7 +194,10 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     private void PickRegion(bool revertOnCancel)
     {
-        if (SelectedMonitor is not { } mon)
+        // "All Displays" has no single monitor to size the region picker's overlay against — a region is
+        // always relative to one real screen, so fall back to the primary monitor in that case.
+        MonitorInfo? mon = SelectedMonitor is { IsAllDisplays: false } m ? m : Monitors.FirstOrDefault(x => x.IsPrimary && !x.IsAllDisplays);
+        if (mon is null)
         {
             if (revertOnCancel) RevertToScreen();
             return;
@@ -423,7 +426,13 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             return SelectedWindow is null ? null : CaptureTarget.FromWindow(SelectedWindow);
         }
 
-        return SelectedMonitor is null ? null : CaptureTarget.FromMonitor(SelectedMonitor);
+        if (SelectedMonitor is not { } selected)
+        {
+            return null;
+        }
+
+        return selected.IsAllDisplays ? CaptureTarget.FromAllDisplays(Monitors.Where(m => !m.IsAllDisplays).ToList())
+            : CaptureTarget.FromMonitor(selected);
     }
 
     private void RevertToScreen()
@@ -442,9 +451,26 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         }
 
         Monitors.Clear();
-        foreach (MonitorInfo m in CaptureCapabilities.EnumerateMonitors())
+        IReadOnlyList<MonitorInfo> realMonitors = CaptureCapabilities.EnumerateMonitors();
+        foreach (MonitorInfo m in realMonitors)
         {
             Monitors.Add(m);
+        }
+        if (realMonitors.Count > 1)
+        {
+            // "Full screen (per display + all displays)" (plan §1) — only meaningful with 2+ real monitors.
+            RegionRect bounds = CaptureTarget.FromAllDisplays(realMonitors).VirtualDesktopBounds!.Value;
+            Monitors.Add(new MonitorInfo
+            {
+                Handle = nint.Zero,
+                DisplayName = "All Displays",
+                DeviceName = "",
+                X = bounds.X,
+                Y = bounds.Y,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                IsAllDisplays = true,
+            });
         }
         SelectedMonitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
 

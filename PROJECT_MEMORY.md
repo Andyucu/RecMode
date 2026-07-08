@@ -8,6 +8,81 @@
 
 ---
 
+## Session 2026-07-08 (part 2) — All-displays capture via DXGI Desktop Duplication (0.9.9-beta)
+
+**Goal:** second of the user's 5 "doable right now" items — all-displays capture (Phase 2's last remaining
+gap: "Full screen (per display + all displays)", plan §1). WGC has no native multi-monitor capture item, so
+this needed the lower-level DXGI Desktop Duplication API, used nowhere else in the codebase.
+
+**Design.** New `CaptureKind.AllDisplays` + `CaptureTarget.FromAllDisplays(monitors)` (computes the union
+bounding box of all monitor rects, stored in a new `VirtualDesktopBounds` property since there's no single
+HMONITOR to ask WGC for a source size). New `MonitorInfo.IsAllDisplays` sentinel flag — `RecordViewModel.LoadDevices()`
+appends a synthetic "All Displays" entry to the `Monitors` combo (bounding-box X/Y/Width/Height, `Handle=0`)
+whenever 2+ real monitors are enumerated; `CurrentTarget()` and `PickRegion()` both special-case it (region
+picking falls back to the primary monitor, since "region of the combined virtual desktop" isn't meaningful).
+New `DesktopDuplicationCaptureSource` (`RecMode.Capture`) — one `IDXGIOutputDuplication` per monitor output,
+each `CopySubresourceRegion`'d into its correct offset within a shared canvas texture on every pull; wired
+into `WgcCaptureEngine`/`WgcPreviewEngine` (a dedicated pump thread, since DDA's `AcquireNextFrame` is a
+blocking wait with no `FrameArrived`-style event) and `ScreenshotCapturer` (one-shot pull + readback).
+`CaptureSizing`/`RecordingCoordinator` needed zero changes — both already operate generically on
+source width/height regardless of where it came from.
+
+**Two real bugs found and fixed via live verification on the one real machine available (a single 5120×1440
+ultrawide monitor — see the "known limits of this verification" note below):**
+
+1. **Adapter selection: `--selftest-alldisplays` produced a valid 360-frame MP4 with zero exceptions, but
+   every frame was solid black.** Diagnosed via a throwaway console probe (`DdaDiag`, scratchpad-only) that
+   enumerated every DXGI adapter and its outputs directly: this dev machine's one physical GPU (AMD RX 7900
+   XTX) shows up as **two separate `IDXGIAdapter1` entries with identical `DedicatedVideoMemory`** — a WDDM
+   linked-adapter artifact — and only the *first* one has any output attached (`EnumOutputs` returns nothing
+   for the second). `CaptureInterop.CreateDevice()`'s existing "highest VRAM, ties favor the later entry"
+   heuristic is correct for WGC (which doesn't need the chosen device's adapter to literally own the target
+   monitor — the OS handles that routing internally) but is exactly wrong for Desktop Duplication, which
+   requires `DuplicateOutput` to be called with a device created on the *same* adapter as the output. Fixed
+   by having `DesktopDuplicationCaptureSource` enumerate every adapter itself, keep whichever one owns the
+   most of the target monitors' outputs, and build its own dedicated D3D11 device on that adapter — exposed
+   as public `Device`/`Context` properties that `WgcCaptureEngine`/`WgcPreviewEngine`/`ScreenshotCapturer` now
+   use instead of a separately-created one. This is a bug **specific to this dev machine's adapter topology**,
+   not a design flaw in the approach — but it's exactly the kind of thing that would have silently broken the
+   feature for a subset of real users with similar linked-adapter setups (common with hybrid/laptop GPUs) had
+   it shipped un-diagnosed.
+2. **After fixing (1), the recording worked but a one-shot screenshot of "All Displays" came back solid
+   white.** Root cause: DXGI only signals `AcquireNextFrame` on an actual desktop change, so the very first
+   call after `DuplicateOutput` can legitimately time out rather than handing over current content — fine for
+   the continuous recording pump (it just picks up the next real frame within milliseconds), but a problem for
+   a single one-shot pull that only tries once. Fixed by having `ScreenshotCapturer`'s one-shot path pull a
+   handful of extra times before reading back.
+3. **The canvas texture needed `BindFlags.RenderTarget` in addition to `ShaderResource`** — `CreateVideoProcessorInputView`
+   throws `E_INVALIDARG` on a `ShaderResource`-only texture; this is the *exact same* gotcha already found and
+   fixed once for the webcam overlay's upload texture (2026-07-06), just rediscovered independently here since
+   it's a real, recurring D3D11 VideoProcessor requirement, not a one-off mistake.
+
+**Known limits of this verification (documented in code + here, not glossed over):** this dev machine has
+only one physical monitor, so the "combine 2+ genuinely different images at the correct offsets" case —
+the actual core of what makes this feature useful — could not be directly observed; only the degenerate
+1-output case was exercised. The virtual-desktop bounding-box math, per-output offset computation, and
+`CopySubresourceRegion` placement logic were all written to handle N monitors correctly by construction (same
+technique as the region-crop math already used elsewhere in this codebase), and the adapter-ownership fix
+above proves the underlying DXGI mechanics work correctly on real hardware — but real multi-monitor hardware
+is needed to close this out completely. Documented as a standing gap in `CLAUDE.md`, not silently assumed.
+
+**Verified:** `--selftest-alldisplays` (new CLI hook in `SelfTestRunner`, mirroring the existing `region`/`av`/etc.
+hooks) — a real recording through the full production pipeline (`RecordingCoordinator` → `WgcCaptureEngine` →
+ffmpeg → MP4), frame-extracted at several points across the recording and visually confirmed as real, live
+desktop content (this session's own terminal/browser windows), at 4096×1152 — the virtual-desktop bounding
+box (5120×1440 on this single-monitor machine) correctly downscaled by the pre-existing, unmodified
+`CaptureSizing` hw-H.264 4096-width cap. A separate throwaway probe confirmed the screenshot path at the full
+5120×1440 bounds. Regression-checked: `--selftest-record`, `--selftest-region`, `--selftest-screenshot` (the
+ordinary single-monitor paths) all still pass after the `WgcCaptureEngine`/`WgcPreviewEngine`/`ScreenshotCapturer`
+changes. Build clean (0 warnings), 152 tests pass throughout (none of this is unit-testable — real GPU/DXGI
+interop, verified entirely live per this codebase's established convention). Released as **0.9.9-beta**.
+
+**Cleaned up:** three throwaway scratchpad projects (`DdaProbe` for initial Vortice.DXGI API discovery,
+`DdaDiag` for the adapter-topology diagnosis, `ScreenshotProbe` for the all-displays screenshot check) and
+all test recordings/screenshots — none committed to the repo.
+
+---
+
 ## Session 2026-07-08 (part 1) — Per-app audio isolation re-investigated with a real controlled test, re-enabled (0.9.8-beta)
 
 **Goal:** user asked for the 5 "doable right now" items from the standing-gaps review — this is the first:
