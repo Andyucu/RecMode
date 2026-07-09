@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>RecMode User Guide</title>
+  <style>
+    @page { margin: 20mm 18mm; }
+    :root {
+      --ink: #1b1f24;
+      --muted: #5c6670;
+      --line: #d7dce2;
+      --panel: #f5f7fa;
+      --accent: #0f6cbd;
+      --accent-ink: #073b6d;
+    }
+    body {
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.5;
+    }
+    h1, h2, h3 { color: #111827; line-height: 1.18; }
+    h1 { font-size: 30pt; margin: 0 0 10px; }
+    h2 { font-size: 18pt; margin: 28px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+    h3 { font-size: 13pt; margin: 18px 0 6px; }
+    p { margin: 0 0 9px; }
+    ul, ol { margin-top: 6px; padding-left: 22px; }
+    li { margin: 3px 0; }
+    code {
+      font-family: "Cascadia Mono", Consolas, monospace;
+      background: #eef2f7;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 9.5pt;
+    }
+    pre {
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 6px;
+      padding: 12px 14px;
+      overflow: hidden;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 8.8pt;
+      line-height: 1.35;
+      white-space: pre-wrap;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    th { background: #edf3fb; color: var(--accent-ink); text-align: left; }
+    .cover {
+      min-height: 760px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-left: 10px solid var(--accent);
+      padding-left: 28px;
+      page-break-after: always;
+    }
+    .subtitle { color: var(--muted); font-size: 14pt; max-width: 680px; }
+    .meta { margin-top: 26px; color: var(--muted); }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--panel);
+      padding: 10px 12px;
+      margin: 10px 0 14px;
+      page-break-inside: avoid;
+    }
+    .warning { border-left-color: #c2410c; background: #fff7ed; }
+    .ok { border-left-color: #15803d; background: #f0fdf4; }
+    .small { color: var(--muted); font-size: 9pt; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px 12px;
+      background: #fff;
+      page-break-inside: avoid;
+    }
+    .toc a { color: var(--accent-ink); text-decoration: none; }
+    .page-break { page-break-before: always; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>RecMode User Guide</h1>
+    <p class="subtitle">Features, requirements, installation, recording workflows, settings, troubleshooting, and beta notes for the RecMode screen recording app.</p>
+    <p class="meta"><strong>Version covered:</strong> 0.9.19-beta<br>
+    <strong>Platform:</strong> Windows 11 primary, Windows 10 2004+ supported<br>
+    <strong>Document date:</strong> July 9, 2026</p>
+  </section>
+
+  <h2>Contents</h2>
+  <ol class="toc">
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#requirements">Requirements</a></li>
+    <li><a href="#install">Installation Options</a></li>
+    <li><a href="#quickstart">Quick Start</a></li>
+    <li><a href="#features">Feature Reference</a></li>
+    <li><a href="#workflows">Common Workflows</a></li>
+    <li><a href="#settings">Settings Reference</a></li>
+    <li><a href="#files">Files, Data, and Privacy</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#beta">Beta Notes and Known Limits</a></li>
+  </ol>
+
+  <h2 id="overview">1. Overview</h2>
+  <p>RecMode is a modern Windows screen recorder built with .NET 10 and WPF. It is designed for practical desktop recording: tutorials, bug reports, meetings, gameplay, screenshots, short clips, scheduled recordings, and repeatable recording profiles.</p>
+  <p>The app is portable-first. The portable package can run from a folder or USB drive and keeps its data beside the app. The installer package uses Velopack and includes the same local runtime assets, including the bundled ffmpeg tools used for recording and media probing.</p>
+
+  <div class="callout ok">
+    <strong>Core idea:</strong> choose a source, choose a profile or encoding settings, decide what audio to include, then press Record. RecMode handles capture, encoding, library indexing, and optional remux/recovery behavior.
+  </div>
+
+  <pre>
+Typical recording path
+
+Source        GPU processing        Encoder process        Library
+Screen ----\  crop/scale/NV12  ---> ffmpeg.exe -------> video file + metadata
+Window ----+  cursor/webcam         H.264/HEVC/AV1       Library entry
+Region ----/  click/ink overlay     AAC/Opus/FLAC        Screenshot/video list
+  </pre>
+
+  <h2 id="requirements">2. Requirements</h2>
+  <table>
+    <tr><th>Requirement</th><th>Details</th></tr>
+    <tr><td>Operating system</td><td>Windows 11 is the primary target. Windows 10 version 2004 or newer is the support floor because RecMode uses modern Windows capture and audio APIs.</td></tr>
+    <tr><td>CPU architecture</td><td>x64 Windows.</td></tr>
+    <tr><td>.NET runtime</td><td>No separate .NET install is required for the packaged builds. RecMode is published self-contained with .NET 10.</td></tr>
+    <tr><td>Capture support</td><td>Windows Graphics Capture must be available. This is built into supported Windows versions.</td></tr>
+    <tr><td>Encoding tools</td><td>Packaged builds include bundled ffmpeg and ffprobe in the app's <code>ffmpeg\</code> folder.</td></tr>
+    <tr><td>Disk space</td><td>Enough free space for recordings. Long high-quality recordings can grow quickly; the app shows drive free space near the timer.</td></tr>
+    <tr><td>Hardware encoders</td><td>Optional. RecMode probes available encoders and can use NVIDIA NVENC, AMD AMF, Intel QSV, or software encoders where available and working.</td></tr>
+    <tr><td>Microphone/webcam</td><td>Optional hardware for microphone capture and webcam picture-in-picture. Webcam overlay fails closed when no camera is available.</td></tr>
+  </table>
+
+  <h2 id="install">3. Installation Options</h2>
+  <h3>Portable Zip</h3>
+  <p>Use the portable zip when you want RecMode to be self-contained in one folder.</p>
+  <ol>
+    <li>Extract the zip to a folder such as <code>D:\Apps\RecMode</code>.</li>
+    <li>Run <code>RecMode.exe</code>.</li>
+    <li>Recordings are stored in <code>Recordings\</code> by default.</li>
+    <li>Settings, logs, and the library index are stored in <code>Data\</code>.</li>
+  </ol>
+
+  <h3>Setup Installer</h3>
+  <p><code>RecMode-win-Setup.exe</code> is a one-click Velopack installer. By default it installs per-user under LocalAppData and creates shortcuts.</p>
+  <p>To override the install folder from a command line:</p>
+  <pre>RecMode-win-Setup.exe --installto "D:\Apps\RecMode"</pre>
+
+  <h3>MSI Installer</h3>
+  <p><code>RecMode-win.msi</code> is provided for users or administrators who prefer Windows Installer deployment. It is generated with install-location mode set to <code>Either</code>, so it supports per-user/per-machine scope selection in the MSI flow.</p>
+  <p>Administrators can override the MSI target directory with:</p>
+  <pre>msiexec /i RecMode-win.msi VELOPACK_INSTALLDIR="D:\Apps\RecMode"</pre>
+
+  <h2 id="quickstart">4. Quick Start</h2>
+  <ol>
+    <li>Open RecMode.</li>
+    <li>On the Record page, choose a source: Screen, Window, or Region.</li>
+    <li>Choose a recording profile or set video options manually.</li>
+    <li>Choose audio sources: system audio, microphone, or a specific app audio target.</li>
+    <li>Optionally enable webcam picture-in-picture.</li>
+    <li>Press Record or use <code>F9</code>.</li>
+    <li>Use Pause/Resume with <code>F10</code> if needed.</li>
+    <li>Stop the recording with the Stop button or <code>F9</code>.</li>
+    <li>Find the video in the Library page or in the output folder.</li>
+  </ol>
+
+  <pre>
+Record page mental model
+
++------------------------------+  +--------------------------+
+| Live preview                 |  | Video                    |
+|                              |  | - Profile                |
+|                              |  | - Display/window/region  |
+|                              |  | - Encoder/format/fps     |
+|                              |  | - Quality                |
+|                              |  +--------------------------+
+| Record | Screenshot | timer  |  | Audio / Webcam cards     |
++------------------------------+  +--------------------------+
+  </pre>
+
+  <h2 id="features" class="page-break">5. Feature Reference</h2>
+  <h3>Capture Sources</h3>
+  <table>
+    <tr><th>Source</th><th>Use it for</th><th>Notes</th></tr>
+    <tr><td>Screen</td><td>Recording a whole display.</td><td>On multi-monitor systems, RecMode can also expose an All Displays option.</td></tr>
+    <tr><td>Window</td><td>Recording one application window.</td><td>The Follow selected window toggle lets RecMode re-resolve a selected app window if the app recreates its HWND. Normal movement and resizing are already followed by Windows Graphics Capture.</td></tr>
+    <tr><td>Region</td><td>Recording a rectangular area.</td><td>Use Change to pick a new region. Region coordinates are stored and reused.</td></tr>
+    <tr><td>Webcam overlay</td><td>Adding camera picture-in-picture on top of another source.</td><td>Webcam is an overlay, not currently a standalone primary source.</td></tr>
+  </table>
+
+  <h3>Recording Profiles</h3>
+  <p>Profiles bundle common recording choices: container, frame rate, quality, and audio settings. They intentionally do not choose the encoder, because hardware encoder availability depends on the machine.</p>
+  <table>
+    <tr><th>Built-in profile</th><th>Typical use</th></tr>
+    <tr><td>Tutorial</td><td>30 fps MP4 with system audio and microphone.</td></tr>
+    <tr><td>Gameplay</td><td>60 fps MP4 with higher quality and system audio.</td></tr>
+    <tr><td>Meeting</td><td>30 fps MP4, smaller file size, system audio and microphone.</td></tr>
+    <tr><td>Bug report</td><td>30 fps MP4, moderate quality, simple shareable output.</td></tr>
+    <tr><td>GIF clip</td><td>15 fps short silent clip settings. This is not true GIF export.</td></tr>
+    <tr><td>High-quality archive</td><td>MKV, high quality, FLAC audio.</td></tr>
+  </table>
+  <p>Use Save as to store your current settings as a custom profile. Use the new Next profile hotkey, <code>F8</code> by default, to cycle through built-in and custom profiles without opening the profile combo. The hotkey skips Custom and is ignored while recording.</p>
+
+  <h3>Encoding and Formats</h3>
+  <ul>
+    <li><strong>Codecs:</strong> H.264, HEVC/H.265, and AV1 are modeled in the UI and selected based on encoder availability.</li>
+    <li><strong>Backends:</strong> Auto, NVENC, AMF, QSV, and software paths are probed rather than assumed.</li>
+    <li><strong>Containers:</strong> MP4, MKV, MOV, and WebM.</li>
+    <li><strong>Frame rates:</strong> common choices include 15, 30, 60, and 120 fps.</li>
+    <li><strong>Quality:</strong> the slider maps to ffmpeg quality settings. Higher quality means larger files.</li>
+    <li><strong>Safe recording:</strong> RecMode favors crash-resilient capture behavior where possible; MKV is more recoverable than MP4 if recording is interrupted.</li>
+  </ul>
+
+  <h3>Audio</h3>
+  <ul>
+    <li>System audio toggle.</li>
+    <li>Microphone toggle.</li>
+    <li>Per-source volume sliders and level meters.</li>
+    <li>Optional Limit to app selector for per-app audio capture.</li>
+    <li>Audio formats include AAC, Opus, and FLAC depending on container compatibility.</li>
+  </ul>
+
+  <h3>Screenshots, Library, and Record Again</h3>
+  <ul>
+    <li>Press Screenshot or <code>F11</code> to capture the current source as an image.</li>
+    <li>The Library page lists videos and screenshots.</li>
+    <li>Open, Show in folder, Delete, Refresh, and Open folder are available from the library.</li>
+    <li>Record again applies a previous recording's container, frame rate, quality, and audio toggles back to the Record page.</li>
+  </ul>
+
+  <h3>Scheduling</h3>
+  <p>The Schedule page can start recordings automatically while RecMode runs. A schedule can follow current Record settings or bind to a recording profile. Source and encoder follow current Record settings; frame rate, quality, container, and audio can come from the schedule's selected profile.</p>
+
+  <h3>Overlays and Capture Helpers</h3>
+  <ul>
+    <li>Countdown overlay before interactive recording starts.</li>
+    <li>Floating recording toolbar with record state controls.</li>
+    <li>Click ripple overlay for mouse click emphasis.</li>
+    <li>Draw-on-screen annotation overlay during recording.</li>
+    <li>Webcam picture-in-picture overlay with position and size controls.</li>
+  </ul>
+
+  <h2 id="workflows">6. Common Workflows</h2>
+  <h3>Record a Tutorial</h3>
+  <ol>
+    <li>Select Screen or Region.</li>
+    <li>Pick the Tutorial profile.</li>
+    <li>Enable microphone and system audio.</li>
+    <li>Enable click highlights if you want visible click feedback.</li>
+    <li>Press <code>F9</code>, wait for the countdown, then record.</li>
+  </ol>
+
+  <h3>Record a Single App Window</h3>
+  <ol>
+    <li>Select Window source.</li>
+    <li>Choose the app window from the picker.</li>
+    <li>Leave Follow selected window enabled if the app may recreate its window.</li>
+    <li>Choose audio settings. Use Limit to app if you only want that app's audio.</li>
+    <li>Start recording.</li>
+  </ol>
+
+  <h3>Capture a Bug Report</h3>
+  <ol>
+    <li>Select Region or Window.</li>
+    <li>Choose the Bug report profile.</li>
+    <li>Use the draw overlay or click highlights to point out the issue.</li>
+    <li>Stop recording and use Library &gt; Show in folder to attach the file.</li>
+  </ol>
+
+  <h3>Create a Scheduled Recording</h3>
+  <ol>
+    <li>Set the Record page source and encoder as you want them.</li>
+    <li>Create or choose a profile for the recording quality/audio settings.</li>
+    <li>Open Schedule and create a new schedule.</li>
+    <li>Choose recurrence, start time, duration, and optional profile.</li>
+    <li>Keep RecMode running, including in the tray.</li>
+  </ol>
+
+  <h2 id="settings">7. Settings Reference</h2>
+  <table>
+    <tr><th>Area</th><th>Controls</th></tr>
+    <tr><td>Appearance</td><td>System/Light/Dark theme, accent color, navigation layout: Sidebar, Top bar, or Compact.</td></tr>
+    <tr><td>Encoding defaults</td><td>Default video codec, container, audio format, and audio bitrate.</td></tr>
+    <tr><td>Output</td><td>Recording folder and filename pattern. Pattern tokens include <code>{date}</code>, <code>{time}</code>, and <code>{source}</code>.</td></tr>
+    <tr><td>Recording</td><td>Countdown, cursor capture, click highlights, auto-split size.</td></tr>
+    <tr><td>Performance</td><td>Encoder effort, CPU thread cap for software encoding, and lower encoder process priority.</td></tr>
+    <tr><td>Hotkeys</td><td><code>F8</code> next profile, <code>F9</code> start/stop, <code>F10</code> pause/resume, <code>F11</code> screenshot. All are remappable.</td></tr>
+    <tr><td>General</td><td>Start with Windows and check for updates on launch.</td></tr>
+  </table>
+
+  <h2 id="files">8. Files, Data, and Privacy</h2>
+  <h3>Portable Mode Layout</h3>
+  <pre>
+RecMode\
+  RecMode.exe
+  portable.marker
+  ffmpeg\
+    ffmpeg.exe
+    ffprobe.exe
+  licenses\
+  Data\
+    settings.json
+    library.json
+    logs\
+  Recordings\
+    Screenshots\
+  </pre>
+
+  <h3>Installed Mode Layout</h3>
+  <p>Installed mode uses the Velopack app folder for app binaries and local assets. User settings and logs use normal Windows profile locations.</p>
+  <table>
+    <tr><th>Item</th><th>Location</th></tr>
+    <tr><td>Settings and library index</td><td><code>%AppData%\RecMode</code></td></tr>
+    <tr><td>Logs and crash dumps</td><td><code>%LocalAppData%\RecMode\logs</code></td></tr>
+    <tr><td>Default recordings</td><td><code>%USERPROFILE%\Videos\RecMode</code></td></tr>
+    <tr><td>Bundled ffmpeg/licenses</td><td>Installed app directory next to the executable.</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>Privacy posture:</strong> RecMode is designed as a local desktop tool. Crash minidumps are opt-in. Update checking is configurable. The project notes explicitly treat privacy as a product feature.
+  </div>
+
+  <h2 id="troubleshooting">9. Troubleshooting</h2>
+  <table>
+    <tr><th>Problem</th><th>What to try</th></tr>
+    <tr><td>No hardware encoder appears</td><td>Use Auto or Software. Hardware encoders depend on GPU vendor, driver, and ffmpeg support. RecMode probes actual encoder startup rather than trusting ffmpeg's compiled list.</td></tr>
+    <tr><td>Recording is choppy or encoder cannot keep up</td><td>Lower frame rate, lower quality, use hardware encoding, choose Faster effort, reduce capture size, or enable lower encoder process priority.</td></tr>
+    <tr><td>Output file is too large</td><td>Lower quality, use 30 fps, use AV1/HEVC where supported, or choose a profile like Meeting or Bug report.</td></tr>
+    <tr><td>Window source no longer captures the intended app</td><td>Turn on Follow selected window and reselect the window once. If several windows from the same process exist, choose the exact one again.</td></tr>
+    <tr><td>Microphone or webcam is unavailable</td><td>Check Windows privacy permissions, device connection, and whether another app is exclusively using the device.</td></tr>
+    <tr><td>Installer does not ask for a folder</td><td>Use the MSI for an interactive Windows Installer flow, or run Setup.exe with <code>--installto</code>.</td></tr>
+  </table>
+
+  <h2 id="beta">10. Beta Notes and Known Limits</h2>
+  <ul>
+    <li>This document covers <strong>0.9.19-beta</strong>. The version is intentionally pre-1.0 while verification continues.</li>
+    <li>Full-system audio has a known beta issue in the project memory: recordings may contain a valid but silent stream. Per-app audio targeting has been verified separately and is the safer audio path until the full-system issue is fixed.</li>
+    <li>NVENC and QSV still need vendor-hardware verification on real NVIDIA and Intel systems. Development hardware has been AMD.</li>
+    <li>Real webcam hardware verification, real microphone hardware verification, a Narrator screen-reader pass, and Windows 10 2004 regression testing are still tracked as standing validation gaps.</li>
+    <li>True GIF export, editing tools, and advanced library/share workflows are not covered by the current beta feature set.</li>
+  </ul>
+
+  <h2>Appendix: Shortcut Summary</h2>
+  <table>
+    <tr><th>Shortcut</th><th>Action</th></tr>
+    <tr><td><code>F8</code></td><td>Cycle to next recording profile.</td></tr>
+    <tr><td><code>F9</code></td><td>Start or stop recording.</td></tr>
+    <tr><td><code>F10</code></td><td>Pause or resume recording.</td></tr>
+    <tr><td><code>F11</code></td><td>Take screenshot of the current source.</td></tr>
+    <tr><td><code>Esc</code></td><td>Cancel region selection, countdown, or draw mode where applicable.</td></tr>
+  </table>
+</body>
+</html>

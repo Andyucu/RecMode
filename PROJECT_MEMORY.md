@@ -8,6 +8,26 @@
 
 ---
 
+## Session 2026-07-09 (part 7) — User guide documentation + GitHub rule update
+
+**Goal:** user asked for detailed app documentation covering features, usage, and requirements, with schemes/
+drawings where useful. Initially asked to save as PDF, then clarified HTML is fine and no PDF is needed.
+User also explicitly asked to commit and push to GitHub now, and set a future rule: only commit/push when
+explicitly told, with no coauthoring.
+
+**Docs:** added `DOCS/RecMode_User_Guide.html`, a styled standalone guide for RecMode 0.9.19-beta. It covers:
+overview, requirements, portable/Setup/MSI install paths, quick start, capture sources, profiles, encoding,
+audio, screenshots/library, scheduling, overlays, common workflows, settings, file/data/privacy behavior,
+troubleshooting, beta notes/known limits, and shortcut summary. Included simple text diagrams for the recording
+pipeline, Record page layout, and portable folder structure. Generated a PDF locally via Chrome during the first
+pass, then deleted it after the user clarified HTML is sufficient.
+
+**Git rule update:** updated `CLAUDE.md` and auto-memory to record that future commits/pushes must only happen
+when the user explicitly requests them, and commit messages must not include `Co-authored-by` trailers. This
+session itself is explicitly authorized to commit and push.
+
+---
+
 ## Session 2026-07-09 (part 6) — Hotkey profile-cycling + follow-window capture (0.9.19-beta)
 
 **Goal:** user asked to implement the remaining 2 feature ideas from the review: hotkey profile-cycling and

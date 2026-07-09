@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+### Added
+- 2026-07-09 — Added `DOCS/RecMode_User_Guide.html`, a detailed user-facing guide covering app features, requirements, installation options, quick-start workflows, capture modes, profiles/hotkeys, scheduling, settings, file locations, privacy posture, troubleshooting, and beta limitations. It includes simple text diagrams for the recording pipeline, Record page layout, and portable folder layout. A PDF was briefly generated for review, but the user clarified HTML is the desired deliverable, so only the HTML guide is kept.
+
 ## [0.9.19-beta] - 2026-07-09
 
 ### Added
