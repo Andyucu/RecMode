@@ -72,4 +72,57 @@ public class CaptureTargetTests
         Assert.Equal("All Displays", target.DisplayName);
         Assert.Equal(nint.Zero, target.Handle);
     }
+
+    [Fact]
+    public void WindowFollowResolver_PrefersSameHandle()
+    {
+        var current = Window(10, "Editor", 42);
+        WindowInfo resolved = WindowFollowResolver.Resolve(current,
+        [
+            Window(11, "Editor", 42),
+            Window(10, "Editor - renamed", 99),
+        ])!;
+
+        Assert.Equal(10, resolved.Handle);
+    }
+
+    [Fact]
+    public void WindowFollowResolver_FindsRecreatedWindowByProcessAndTitle()
+    {
+        var current = Window(10, "Editor", 42);
+        WindowInfo resolved = WindowFollowResolver.Resolve(current,
+        [
+            Window(20, "Browser", 88),
+            Window(11, "Editor", 42),
+        ])!;
+
+        Assert.Equal(11, resolved.Handle);
+    }
+
+    [Fact]
+    public void WindowFollowResolver_FallsBackToSameProcessWhenTitleChanges()
+    {
+        var current = Window(10, "Document - Editor", 42);
+        WindowInfo resolved = WindowFollowResolver.Resolve(current,
+        [
+            Window(20, "Other document - Editor", 42),
+        ])!;
+
+        Assert.Equal(20, resolved.Handle);
+    }
+
+    [Fact]
+    public void WindowFollowResolver_ReturnsNullWhenNoCandidateMatches()
+    {
+        var current = Window(10, "Editor", 42);
+
+        Assert.Null(WindowFollowResolver.Resolve(current, [Window(20, "Browser", 88)]));
+    }
+
+    private static WindowInfo Window(int handle, string title, int processId) => new()
+    {
+        Handle = handle,
+        Title = title,
+        ProcessId = processId,
+    };
 }

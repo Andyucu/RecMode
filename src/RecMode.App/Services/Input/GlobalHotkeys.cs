@@ -91,6 +91,7 @@ public sealed class GlobalHotkeys : IDisposable
 /// <summary>Common virtual-key codes for the default hotkeys.</summary>
 public static class VirtualKeys
 {
+    public const uint F8 = 0x77;
     public const uint F9 = 0x78;
     public const uint F10 = 0x79;
     public const uint F11 = 0x7A;

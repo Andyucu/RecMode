@@ -119,7 +119,7 @@ internal static class CaptureInterop
     public static IReadOnlyList<WindowInfo> EnumerateWindows()
     {
         var results = new List<WindowInfo>();
-        EnumWindows((hwnd, _) =>
+        EnumWindows((hwnd, unusedData) =>
         {
             if (!IsWindowVisible(hwnd))
             {
@@ -149,7 +149,8 @@ internal static class CaptureInterop
             string title = sb.ToString();
             if (!string.IsNullOrWhiteSpace(title))
             {
-                results.Add(new WindowInfo { Handle = hwnd, Title = title });
+                _ = GetWindowThreadProcessId(hwnd, out uint pid);
+                results.Add(new WindowInfo { Handle = hwnd, Title = title, ProcessId = (int)pid });
             }
 
             return true;

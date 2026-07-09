@@ -88,10 +88,18 @@ public sealed class RecModeSettings
     // Preview
     public int PreviewFps { get; set; } = 30;
 
-    // Hotkeys (default F9/F10/F11 per plan)
+    // Hotkeys (default F8/F9/F10/F11 per plan + profile-cycling feature)
+    public string HotkeyNextProfile { get; set; } = "F8";
     public string HotkeyStartStop { get; set; } = "F9";
     public string HotkeyPauseResume { get; set; } = "F10";
     public string HotkeyScreenshot { get; set; } = "F11";
+
+    /// <summary>
+    /// Window source helper: when true, RecMode re-resolves the selected window by process/title before
+    /// preview/record/screenshot so apps that recreate their HWND can still be captured without repicking.
+    /// WGC already follows movement/resizing while the original HWND remains alive.
+    /// </summary>
+    public bool FollowWindow { get; set; } = true;
 
     // FFmpeg — null = use the bundled build under AppPaths.FfmpegDirectory (§3.4).
     public string? FfmpegPathOverride { get; set; }

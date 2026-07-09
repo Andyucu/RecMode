@@ -383,6 +383,21 @@
                                     AutomationProperties.Name="Change screenshot shortcut"
                                     Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
+                        <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Next profile" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyNextProfile}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="nextprofile" Click="OnChangeHotkey"
+                                    ToolTip="Change the shortcut that cycles to the next recording profile"
+                                    AutomationProperties.Name="Change next profile shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
 
                         <!-- Capture prompt -->
                         <Border Margin="0,10,0,0" Padding="12,8" CornerRadius="6"

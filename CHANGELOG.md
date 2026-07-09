@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.19-beta] - 2026-07-09
+
+### Added
+- 2026-07-09 — **Hotkey profile-cycling and follow-window capture** (the final 2 feature ideas from the 2026-07-08 architecture review). Added a new global "Next profile" hotkey, defaulting to `F8`, shown/remappable in Settings alongside the existing `F9`/`F10`/`F11` shortcuts. Pressing it cycles through built-in + custom recording profiles (skipping the "Custom" sentinel) and applies the selected profile's container/frame rate/quality/audio settings through the same `SelectedProfile` path as the Profile combo; it is ignored while recording so a mid-record hotkey cannot silently mutate active settings.
+- 2026-07-09 — **Window source can now follow the selected app window.** `WindowInfo` now carries process id, and a pure `WindowFollowResolver` re-resolves a selected window by same handle, then same process+title, then same process, then same title. The Record screen exposes a "Follow selected window" toggle for Window source (on by default). Before preview/record/screenshot, RecMode refreshes the target HWND so apps that recreate their window can still be captured without manually repicking; the existing WGC behavior already follows normal movement/resizing while the original HWND remains alive. Added 4 unit tests for the resolver's matching/fallback behavior.
+
 ## [0.9.18-beta] - 2026-07-09
 
 ### Fixed

@@ -15,6 +15,7 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
     private int _startStop = -1;
     private int _pause = -1;
     private int _screenshot = -1;
+    private int _nextProfile = -1;
     private bool _hooked;
 
     public void Register()
@@ -28,6 +29,7 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
         }
 
         RecModeSettings s = settings.Current;
+        _nextProfile = Register(s.HotkeyNextProfile, "F8");
         _startStop = Register(s.HotkeyStartStop, "F9");
         _pause = Register(s.HotkeyPauseResume, "F10");
         _screenshot = Register(s.HotkeyScreenshot, "F11");
@@ -57,6 +59,10 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
         if (id == _startStop)
         {
             if (record.RecordCommand.CanExecute(null)) record.RecordCommand.Execute(null);
+        }
+        else if (id == _nextProfile)
+        {
+            record.CycleRecordingProfile();
         }
         else if (id == _pause)
         {

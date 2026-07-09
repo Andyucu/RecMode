@@ -38,6 +38,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private bool _isScreenSource = true;
     private bool _isWindowSource;
     private bool _isRegionSource;
+    private bool _followWindowEnabled;
     private bool _selectingRegion;
     private bool _isRecording;
     private bool _isActivePage;
@@ -76,6 +77,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _webcamEnabled = settings.Current.WebcamEnabled;
         _webcamPosition = settings.Current.WebcamPosition;
         _webcamSizePercent = settings.Current.WebcamSizePercent;
+        _followWindowEnabled = settings.Current.FollowWindow;
 
         if (settings.Current.RegionWidth > 0 && settings.Current.RegionHeight > 0)
         {
@@ -89,10 +91,11 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 60;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
 
-        RecordCommand = new RelayCommand(ToggleRecord, () => CurrentTarget() is not null && SelectedEncoder is not null);
+        RecordCommand = new RelayCommand(ToggleRecord,
+            () => CurrentTarget(refreshFollowedWindow: false) is not null && SelectedEncoder is not null);
         ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
         PauseResumeCommand = new RelayCommand(TogglePause);
-        ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget() is not null);
+        ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget(refreshFollowedWindow: false) is not null);
         ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
@@ -154,6 +157,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             {
                 LoadWindows();
                 OnPropertyChanged(nameof(ShowWindowPicker));
+                OnPropertyChanged(nameof(ShowFollowWindow));
                 RestartPreview();
                 RecordCommand.NotifyCanExecuteChanged();
             }
@@ -233,7 +237,22 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     public string RegionLabel => _region is { } r ? $"Region {r.Width} × {r.Height}" : "No region selected";
     public bool ShowWindowPicker => IsWindowSource;
+    public bool ShowFollowWindow => IsWindowSource;
     public bool ShowRegionInfo => IsRegionSource;
+
+    public bool FollowWindowEnabled
+    {
+        get => _followWindowEnabled;
+        set
+        {
+            if (SetProperty(ref _followWindowEnabled, value))
+            {
+                _settings.Current.FollowWindow = value;
+                _settings.RequestSave();
+                RestartPreview();
+            }
+        }
+    }
 
     public MonitorInfo? SelectedMonitor
     {
@@ -412,7 +431,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         }
     }
 
-    private CaptureTarget? CurrentTarget()
+    private CaptureTarget? CurrentTarget(bool refreshFollowedWindow = true)
     {
         if (IsRegionSource)
         {
@@ -423,7 +442,8 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
         if (IsWindowSource)
         {
-            return SelectedWindow is null ? null : CaptureTarget.FromWindow(SelectedWindow);
+            WindowInfo? window = refreshFollowedWindow ? CurrentWindow() : SelectedWindow;
+            return window is null ? null : CaptureTarget.FromWindow(window);
         }
 
         if (SelectedMonitor is not { } selected)
@@ -490,7 +510,43 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         {
             Windows.Add(w);
         }
-        SelectedWindow ??= Windows.FirstOrDefault();
+        SelectedWindow = SelectedWindow is null
+            ? Windows.FirstOrDefault()
+            : WindowFollowResolver.Resolve(SelectedWindow, Windows) ?? Windows.FirstOrDefault();
+    }
+
+    private WindowInfo? CurrentWindow()
+    {
+        if (SelectedWindow is not { } current)
+        {
+            return null;
+        }
+
+        if (!FollowWindowEnabled)
+        {
+            return current;
+        }
+
+        IReadOnlyList<WindowInfo> live = CaptureCapabilities.EnumerateWindows();
+        WindowInfo? resolved = WindowFollowResolver.Resolve(current, live);
+        if (resolved is null)
+        {
+            return null;
+        }
+
+        if (resolved != current)
+        {
+            Windows.Clear();
+            foreach (WindowInfo w in live)
+            {
+                Windows.Add(w);
+            }
+
+            _selectedWindow = resolved;
+            OnPropertyChanged(nameof(SelectedWindow));
+        }
+
+        return resolved;
     }
 
     private EncoderInfo? PickDefaultEncoder()

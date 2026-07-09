@@ -59,7 +59,44 @@ public sealed record WindowInfo
 {
     public required nint Handle { get; init; }
     public required string Title { get; init; }
+    public int ProcessId { get; init; }
     public override string ToString() => Title;
+}
+
+/// <summary>Pure matching rules for "follow selected window" when an app recreates its top-level HWND.</summary>
+public static class WindowFollowResolver
+{
+    public static WindowInfo? Resolve(WindowInfo current, IReadOnlyList<WindowInfo> candidates)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        WindowInfo? sameHandle = candidates.FirstOrDefault(w => w.Handle == current.Handle);
+        if (sameHandle is not null)
+        {
+            return sameHandle;
+        }
+
+        if (current.ProcessId > 0)
+        {
+            WindowInfo? sameProcessAndTitle = candidates.FirstOrDefault(w =>
+                w.ProcessId == current.ProcessId &&
+                string.Equals(w.Title, current.Title, StringComparison.OrdinalIgnoreCase));
+            if (sameProcessAndTitle is not null)
+            {
+                return sameProcessAndTitle;
+            }
+
+            WindowInfo? sameProcess = candidates.FirstOrDefault(w => w.ProcessId == current.ProcessId);
+            if (sameProcess is not null)
+            {
+                return sameProcess;
+            }
+        }
+
+        return candidates.FirstOrDefault(w =>
+            string.Equals(w.Title, current.Title, StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 /// <summary>A running app with a visible window, usable as a per-app audio capture target (plan §7).</summary>

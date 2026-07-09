@@ -49,6 +49,23 @@ public sealed partial class RecordViewModel
 
     public bool CanDeleteProfile => SelectedProfile is { IsBuiltIn: false };
 
+    public void CycleRecordingProfile()
+    {
+        if (IsRecording)
+        {
+            return;
+        }
+
+        RecordingProfile[] candidates = [.. Profiles.Where(p => !ReferenceEquals(p, _customSentinel))];
+        if (candidates.Length == 0)
+        {
+            return;
+        }
+
+        int current = Array.FindIndex(candidates, p => ReferenceEquals(p, SelectedProfile) || p.Name == SelectedProfile?.Name);
+        SelectedProfile = candidates[(current + 1) % candidates.Length];
+    }
+
     private void LoadProfiles()
     {
         _loadingProfiles = true;

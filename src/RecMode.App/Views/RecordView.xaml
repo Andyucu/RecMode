@@ -172,6 +172,12 @@
                                   ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12"
                                   ToolTip="Which open window to record"
                                   AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
+                        <Grid Margin="0,0,0,12" ToolTip="Keep recording the same app if it recreates its window before capture starts">
+                            <TextBlock x:Name="FollowWindowLabel" Text="Follow selected window" VerticalAlignment="Center" />
+                            <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                          IsChecked="{Binding FollowWindowEnabled, Mode=TwoWay}"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=FollowWindowLabel}" />
+                        </Grid>
                     </StackPanel>
 
                     <!-- Region info (region source) -->

@@ -109,6 +109,7 @@ public sealed class SettingsViewModel : ObservableObject
     public string HotkeyStartStop => _settings.Current.HotkeyStartStop;
     public string HotkeyPauseResume => _settings.Current.HotkeyPauseResume;
     public string HotkeyScreenshot => _settings.Current.HotkeyScreenshot;
+    public string HotkeyNextProfile => _settings.Current.HotkeyNextProfile;
 
     /// <summary>Non-null while listening for a new chord for one hotkey ("startstop" / "pause" / "screenshot").</summary>
     public bool IsCapturingHotkey => _capturingHotkey is not null;
@@ -118,6 +119,7 @@ public sealed class SettingsViewModel : ObservableObject
         "startstop" => "Press a shortcut for Start / stop…  (Esc to cancel)",
         "pause" => "Press a shortcut for Pause / resume…  (Esc to cancel)",
         "screenshot" => "Press a shortcut for Screenshot…  (Esc to cancel)",
+        "nextprofile" => "Press a shortcut for Next profile…  (Esc to cancel)",
         _ => "",
     };
 
@@ -138,6 +140,7 @@ public sealed class SettingsViewModel : ObservableObject
             case "startstop": _settings.Current.HotkeyStartStop = chordText; OnPropertyChanged(nameof(HotkeyStartStop)); break;
             case "pause": _settings.Current.HotkeyPauseResume = chordText; OnPropertyChanged(nameof(HotkeyPauseResume)); break;
             case "screenshot": _settings.Current.HotkeyScreenshot = chordText; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
+            case "nextprofile": _settings.Current.HotkeyNextProfile = chordText; OnPropertyChanged(nameof(HotkeyNextProfile)); break;
             default: return;
         }
 

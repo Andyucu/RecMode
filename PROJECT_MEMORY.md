@@ -8,6 +8,37 @@
 
 ---
 
+## Session 2026-07-09 (part 6) — Hotkey profile-cycling + follow-window capture (0.9.19-beta)
+
+**Goal:** user asked to implement the remaining 2 feature ideas from the review: hotkey profile-cycling and
+follow-window capture.
+
+**Hotkey profile-cycling:** added `RecModeSettings.HotkeyNextProfile` defaulting to `F8`, registered by
+`HotkeyBindings`, and exposed/remappable in Settings as "Next profile." Pressing it calls
+`RecordViewModel.CycleRecordingProfile()`, which cycles through built-in + custom profiles while skipping the
+"Custom" sentinel. It goes through the existing `SelectedProfile` setter, so it persists the chosen profile and
+applies the same profile settings path as the combo. It is ignored while recording, deliberately avoiding
+mid-record mutation of container/fps/quality/audio settings.
+
+**Follow-window capture:** extended `WindowInfo` with `ProcessId` and added pure `WindowFollowResolver` matching
+rules: same HWND first, then same process+title, then same process, then same title. `CaptureInterop` now records
+the owning process id when enumerating windows. The Record screen now has a "Follow selected window" toggle for
+Window source (persisted as `RecModeSettings.FollowWindow`, on by default). Before preview/record/screenshot,
+`RecordViewModel` refreshes the selected window through the resolver so apps that recreate their HWND can still
+be captured without repicking; normal window movement/resizing was already handled by WGC once attached to the
+original HWND. A review pass avoided doing live Win32 enumeration from `RelayCommand.CanExecute`, keeping enabled
+state checks cheap.
+
+**Testing / packaging:** added 4 `RecMode.Capture.Tests` for the resolver (same handle wins, recreated window by
+process+title, same-process fallback when title changes, null when no candidate matches). Full Release
+build/test was clean: 0 warnings, 245/245 tests. Published
+`artifacts/RecMode-0.9.19-beta-portable-win-x64.zip` and republished Velopack `Releases/` with
+`RecMode-win-Setup.exe`, `RecMode-win.msi`, `RecMode-win-Portable.zip`, `RecMode-0.9.19-beta-full.nupkg`, and a
+`0.9.18-beta`→`0.9.19-beta` delta package. `assets.win.json` lists all five current artifacts; installer stage
+contains bundled `ffmpeg.exe`/`ffprobe.exe`; embedded portable `ProductVersion` reads exactly `0.9.19-beta`.
+
+---
+
 ## Session 2026-07-09 (part 5) — Installer dependency/icon/MSI packaging hardening (0.9.18-beta)
 
 **Goal:** user asked that the installer install all dependencies, use the RecMode app icon as the installer
