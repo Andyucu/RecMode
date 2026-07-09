@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.18-beta] - 2026-07-09
+
+### Fixed
+- 2026-07-09 — **Installer packaging now carries the same app-local dependencies as the portable build and brands the installer with the RecMode icon.** `publish-installer.ps1` now stages bundled `tools\ffmpeg` plus `licenses\` into the Velopack package payload before packing, fixing the installer-only gap where installed builds could miss `.\ffmpeg\ffmpeg.exe`/`ffprobe.exe` even though the portable zip included them. The script now defaults `--icon` to `src\RecMode.App\Assets\AppIcon.ico` and passes `--packTitle RecMode`, so Velopack's `Setup.exe`/dialogs/shortcuts use the app branding without requiring a manual `-Icon` argument.
+
+### Added
+- 2026-07-09 — **Installer builds now also emit a Velopack MSI with selectable install scope/location support.** Velopack's `Setup.exe` remains intentionally one-click (it can still be installed to a custom path via `RecMode-win-Setup.exe --installto <DIR>`), so the script now enables `--msi --instLocation Either` by default to produce an MSI alongside Setup.exe for users/admins who need the Windows Installer flow; MSI installs can also be overridden with `VELOPACK_INSTALLDIR`. Added script parameters for `-PackTitle`, `-InstallLocation`, optional bootstrap `-Framework` entries, and `-NoMsi`.
+
 ## [0.9.17-beta] - 2026-07-09
 
 ### Fixed

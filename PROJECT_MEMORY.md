@@ -8,6 +8,36 @@
 
 ---
 
+## Session 2026-07-09 (part 5) — Installer dependency/icon/MSI packaging hardening (0.9.18-beta)
+
+**Goal:** user asked that the installer install all dependencies, use the RecMode app icon as the installer
+icon, and let users choose where the app is installed.
+
+**Findings:** Velopack's Windows `Setup.exe` is intentionally one-click: it does not show a wizard/folder picker,
+but it does support `Setup.exe --installto <DIR>`. Velopack's documented interactive Windows-installer route is
+MSI generation (`--msi`) with `--instLocation Either` so the user chooses install scope during installation;
+admins can override the actual install directory with `VELOPACK_INSTALLDIR`. Also found a concrete RecMode
+packaging bug: `publish-portable.ps1` copied bundled `tools\ffmpeg` into the release, but
+`publish-installer.ps1` packed only the raw `dotnet publish` output, so installed builds could miss
+`.\ffmpeg\ffmpeg.exe`/`ffprobe.exe` even though portable builds had them.
+
+**Changes:** `publish-installer.ps1` now mirrors the portable payload staging: guarantees `portable.marker`,
+copies bundled `tools\ffmpeg` into `ffmpeg\`, and copies `licenses\` into the package stage before `vpk pack`.
+It now defaults `-Icon` to `src/RecMode.App/Assets/AppIcon.ico`, passes `--packTitle RecMode`, generates MSI by
+default via `--msi --instLocation Either`, and exposes `-InstallLocation`, `-NoMsi`, and optional `-Framework`
+bootstrap entries for future external runtime prerequisites. Version bumped to `0.9.18-beta` in
+`Directory.Build.props` and `publish-portable.ps1`.
+
+**Verification:** Release build clean (0 warnings), full suite 241/241. Published
+`artifacts/RecMode-0.9.18-beta-portable-win-x64.zip` (bundled ffmpeg confirmed) and republished Velopack
+`Releases/` with `RecMode-win-Setup.exe`, `RecMode-win.msi`, `RecMode-win-Portable.zip`,
+`RecMode-0.9.18-beta-full.nupkg`, and a `0.9.17-beta`→`0.9.18-beta` delta package. `assets.win.json`
+lists the MSI as type `Msi`; installer stage contains `ffmpeg.exe`, `ffprobe.exe`, `ffmpeg.manifest.json`,
+and `licenses\`. Embedded portable `ProductVersion` reads exactly `0.9.18-beta`. Velopack still warns that
+files are unsigned — expected until code-signing is set up.
+
+---
+
 ## Session 2026-07-09 (part 4) — Bugfix: ScheduleViewModel.NewSchedule() ignored Cancel (0.9.17-beta)
 
 **Goal:** user said "fix the bugs" after I flagged the `NewSchedule()` issue found while verifying Schedule→

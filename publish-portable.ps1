@@ -16,7 +16,7 @@
 [CmdletBinding()]
 param(
     # 0.9.x-beta scheme: bump x on every new build (see CLAUDE.md working notes).
-    [string]$Version = '0.9.17-beta',
+    [string]$Version = '0.9.18-beta',
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'artifacts')
 )
 
