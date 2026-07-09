@@ -26,6 +26,10 @@ public sealed class ScheduleItem
     public int DurationMinutes { get; set; } = 30;
     public bool Enabled { get; set; } = true;
 
+    /// <summary>Name of the <see cref="RecordingProfile"/> to apply when this schedule fires; <c>null</c> (the
+    /// default, and the original MVP behavior) means "use whatever the Record screen is currently set to."</summary>
+    public string? ProfileName { get; set; }
+
     /// <summary>When this schedule last fired (dedup + Once/Weekly tracking). Null = never fired.</summary>
     public DateTimeOffset? LastFiredUtc { get; set; }
 }

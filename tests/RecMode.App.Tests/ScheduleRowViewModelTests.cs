@@ -61,4 +61,20 @@ public class ScheduleRowViewModelTests
         vm.Enabled = false; // unchanged again — no extra persist
         Assert.Equal(1, persistCalls);
     }
+
+    [Fact]
+    public void SourceText_ShowsFollowRecordSettingsWhenNoProfileIsBound()
+    {
+        var vm = new ScheduleRowViewModel(NewItem(), persist: () => { });
+        Assert.Equal(ScheduleEditViewModel.FollowRecordSettingsOption, vm.SourceText);
+    }
+
+    [Fact]
+    public void SourceText_ShowsTheBoundProfileName()
+    {
+        var item = NewItem();
+        item.ProfileName = "Gameplay";
+        var vm = new ScheduleRowViewModel(item, persist: () => { });
+        Assert.Equal("Profile: Gameplay", vm.SourceText);
+    }
 }

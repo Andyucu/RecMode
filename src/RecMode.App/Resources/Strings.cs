@@ -110,11 +110,14 @@ public static class Strings
     public static string Schedule_Subtext => Get(nameof(Schedule_Subtext));
     public static string Schedule_Edit => Get(nameof(Schedule_Edit));
     public static string Schedule_Delete => Get(nameof(Schedule_Delete));
+    public static string Schedule_FollowRecordSettings => Get(nameof(Schedule_FollowRecordSettings));
+    public static string Schedule_ProfileLabel => Get(nameof(Schedule_ProfileLabel));
     public static string ScheduleEdit_Title => Get(nameof(ScheduleEdit_Title));
     public static string ScheduleEdit_Name => Get(nameof(ScheduleEdit_Name));
     public static string ScheduleEdit_Recurrence => Get(nameof(ScheduleEdit_Recurrence));
     public static string ScheduleEdit_Time => Get(nameof(ScheduleEdit_Time));
     public static string ScheduleEdit_Duration => Get(nameof(ScheduleEdit_Duration));
+    public static string ScheduleEdit_Profile => Get(nameof(ScheduleEdit_Profile));
     public static string ScheduleEdit_Save => Get(nameof(ScheduleEdit_Save));
     public static string ScheduleEdit_Cancel => Get(nameof(ScheduleEdit_Cancel));
     public static string ScheduleEdit_InvalidTime => Get(nameof(ScheduleEdit_InvalidTime));

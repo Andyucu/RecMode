@@ -21,7 +21,7 @@
                       ItemsSource="{Binding Recurrences}" SelectedItem="{Binding SelectedRecurrence}" Margin="0,0,0,12"
                       AutomationProperties.LabeledBy="{Binding ElementName=RecurrenceLabel}" />
 
-            <Grid Margin="0,0,0,16">
+            <Grid Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="16" />
@@ -39,6 +39,11 @@
                               AutomationProperties.LabeledBy="{Binding ElementName=DurationLabel}" />
                 </StackPanel>
             </Grid>
+
+            <TextBlock x:Name="ProfileLabel" Text="{x:Static res:Strings.ScheduleEdit_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                      ItemsSource="{Binding ProfileOptions}" SelectedItem="{Binding SelectedProfileOption}" Margin="0,0,0,16"
+                      AutomationProperties.LabeledBy="{Binding ElementName=ProfileLabel}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="CancelButton" Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"

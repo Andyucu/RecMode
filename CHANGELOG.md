@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.16-beta] - 2026-07-09
+
+### Added
+- 2026-07-09 — **Schedule → Profile binding** (second of 4 new feature ideas from the 2026-07-08 architecture review). Each schedule can now bind a Recording Profile (built-in or custom); when it fires, its container/frame rate/quality/audio settings are applied before the recording starts — reusing `RecordViewModel.ApplyProfile` (bumped `private` → `internal` for this) rather than duplicating the apply logic. Binding is optional: the default (and every pre-existing schedule) is "Follow Record settings," the original MVP behavior of using whatever the Record screen currently has.
+  - `ScheduleItem` gained `ProfileName` (nullable — `null` = "Follow Record settings").
+  - `ScheduleEditViewModel` gained a `Profile` combo (`ProfileOptions`/`SelectedProfileOption`) listing "Follow Record settings" first, then every built-in + custom profile by name; falls back to "Follow Record settings" if a bound profile was since deleted. `ScheduleEditor` now takes an `ISettingsService` dependency to supply the profile-name list.
+  - `SchedulerService.Fire()` resolves the schedule's bound profile (by name, from `RecordViewModel.Profiles`) and calls `record.ApplyProfile(profile)` directly — deliberately **not** through the `SelectedProfile` setter, which would also persist that profile as the user's manually-selected one and silently change what the Record screen shows the next time it's opened, which isn't appropriate for an unattended, timer-fired recording.
+  - `ScheduleRowViewModel.SourceText` now shows "Profile: {name}" when one is bound, replacing the previously-always-static "Follows Record settings."
+  - Verified live end-to-end through the real, unmodified clock-based firing path (not a test seam): bound a real schedule to the "GIF clip" profile, waited for it to fire at its real scheduled minute, and confirmed via `settings.json` (frame rate 60→15, quality 70→50, system audio on→off — with `SelectedProfileName` staying `null`, proving the no-side-effect design), the resulting `library.json` entry, and an `ffprobe` check of the actual encoded file (confirmed real 15fps H.264) that the profile was genuinely applied to production output, not just recorded as metadata.
+
+### Known
+- 2026-07-09 — Found (not fixed, out of scope for this feature) a pre-existing bug while verifying live: `ScheduleViewModel.NewSchedule()` adds the new schedule to the list regardless of whether the edit dialog was saved or cancelled, since it calls `_editor.Edit(item)` and unconditionally proceeds afterward. Reproduced directly. Tracked here for a future session.
+
 ## [0.9.15-beta] - 2026-07-09
 
 ### Added

@@ -139,14 +139,17 @@
   <data name="Schedule_Empty" xml:space="preserve"><value>Scheduled recordings arrive in a later build.</value></data>
   <data name="Schedule_Title" xml:space="preserve"><value>Scheduled recordings</value></data>
   <data name="Schedule_New" xml:space="preserve"><value>New schedule</value></data>
-  <data name="Schedule_Subtext" xml:space="preserve"><value>Recordings start automatically, even when RecMode runs in the tray. Encoder and audio follow your current Record settings.</value></data>
+  <data name="Schedule_Subtext" xml:space="preserve"><value>Recordings start automatically, even when RecMode runs in the tray. Source and encoder always follow your current Record settings; frame rate, quality, and audio follow the schedule's chosen profile, if any.</value></data>
   <data name="Schedule_Edit" xml:space="preserve"><value>Edit</value></data>
   <data name="Schedule_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Schedule_FollowRecordSettings" xml:space="preserve"><value>Follow Record settings</value></data>
+  <data name="Schedule_ProfileLabel" xml:space="preserve"><value>Profile: {0}</value></data>
   <data name="ScheduleEdit_Title" xml:space="preserve"><value>Edit schedule</value></data>
   <data name="ScheduleEdit_Name" xml:space="preserve"><value>Name</value></data>
   <data name="ScheduleEdit_Recurrence" xml:space="preserve"><value>Repeat</value></data>
   <data name="ScheduleEdit_Time" xml:space="preserve"><value>Start time (HH:mm)</value></data>
   <data name="ScheduleEdit_Duration" xml:space="preserve"><value>Duration (min)</value></data>
+  <data name="ScheduleEdit_Profile" xml:space="preserve"><value>Profile</value></data>
   <data name="ScheduleEdit_Save" xml:space="preserve"><value>Save</value></data>
   <data name="ScheduleEdit_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ScheduleEdit_InvalidTime" xml:space="preserve"><value>Enter a name and a start time as HH:mm (24-hour), e.g. 09:30.</value></data>

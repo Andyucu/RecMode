@@ -78,7 +78,11 @@ public sealed partial class RecordViewModel
         DeleteProfileCommand.NotifyCanExecuteChanged();
     }
 
-    private void ApplyProfile(RecordingProfile profile)
+    /// <summary>Internal (rather than private) so <see cref="SchedulerService"/> can apply a schedule's bound
+    /// profile before firing, without going through <see cref="SelectedProfile"/> (which would also persist
+    /// that profile as the user's manually-selected one — not appropriate for an unattended, timer-fired
+    /// recording that shouldn't silently change what the Record screen shows next time it's opened).</summary>
+    internal void ApplyProfile(RecordingProfile profile)
     {
         SelectedFormat = profile.Container;
         if (FrameRates.Contains(profile.FrameRate))

@@ -12,11 +12,15 @@ public interface IScheduleEditor
 }
 
 /// <summary>Default <see cref="IScheduleEditor"/> — a modal <see cref="ScheduleEditWindow"/> over a working copy.</summary>
-public sealed class ScheduleEditor : IScheduleEditor
+public sealed class ScheduleEditor(ISettingsService settings) : IScheduleEditor
 {
     public bool Edit(ScheduleItem item)
     {
-        var model = new ScheduleEditViewModel(item);
+        List<string> profileNames = [
+            .. RecordingProfiles.BuiltIn.Select(p => p.Name),
+            .. settings.Current.CustomProfiles.Select(p => p.Name),
+        ];
+        var model = new ScheduleEditViewModel(item, profileNames);
         var window = new ScheduleEditWindow(model);
         if (Application.Current?.MainWindow is { IsVisible: true } main)
         {

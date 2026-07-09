@@ -79,6 +79,20 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
         Log.Information("Firing schedule {Name} ({Recurrence} @ {Time}, {Dur} min)",
             item.Name, item.Recurrence, item.Time, item.DurationMinutes);
 
+        if (item.ProfileName is not null)
+        {
+            RecordingProfile? profile = record.Profiles.FirstOrDefault(p => p.Name == item.ProfileName);
+            if (profile is not null)
+            {
+                record.ApplyProfile(profile);
+            }
+            else
+            {
+                Log.Warning("Schedule {Name} references profile \"{Profile}\" which no longer exists — using current Record settings",
+                    item.Name, item.ProfileName);
+            }
+        }
+
         record.EnsureDevicesLoaded();
         record.StartRecordingFromCli();
 

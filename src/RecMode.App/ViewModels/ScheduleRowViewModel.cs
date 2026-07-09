@@ -6,6 +6,9 @@ namespace RecMode.App.ViewModels;
 /// <summary>One row in the Schedule list — wraps a <see cref="ScheduleItem"/> and persists on toggle.</summary>
 public sealed class ScheduleRowViewModel : ObservableObject
 {
+    private static readonly System.Text.CompositeFormat ProfileLabelFormat =
+        System.Text.CompositeFormat.Parse(Resources.Strings.Schedule_ProfileLabel);
+
     private readonly Action _persist;
 
     public ScheduleRowViewModel(ScheduleItem model, Action persist)
@@ -21,8 +24,11 @@ public sealed class ScheduleRowViewModel : ObservableObject
     /// <summary>e.g. "Weekdays · 09:00 · 15 min".</summary>
     public string WhenText => $"{RecurrenceLabel(Model.Recurrence)} · {Model.Time} · {Model.DurationMinutes} min";
 
-    /// <summary>Source/encoder follow the current Record settings for the MVP (per the design subtext).</summary>
-    public string SourceText => "Follows Record settings";
+    /// <summary>Source/encoder always follow the current Record settings; frame rate/quality/audio follow
+    /// the bound profile, if any (plan §7 backlog — Schedule/Profile binding).</summary>
+    public string SourceText => Model.ProfileName is null
+        ? Resources.Strings.Schedule_FollowRecordSettings
+        : string.Format(null, ProfileLabelFormat, Model.ProfileName);
 
     public bool Enabled
     {
@@ -48,6 +54,7 @@ public sealed class ScheduleRowViewModel : ObservableObject
         OnPropertyChanged(nameof(WhenText));
         OnPropertyChanged(nameof(Enabled));
         OnPropertyChanged(nameof(StateLabel));
+        OnPropertyChanged(nameof(SourceText));
     }
 
     private static string RecurrenceLabel(ScheduleRecurrence r) => r switch

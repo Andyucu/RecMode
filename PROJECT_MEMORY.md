@@ -8,6 +8,68 @@
 
 ---
 
+## Session 2026-07-09 (part 3) — Second new feature: Schedule → Profile binding (0.9.16-beta)
+
+**Goal:** user said "profile binding" — the second of the 4 review-suggested features (Schedule→Profile
+binding: "`RecordingProfile` and `ScheduleItem` both exist but aren't wired together; letting a schedule entry
+pick a profile is a small, high-value connector between two things you already built").
+
+**Changes:**
+- `ScheduleItem` (`RecMode.Core.Settings`) gained `ProfileName` (nullable, default `null` = "Follow Record
+  settings" — the original MVP behavior, so every existing schedule keeps working unchanged).
+- `ScheduleEditViewModel` gained a `Profile` field: `ProfileOptions` (a sentinel `FollowRecordSettingsOption`
+  first, then every built-in + custom profile name) and `SelectedProfileOption`. Falls back to the sentinel if
+  the schedule's saved `ProfileName` no longer matches any real profile (e.g. the profile was deleted since).
+  Constructor signature changed to take the profile-name list as a second parameter — updated its call site
+  (`ScheduleEditor`, which now takes `ISettingsService` to supply `RecordingProfiles.BuiltIn` + the user's
+  custom profiles) and the pre-existing `ScheduleEditViewModelTests` from the testing-debt session.
+- `SchedulerService.Fire()` resolves the bound profile by name from `record.Profiles` (the already-loaded,
+  merged built-in+custom list) and calls `record.ApplyProfile(profile)` — **deliberately not** via the
+  `SelectedProfile` property setter. That setter also persists `_settings.Current.SelectedProfileName`, which
+  would mean an unattended, timer-fired recording silently changes what profile the Record screen shows the
+  next time a human opens it — a real, non-obvious side effect worth avoiding. Bumped `ApplyProfile` from
+  `private` to `internal` (same assembly, no `InternalsVisibleTo` needed) so `SchedulerService` can call it
+  directly without going through that setter.
+- `ScheduleRowViewModel.SourceText` now reads `"Profile: {name}"` when bound, instead of the previously
+  hardcoded `"Follows Record settings"` string; `RefreshDisplay()` updated to re-raise it. Needed a
+  `CompositeFormat`-cached format string to satisfy `CA1863` cleanly (only warning hit this session).
+- `ScheduleEditWindow.xaml` gained a Profile combo row; `Schedule_Subtext`'s static copy updated from "Encoder
+  and audio follow your current Record settings" to reflect that frame rate/quality/audio can now follow a
+  bound profile instead.
+
+**Live verification — the important part, done through the real unmodified firing path, not a test seam:**
+attempted first via UI Automation (open the Schedule screen, click New schedule, fill the dialog) but hit a
+real environment limitation: this dev box's automation stack (`SetCursorPos`/`mouse_event`) doesn't reliably
+land clicks matching UI Automation's reported `BoundingRectangle` on this 5120×1440 HiDPI multi-monitor setup
+— likely a DPI-virtualization mismatch for a non-DPI-aware PowerShell process. Confirmed the dialog itself
+renders correctly (3 screenshots showing the new Profile field with "Follow Record settings"), but abandoned
+trying to programmatically select a profile and set a time field this way after a stray `SendKeys` call risked
+landing in an unrelated window (this is a shared, cluttered desktop). **Switched to a safer, still-genuine
+approach:** edited `settings.json` directly to add a real `ScheduleItem` (`ProfileName: "GIF clip"`, `Time`:
+2 minutes in the future), relaunched the actual app (`--tray`, not a self-test hook), and let its real
+`SchedulerService` 20s-poll loop fire it at the real scheduled minute — exercising the exact production code
+path end to end. Confirmed three ways: (1) `settings.json` after the fire showed `FrameRate` 60→15, `Quality`
+70→50, `SystemAudioEnabled` true→false, `AudioBitrateKbps`→128 — the "GIF clip" profile's exact values — while
+`SelectedProfileName` stayed `null`, proving the no-persistent-side-effect design worked; (2) the finalized
+recording's `library.json` entry showed the same values; (3) `ffprobe` on the actual encoded MP4 confirmed a
+real 15fps H.264 stream — the profile didn't just get recorded as metadata, it drove genuine encoder output.
+Cleaned up afterward: removed the test schedule and restored `settings.json`'s prior values.
+
+**Found, not fixed (explicitly out of scope for this feature):** `ScheduleViewModel.NewSchedule()` adds the
+new schedule to the list regardless of the edit dialog's result — it calls `_editor.Edit(item)` and then
+unconditionally does `_settings.Current.Schedules.Add(item)` right after, ignoring the returned bool. Hit this
+live when a "New schedule" entry appeared after clicking Cancel during the UI-Automation attempt above. Real,
+reproducible, pre-existing (not introduced this session) — tracked here for whoever picks it up next.
+
+**Verification:** build clean (0 warnings — one `CA1863` warning surfaced and fixed, see above). Full suite
+239/239 (up from 231 — 8 new tests: 6 in `ScheduleEditViewModelTests` covering `ProfileOptions`/
+`SelectedProfileOption`/`ApplyTo`'s new field, 2 in `ScheduleRowViewModelTests` for `SourceText`). Live
+end-to-end verification as described above, through the real scheduler firing path, not a synthetic hook.
+
+**Next:** 2 more feature ideas remain (hotkey profile-cycling, follow-window capture).
+
+---
+
 ## Session 2026-07-09 (part 2) — First new feature: "Record again" in the Library (0.9.15-beta)
 
 **Goal:** with all 4 architecture-review improvements done, user said "ok move to features." Asked which of the
