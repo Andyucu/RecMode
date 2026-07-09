@@ -8,6 +8,34 @@
 
 ---
 
+## Session 2026-07-09 (part 4) — Bugfix: ScheduleViewModel.NewSchedule() ignored Cancel (0.9.17-beta)
+
+**Goal:** user said "fix the bugs" after I flagged the `NewSchedule()` issue found while verifying Schedule→
+Profile binding. Asked which bug(s) to scope to (this one, vs. also re-attempting the long-standing
+full-system-audio-silence bug) — user picked just this one.
+
+**Fix:** `ScheduleViewModel.NewSchedule()` (`src/RecMode.App/ViewModels/ScheduleViewModel.cs`) called
+`_editor.Edit(item)` — which shows the modal `ScheduleEditWindow` and returns `true`/`false` for Save/Cancel —
+but then unconditionally proceeded to `_settings.Current.Schedules.Add(item)` regardless of that result. A
+pre-existing inline comment ("keep the default if they cancel") suggests this was deliberate at the time, but
+it contradicts normal Cancel semantics (a cancelled "New schedule" should mean "never mind," not "create one
+with defaults anyway") and the user confirmed treating it as a real bug. Fix: `if (!_editor.Edit(item)) return;`
+before adding — cancelling now discards the item entirely, matching `Edit()` (the pre-existing edit-an-existing-
+row path), which already had this check.
+
+**Testing:** added `ScheduleViewModelTests.cs` (2 tests) — the first tests for this class. `ScheduleViewModel`
+depends only on `ISettingsService` and `IScheduleEditor` (both simple interfaces, unlike `RecordViewModel`'s
+~11 GPU/ffmpeg-heavy dependencies), so a real fake `IScheduleEditor` (returns a settable bool, shows no UI) was
+cheap to write — a case where a DI-light ViewModel *is* worth testing directly, following the same judgment
+call the testing-debt session used to decide what's worth mocking versus not.
+
+**Verification:** build clean (0 warnings), full suite 241/241 (up from 239). Chose the unit test over another
+live UI-Automation attempt — this specific bug is a pure branch-on-return-value logic error, and the new test
+exercises that exact branch (both `true` and `false`) more reliably than fighting this dev box's HiDPI
+multi-monitor UI-Automation coordinate issues (see the 0.9.16-beta entry above) would have.
+
+---
+
 ## Session 2026-07-09 (part 3) — Second new feature: Schedule → Profile binding (0.9.16-beta)
 
 **Goal:** user said "profile binding" — the second of the 4 review-suggested features (Schedule→Profile

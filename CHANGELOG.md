@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.17-beta] - 2026-07-09
+
+### Fixed
+- 2026-07-09 — **`ScheduleViewModel.NewSchedule()` no longer creates a schedule when its edit dialog is cancelled.** Found live while verifying the Schedule→Profile binding feature (0.9.16-beta): the method called `_editor.Edit(item)` (which shows the modal edit dialog and returns whether the user saved or cancelled) but then unconditionally added the item to the schedule list regardless of that result — so clicking "New schedule" then "Cancel" still silently created an unconfigured schedule. Now returns early, discarding the item, when the dialog reports cancellation. Added `ScheduleViewModelTests` (2 tests, using a fake `IScheduleEditor` returning true/false) to guard both branches going forward — the first unit tests for this class.
+
 ## [0.9.16-beta] - 2026-07-09
 
 ### Added

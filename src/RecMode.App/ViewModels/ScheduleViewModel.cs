@@ -59,8 +59,11 @@ public sealed class ScheduleViewModel : ObservableObject, INavigationAware
             Enabled = true,
         };
 
-        // Open the editor immediately so the user configures the new schedule; keep the default if they cancel.
-        _editor.Edit(item);
+        // Open the editor immediately so the user configures the new schedule; cancelling discards it entirely.
+        if (!_editor.Edit(item))
+        {
+            return;
+        }
 
         _settings.Current.Schedules.Add(item);
         Schedules.Add(new ScheduleRowViewModel(item, _settings.RequestSave));
