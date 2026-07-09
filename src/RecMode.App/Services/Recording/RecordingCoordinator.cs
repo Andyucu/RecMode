@@ -65,7 +65,8 @@ public sealed class RecordingCoordinator : IDisposable
 
     // Metadata snapshot for the library index (captured at Start, written on successful finalize).
     private string _metaSource = "", _metaCodec = "", _metaContainer = "";
-    private int _metaWidth, _metaHeight, _metaFps;
+    private int _metaWidth, _metaHeight, _metaFps, _metaQuality;
+    private bool _metaSystemAudioEnabled, _metaMicEnabled;
 
     // Auto-split (§3.3 Phase 3 tail): roll to a new segment file once the current one hits the size threshold.
     private bool _autoSplitEnabled;
@@ -370,6 +371,9 @@ public sealed class RecordingCoordinator : IDisposable
         _metaWidth = dstW;
         _metaHeight = dstH;
         _metaFps = fps;
+        _metaQuality = quality;
+        _metaSystemAudioEnabled = _settings.Current.SystemAudioEnabled;
+        _metaMicEnabled = _settings.Current.MicrophoneEnabled;
 
         bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
         string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
@@ -783,7 +787,8 @@ public sealed class RecordingCoordinator : IDisposable
             double duration = _metaFps > 0 ? (double)result.FramesWritten / _metaFps : 0;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
                 Path.GetFileName(result.OutputPath), _metaSource, _metaCodec, _metaContainer,
-                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now));
+                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
+                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
         }
 
         Log.Information("Recording finalized: success={Success} frames={Frames} -> {Path}",
@@ -861,7 +866,8 @@ public sealed class RecordingCoordinator : IDisposable
             double duration = _targetFps > 0 ? (double)segResult.FramesWritten / _targetFps : 0;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
                 Path.GetFileName(prevFinalPath), _metaSource, _metaCodec, _metaContainer,
-                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now));
+                _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
+                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
         }
 
         _segmentIndex++;

@@ -80,9 +80,15 @@
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="{x:Static res:Strings.Library_RecordAgain}"
+                                                Command="{Binding DataContext.RecordAgainCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
+                                                Visibility="{Binding CanRecordAgain, Converter={StaticResource BoolToVisibility}}"
+                                                ToolTip="{Binding DisplayName, StringFormat='Record again with these settings'}"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Record again with the settings from {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Open}"
                                                 Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
+                                                CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 ToolTip="{Binding DisplayName, StringFormat='Open {0}'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Open {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"

@@ -99,6 +99,7 @@ public static class Strings
     public static string Library_Open => Get(nameof(Library_Open));
     public static string Library_Reveal => Get(nameof(Library_Reveal));
     public static string Library_Delete => Get(nameof(Library_Delete));
+    public static string Library_RecordAgain => Get(nameof(Library_RecordAgain));
     public static string Library_OpenFolder => Get(nameof(Library_OpenFolder));
     public static string Library_Refresh => Get(nameof(Library_Refresh));
     public static string Library_NoVideos => Get(nameof(Library_NoVideos));

@@ -18,7 +18,10 @@ public sealed record LibraryIndexEntry(
     int Height,
     int Fps,
     double DurationSeconds,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    int Quality = 0,
+    bool SystemAudioEnabled = false,
+    bool MicrophoneEnabled = false);
 
 /// <summary>Reads/writes the recordings metadata index (<c>library.json</c>).</summary>
 public interface ILibraryIndex

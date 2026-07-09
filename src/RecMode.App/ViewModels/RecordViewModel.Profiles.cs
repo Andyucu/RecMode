@@ -93,6 +93,37 @@ public sealed partial class RecordViewModel
         _settings.RequestSave();
     }
 
+    /// <summary>
+    /// Library's "Record again": re-applies a past recording's container/frame rate/quality/audio settings
+    /// (Library plan §7 feature idea — "one-click record this again"). Deliberately does <b>not</b> touch the
+    /// source or encoder: the exact capture target (which monitor/window, or a region rect) was never stored
+    /// in <see cref="RecMode.Core.Library.LibraryIndexEntry"/> and generally couldn't be restored reliably even
+    /// if it were (a window may no longer exist; a monitor may have reconnected with a different handle) — same
+    /// reasoning <see cref="ApplyProfile"/> already uses for saved profiles. Entries recorded before this
+    /// feature shipped have <c>Quality</c> default to 0 (skipped) and audio flags default to <c>false</c>
+    /// (applied as-is) since neither was captured historically.
+    /// </summary>
+    public void ApplyRecordAgainSettings(RecMode.Core.Library.LibraryIndexEntry entry)
+    {
+        if (Enum.TryParse(entry.Container, out MediaContainer container) && Formats.Contains(container))
+        {
+            SelectedFormat = container;
+        }
+        if (FrameRates.Contains(entry.Fps))
+        {
+            SelectedFrameRate = entry.Fps;
+        }
+        if (entry.Quality > 0)
+        {
+            Quality = entry.Quality;
+        }
+        SystemAudioEnabled = entry.SystemAudioEnabled;
+        MicEnabled = entry.MicrophoneEnabled;
+
+        // Not a saved profile — show "Custom" rather than implying one of the presets was picked.
+        SelectedProfile = _customSentinel;
+    }
+
     private void SaveProfile()
     {
         string defaultName = SelectedProfile is { IsBuiltIn: false } current ? current.Name : "My profile";

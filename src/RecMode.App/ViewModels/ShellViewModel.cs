@@ -60,6 +60,7 @@ public sealed class ShellViewModel : ObservableObject
         _snackbarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _snackbarTimer.Tick += (_, _) => { _snackbarTimer.Stop(); SnackbarVisible = false; };
         errors.ErrorReported += OnErrorReported;
+        library.RecordAgainRequested += () => Navigate("Record");
 
         _layout = settingsService.Current.Layout;
         settingsService.SettingsChanged += (_, _) => Layout = settingsService.Current.Layout; // live layout switch

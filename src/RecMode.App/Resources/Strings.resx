@@ -131,6 +131,7 @@
   <data name="Library_Open" xml:space="preserve"><value>Open</value></data>
   <data name="Library_Reveal" xml:space="preserve"><value>Show in folder</value></data>
   <data name="Library_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Library_RecordAgain" xml:space="preserve"><value>Record again</value></data>
   <data name="Library_OpenFolder" xml:space="preserve"><value>Open folder</value></data>
   <data name="Library_Refresh" xml:space="preserve"><value>Refresh</value></data>
   <data name="Library_NoVideos" xml:space="preserve"><value>No recordings yet.</value></data>

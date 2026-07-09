@@ -16,4 +16,11 @@ public sealed class LibraryItem
 
     /// <summary>Loaded thumbnail for screenshots; null for videos.</summary>
     public ImageSource? Thumbnail { get; init; }
+
+    /// <summary>Capture-source metadata, when indexed (videos only — see <see cref="RecMode.Core.Library.ILibraryIndex"/>).
+    /// Drives the "Record again" action.</summary>
+    public RecMode.Core.Library.LibraryIndexEntry? IndexEntry { get; init; }
+
+    /// <summary>"Record again" only makes sense for indexed videos — there's nothing to re-apply otherwise.</summary>
+    public bool CanRecordAgain => !IsImage && IndexEntry is not null;
 }

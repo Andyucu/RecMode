@@ -8,6 +8,67 @@
 
 ---
 
+## Session 2026-07-09 (part 2) — First new feature: "Record again" in the Library (0.9.15-beta)
+
+**Goal:** with all 4 architecture-review improvements done, user said "ok move to features." Asked which of the
+4 review-suggested features to build first (Follow-window capture / Schedule→Profile binding / One-click
+"record this again" / Hotkey profile-cycling); user picked **"record this again."**
+
+**Design decision, made explicit before coding:** the review's framing ("LibraryIndex already stores
+capture-source metadata... mostly UI wiring") undersold how coarse that metadata actually is — `LibraryIndexEntry.Source`
+is just `"Window"`/`"Region"`/`"Display"`, not the literal target (no window handle, monitor handle, or region
+rect stored). Restoring the exact target isn't just unimplemented, it's mostly unrestorable even in principle —
+a window from a past recording may not exist anymore, and a monitor can reconnect with a different handle.
+So scoped the feature to what's genuinely restorable and already has a precedent: container, frame rate,
+quality, and audio toggles — exactly the same fields `RecordViewModel.ApplyProfile` already applies for saved
+Recording Profiles, which also never touch source/encoder for the same reason. This turned into "the same
+apply-pattern as profiles, sourced from a library entry instead of a saved preset" rather than new plumbing.
+
+**Changes:**
+- `LibraryIndexEntry` (`RecMode.Core/Library/LibraryIndex.cs`) gained 3 new default-valued fields: `Quality`,
+  `SystemAudioEnabled`, `MicrophoneEnabled`. Default-valued (not required) so old `library.json` entries
+  deserialize cleanly via STJ's constructor-parameter-default support — they just read as `0`/`false` for
+  fields that didn't exist when they were written.
+- `RecordingCoordinator` snapshots `_metaQuality`/`_metaSystemAudioEnabled`/`_metaMicEnabled` in `PrepareSession`
+  (mirroring the existing `_metaSource`/`_metaCodec`/etc. pattern exactly) and passes them at both
+  `LibraryIndexEntry` construction sites (normal finalize + segment-rotation).
+- `RecordViewModel.ApplyRecordAgainSettings(LibraryIndexEntry)` (new, in `RecordViewModel.Profiles.cs` next to
+  `ApplyProfile`) — applies Container/FrameRate/Quality/SystemAudioEnabled/MicEnabled, skips `Quality` if 0
+  (an old entry that predates this feature), and sets `SelectedProfile = _customSentinel` so the UI honestly
+  shows "Custom" rather than implying a saved profile.
+- `LibraryItem` gained `IndexEntry` (nullable — screenshots and unindexed videos have none) and a computed
+  `CanRecordAgain`. `LibraryViewModel` gained `RecordAgainCommand` and a `RecordAgainRequested` event (it has
+  no navigation concept of its own — mirrors how `ShellViewModel` already subscribes to
+  `errors.ErrorReported`); took on a new `RecordViewModel` constructor dependency (already a DI singleton, no
+  cycle). `ShellViewModel` subscribes and calls `Navigate("Record")`.
+- New `Library_RecordAgain` string; a new button in `LibraryView.xaml`'s per-item action row, visible only
+  when `CanRecordAgain` is true.
+
+**Deliberately not unit-tested:** `RecordViewModel`'s constructor needs ~11 dependencies including a
+GPU/ffmpeg-backed `RecordingCoordinator` — same DI-heavy-glue judgment call the testing-debt session (part 1,
+below) already made for this class. Verified live instead.
+
+**Live verification (real GUI, not just build-clean):** ran `--selftest-record` to produce a real indexed
+clip (landed in `library.json` as container=Mp4, fps=60, quality=70, SystemAudioEnabled=true,
+MicrophoneEnabled=false — confirming the `RecordingCoordinator` changes write correctly). Then deliberately
+edited `settings.json` to different current values (Mkv/30fps/quality 40/audio off/mic on) so a successful
+apply would be unambiguous, launched the real GUI, and drove it with a PowerShell UI Automation script
+(`scratchpad/verify_record_again.ps1`) that navigates to Library via a real mouse click (RadioButton nav
+items don't respond to `SelectionItemPattern.Select()` reliably — had to fall back to `SetCursorPos`+
+`mouse_event` at the element's bounding-rectangle center) and clicks the "Record again" button found by its
+`AutomationProperties.Name`. Confirmed two ways: `settings.json` after the click showed every value flipped
+back to exactly match the recording (Mp4/60/70/true/false, `SelectedProfileName: null`), and a `PrintWindow`
+screenshot of the resulting screen visually showed the Record page with Profile "Custom," Format "MP4," Frame
+rate "60," Quality "70 · CRF 24."
+
+**Verification:** build clean (0 warnings), full suite 231/231 (unchanged — no new unit tests, by the
+DI-heavy-glue judgment call above), live GUI round-trip confirmed both via persisted settings and screenshot.
+
+**Next:** 3 more feature ideas from the review remain (Schedule→Profile binding, hotkey profile-cycling,
+follow-window capture), to be picked up in a future session per the user's "move to features" direction.
+
+---
+
 ## Session 2026-07-09 (part 1) — Architecture cleanup pass 4/4: close a first slice of testing debt (0.9.14-beta)
 
 **Goal:** finish the user's "focus on 1 through 4 improvements" instruction — item 4, the last of the 4-item

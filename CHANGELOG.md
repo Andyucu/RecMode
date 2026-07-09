@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.15-beta] - 2026-07-09
+
+### Added
+- 2026-07-09 — **"Record again" in the Library** (first of 4 new feature ideas from the 2026-07-08 architecture review — "one-click record this again"). Each indexed video in the Library now has a "Record again" action that re-applies that recording's container, frame rate, quality, and audio (system/mic) toggles to the Record screen and switches to it — the same settings-apply pattern already used by Recording Profiles (`ApplyProfile`), reused here as `RecordViewModel.ApplyRecordAgainSettings`. Deliberately does **not** try to restore the exact capture target (which monitor/window, or a region rect) — that was never stored in the library index and generally can't be restored reliably even if it were (a window may no longer exist; a monitor may have reconnected with a different handle) — the same reasoning saved profiles already use. Selecting "Record again" shows the Record screen's Profile as "Custom" rather than implying a saved preset was picked.
+  - `LibraryIndexEntry` (`RecMode.Core.Library`) extended with `Quality`, `SystemAudioEnabled`, `MicrophoneEnabled` (all default-valued, so pre-existing `library.json` entries deserialize cleanly — they just apply as "unknown/off" for those three fields on old recordings). `RecordingCoordinator` snapshots and writes them alongside the existing metadata.
+  - `LibraryViewModel` gained a `RecordAgainCommand` and a `RecordAgainRequested` event (it has no navigation concept of its own); `ShellViewModel` subscribes and switches to the Record page.
+  - Verified live end-to-end (not just build-clean): recorded a real clip via `--selftest-record` (container=MP4, 60fps, quality=70, system audio on, mic off — confirmed those exact values landed in `library.json`), then deliberately set the *current* Record-screen settings to something different (MKV/30fps/quality 40/audio off/mic on), launched the real GUI, drove it via UI Automation to Library → clicked "Record again" on that clip, and confirmed via both the persisted `settings.json` and a screenshot of the Record screen that every value flipped back to exactly match the recording's metadata (Format MP4, Frame rate 60, Quality 70 · CRF 24, Profile "Custom").
+
 ## [0.9.14-beta] - 2026-07-09
 
 ### Changed

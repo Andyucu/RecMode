@@ -25,13 +25,16 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     private readonly IAppPaths _paths;
     private readonly IErrorReporter _errors;
     private readonly RecMode.Core.Library.ILibraryIndex _index;
+    private readonly RecordViewModel _record;
     private bool _showVideos = true;
 
-    public LibraryViewModel(IAppPaths paths, IErrorReporter errors, RecMode.Core.Library.ILibraryIndex index)
+    public LibraryViewModel(IAppPaths paths, IErrorReporter errors, RecMode.Core.Library.ILibraryIndex index,
+        RecordViewModel record)
     {
         _paths = paths;
         _errors = errors;
         _index = index;
+        _record = record;
 
         ShowVideosCommand = new RelayCommand(() => SetTab(videos: true));
         ShowScreenshotsCommand = new RelayCommand(() => SetTab(videos: false));
@@ -40,7 +43,12 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         OpenCommand = new RelayCommand<LibraryItem>(Open);
         RevealCommand = new RelayCommand<LibraryItem>(Reveal);
         DeleteCommand = new RelayCommand<LibraryItem>(Delete);
+        RecordAgainCommand = new RelayCommand<LibraryItem>(RecordAgain);
     }
+
+    /// <summary>Raised after "Record again" applies its settings to <see cref="RecordViewModel"/>, so the shell
+    /// can switch to the Record page — <see cref="LibraryViewModel"/> has no navigation concept of its own.</summary>
+    public event Action? RecordAgainRequested;
 
     public ObservableCollection<LibraryItem> Items { get; } = [];
 
@@ -51,6 +59,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     public IRelayCommand<LibraryItem> OpenCommand { get; }
     public IRelayCommand<LibraryItem> RevealCommand { get; }
     public IRelayCommand<LibraryItem> DeleteCommand { get; }
+    public IRelayCommand<LibraryItem> RecordAgainCommand { get; }
 
     public bool ShowVideos
     {
@@ -100,13 +109,15 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
             foreach (FileInfo f in files)
             {
+                RecMode.Core.Library.LibraryIndexEntry? entry = meta.GetValueOrDefault(f.Name);
                 Items.Add(new LibraryItem
                 {
                     FilePath = f.FullName,
                     DisplayName = Path.GetFileNameWithoutExtension(f.Name),
-                    Meta = BuildMeta(f, meta.GetValueOrDefault(f.Name)),
+                    Meta = BuildMeta(f, entry),
                     IsImage = !_showVideos,
                     Thumbnail = _showVideos ? null : TryLoadThumbnail(f.FullName),
+                    IndexEntry = entry,
                 });
             }
         }
@@ -154,6 +165,17 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         {
             _errors.Warn("library.delete-failed", "Couldn't delete the file.", null, ex);
         }
+    }
+
+    private void RecordAgain(LibraryItem? item)
+    {
+        if (item?.IndexEntry is not { } entry)
+        {
+            return;
+        }
+
+        _record.ApplyRecordAgainSettings(entry);
+        RecordAgainRequested?.Invoke();
     }
 
     private void OpenCurrentFolder()
