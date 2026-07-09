@@ -7,6 +7,7 @@
 publish/
 artifacts/
 /dist/
+/Releases/
 *.user
 *.suo
 *.userosscache
@@ -15,8 +16,16 @@ artifacts/
 ## Rider / VS / VS Code
 .idea/
 .vs/
+.vscode/
 *.vsidx
-# keep .vscode workspace files that are checked in intentionally
+*.code-workspace
+
+## Local project docs / working memory (keep off GitHub)
+/CHANGELOG.md
+/CLAUDE.md
+/PROJECT_MEMORY.md
+/DOCS/
+/RecMode notes.txt
 
 ## Test / coverage
 [Tt]est[Rr]esult*/
