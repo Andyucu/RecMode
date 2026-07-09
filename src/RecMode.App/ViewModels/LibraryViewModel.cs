@@ -196,8 +196,9 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         }
     }
 
-    /// <summary>"H.264 · 1920×1080 · 0:12 · 58 MB · Today 14:12" when indexed; "size · date" otherwise.</summary>
-    private static string BuildMeta(FileInfo f, RecMode.Core.Library.LibraryIndexEntry? entry)
+    /// <summary>"H.264 · 1920×1080 · 0:12 · 58 MB · Today 14:12" when indexed; "size · date" otherwise. Internal
+    /// (rather than private), along with its helpers below, so they're directly unit-testable.</summary>
+    internal static string BuildMeta(FileInfo f, RecMode.Core.Library.LibraryIndexEntry? entry)
     {
         string tail = $"{FormatSize(f.Length)} · {FormatDate(f.LastWriteTime)}";
         if (entry is null)
@@ -209,7 +210,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         return $"{codec} · {entry.Width}×{entry.Height} · {FormatDuration(entry.DurationSeconds)} · {tail}";
     }
 
-    private static string FriendlyCodec(string codec) => codec switch
+    internal static string FriendlyCodec(string codec) => codec switch
     {
         "H264" => "H.264",
         "Hevc" => "HEVC",
@@ -217,13 +218,13 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         _ => codec,
     };
 
-    private static string FormatDuration(double seconds)
+    internal static string FormatDuration(double seconds)
     {
         var t = TimeSpan.FromSeconds(seconds);
         return t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
     }
 
-    private static string FormatSize(long bytes) => bytes switch
+    internal static string FormatSize(long bytes) => bytes switch
     {
         >= 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024 * 1024):F2} GB",
         >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):F0} MB",
@@ -231,7 +232,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         _ => $"{bytes} B",
     };
 
-    private static string FormatDate(DateTime when)
+    internal static string FormatDate(DateTime when)
     {
         DateTime today = DateTime.Today;
         if (when.Date == today)

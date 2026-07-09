@@ -99,8 +99,9 @@ public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths
         }
     }
 
-    /// <summary>Maps <c>clip.recording.mkv</c> → <c>clip.mp4</c>, avoiding clobbering an existing file.</summary>
-    private static string UniqueMp4Path(string orphanPath)
+    /// <summary>Maps <c>clip.recording.mkv</c> → <c>clip.mp4</c>, avoiding clobbering an existing file. Internal
+    /// (rather than private) so it's directly unit-testable against a real scratch directory.</summary>
+    internal static string UniqueMp4Path(string orphanPath)
     {
         string dir = Path.GetDirectoryName(orphanPath) ?? "";
         string name = Path.GetFileName(orphanPath);

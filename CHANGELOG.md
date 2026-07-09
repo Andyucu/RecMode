@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 ## [Unreleased]
 
+## [0.9.14-beta] - 2026-07-09
+
+### Changed
+- 2026-07-09 — **Architecture cleanup pass, item 4 of 4: closed a first, meaningful slice of the structural testing debt.** Previously only `RecMode.Core`, `RecMode.Encoding` (args-building), `RecMode.Audio` (math), and the just-added `RecMode.Recording.Tests` had real unit tests — `RecMode.Capture`, most of `RecMode.App/Services/`, and every `ViewModel` were verified exclusively via manual `--selftest-*` CLI hooks and eyeballed screenshots. Rather than attempt to unit-test GPU/WGC/WASAPI/WinRT-heavy code (which would need mocking enormous surface area for little value and is correctly left as manual-only), surveyed the codebase for genuinely pure logic hiding inside otherwise hardware-bound classes and made it testable:
+  - `CaptureSizing.Resolve` (hardware-H.264 4096px clamp + even-dimension rounding) — already `internal`/pure, just needed a test project.
+  - `CaptureTarget.FromAllDisplays` (`RecMode.Capture`, virtual-desktop bounding-box math) — already `public`/pure.
+  - `CommandLineOptions.Parse` (`RecMode.App.Services`) — already `public`/pure.
+  - `OrphanRecoveryService.UniqueMp4Path` (collision-avoiding `clip.recording.mkv` → `clip.mp4`/`clip (recovered N).mp4` rename) — bumped `private` → `internal` (no behavior change) so it's testable against a real scratch directory.
+  - `LibraryViewModel`'s `BuildMeta`/`FriendlyCodec`/`FormatDuration`/`FormatSize`/`FormatDate` and `RecordViewModel`'s `FormatBytes`/`FormatElapsed` — same `private` → `internal` visibility bump, no behavior change.
+  - `ScheduleEditViewModel.IsValid`/`ApplyTo`, `ScheduleRowViewModel.WhenText`/`StateLabel`/`Enabled`, `SaveProfileViewModel.IsValid` — already fully public and DI-free, just needed tests written.
+  
+  Two new test projects: `RecMode.Capture.Tests` (5 tests) and `RecMode.App.Tests` (62 tests — `CaptureSizingTests`, `CommandLineOptionsTests`, `OrphanRecoveryServiceTests`, `LibraryViewModelFormattingTests`, `RecordViewModelFormattingTests`, `ScheduleEditViewModelTests`, `ScheduleRowViewModelTests`, `SaveProfileViewModelTests`). `RecMode.App`'s `[assembly: InternalsVisibleTo]` (added in the previous item) extended to cover `RecMode.App.Tests` too. Deliberately did **not** unify `LibraryViewModel`'s and `RecordViewModel`'s near-duplicate formatting helpers — they use intentionally different presentation (`FormatDuration`'s "0:12" vs `FormatElapsed`'s zero-padded "00:12" for a stable-width timer) and merging them would be a behavior-changing refactor outside this pass's scope. Verified: build clean (0 warnings), full suite now 231/231 (up from 164), `--selftest-record` still produces a valid recording after the visibility-only production changes.
+
+### Known
+- **Testing debt item 4 is a down payment, not closed.** The bulk of the original gap — WGC/D3D11 capture engines, WASAPI audio capture, WinRT webcam, most of `RecordingCoordinator`'s stateful orchestration, and the majority of `RecordViewModel`/`ShellViewModel`/`SettingsViewModel` (DI-heavy glue code) — remains verified only by the `--selftest-*` hooks and manual screenshots, by design (mocking that surface for unit tests would cost more than it returns). This closes out the 4-item architecture review from 2026-07-08 (`RecMode.Interop` elimination, `Services/` reorganization, `RecordingCoordinator` partial decomposition, this item) before moving to new feature work.
+
 ## [0.9.13-beta] - 2026-07-08
 
 ### Changed

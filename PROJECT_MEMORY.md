@@ -8,6 +8,65 @@
 
 ---
 
+## Session 2026-07-09 (part 1) — Architecture cleanup pass 4/4: close a first slice of testing debt (0.9.14-beta)
+
+**Goal:** finish the user's "focus on 1 through 4 improvements" instruction — item 4, the last of the 4-item
+architecture review from 2026-07-08 ("testing debt is structural — 152 unit tests cover only Core/encoding-
+args/audio-math; `Capture`, most of `Services`, and every `ViewModel` are verified exclusively via manual
+`--selftest-*` + eyeballed screenshots").
+
+**Scoping decision (same lighter-touch pattern as item 3):** did not attempt to unit-test the genuinely
+hardware-bound code (D3D11/WGC capture, WASAPI audio, WinRT webcam, `RecordingCoordinator`'s stateful
+orchestration) — mocking that surface would cost more than it returns and manual `--selftest-*` verification
+remains the right tool there. Instead, dispatched an Explore subagent to survey `RecMode.Capture`,
+`RecMode.App/Services/**`, and `RecMode.App/ViewModels/**` specifically for **pure logic hiding inside
+otherwise hardware-bound classes** — math, parsing, formatting, validation with no GPU/audio/WinRT dependency.
+Found and tested:
+- `CaptureSizing.Resolve` (`Services/Capture/`) — hardware-H.264 4096px clamp + even-dimension rounding.
+  Already `internal`/pure; just needed a test project referencing `RecMode.App`.
+- `CaptureTarget.FromAllDisplays` (`RecMode.Capture`) — virtual-desktop bounding-box math (min/max over
+  monitor rects, including the real negative-origin case for a monitor placed left-of/above the primary).
+  Already `public`/pure.
+- `CommandLineOptions.Parse` (`Services/Lifecycle/`) — CLI flag parsing. Already `public`/pure.
+- `OrphanRecoveryService.UniqueMp4Path` (`Services/Recording/`) — collision-avoiding rename logic
+  (`clip.recording.mkv` → `clip.mp4`, or `clip (recovered N).mp4` if that exists). Bumped `private` →
+  `internal` (zero behavior change) so it's testable against a real scratch directory — no mocking needed,
+  `File.Exists`/`File.WriteAllText` against a real temp dir is simpler and more honest than faking the
+  filesystem.
+- `LibraryViewModel`'s `BuildMeta`/`FriendlyCodec`/`FormatDuration`/`FormatSize`/`FormatDate` and
+  `RecordViewModel`'s `FormatBytes`/`FormatElapsed` — same `private` → `internal` visibility bump.
+- `ScheduleEditViewModel.IsValid`/`ApplyTo`, `ScheduleRowViewModel.WhenText`/`StateLabel`/`Enabled`,
+  `SaveProfileViewModel.IsValid` — already fully public, DI-free (construct directly from a `ScheduleItem`/
+  string, no `IHost` needed) — just needed tests written, zero production changes.
+
+**Deliberately did not unify** `LibraryViewModel`'s and `RecordViewModel`'s near-duplicate formatting
+helpers even though they're clearly copy-pasted from each other — `FormatDuration`'s `"0:12"` (Library, meant
+to read naturally in a list) and `FormatElapsed`'s zero-padded `"00:12"` (Record, meant to hold a stable width
+in a live timer) are intentionally different presentations for different UI contexts, not an accidental
+divergence. Merging them would be a behavior-changing refactor, outside a testing-debt pass's scope.
+
+**New test projects:** `RecMode.Capture.Tests` (5 tests: `CaptureTargetTests`) and `RecMode.App.Tests` (62
+tests across 8 files: `CaptureSizingTests`, `CommandLineOptionsTests`, `OrphanRecoveryServiceTests`,
+`LibraryViewModelFormattingTests`, `RecordViewModelFormattingTests`, `ScheduleEditViewModelTests`,
+`ScheduleRowViewModelTests`, `SaveProfileViewModelTests`). `RecMode.App/Properties/AssemblyInfo.cs`'s
+`InternalsVisibleTo` (added last session for `RecMode.Recording.Tests`) extended with a second entry for
+`RecMode.App.Tests`. Both new projects added to `RecMode.slnx`.
+
+**Verification:** build clean (0 warnings — one `CA1816` warning surfaced from `OrphanRecoveryServiceTests`'s
+`IDisposable` implementation missing `GC.SuppressFinalize`, fixed immediately). Full suite: 231/231 pass (164
+existing + 67 new — 5 Capture + 62 App). `--selftest-record` re-run after the visibility-only production
+changes (`LibraryViewModel`, `RecordViewModel`, `OrphanRecoveryService`) to confirm nothing broke: still
+produces a valid 360-frame MP4.
+
+**Item 4 status: a first, meaningful slice done, not "closed" — the bulk of the original gap (WGC/D3D11
+capture engines, WASAPI audio capture, WinRT webcam, `RecordingCoordinator`'s stateful orchestration, and the
+DI-heavy glue in `RecordViewModel`/`ShellViewModel`/`SettingsViewModel`) remains manual-`--selftest-*`-only by
+design.** This closes out all 4 items from the 2026-07-08 architecture review. Next: the review's 4 new
+feature suggestions, per the user's explicit sequencing ("focus on 1 through 4 improvements then we can focus
+on new suggested features").
+
+---
+
 ## Session 2026-07-08 (part 7) — Architecture cleanup pass 3/4: decompose RecordingCoordinator further (0.9.13-beta)
 
 **Goal:** continue the user's "focus on 1 through 4 improvements" instruction — item 3, decompose the

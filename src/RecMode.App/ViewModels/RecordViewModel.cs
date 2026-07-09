@@ -503,14 +503,15 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             ?? Encoders.FirstOrDefault();
     }
 
-    private static string FormatBytes(long bytes) => bytes switch
+    // Internal (rather than private) so these are directly unit-testable.
+    internal static string FormatBytes(long bytes) => bytes switch
     {
         >= 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024 * 1024):F2} GB",
         >= 1024 * 1024 => $"{bytes / (1024.0 * 1024):F0} MB",
         _ => $"{bytes / 1024} KB",
     };
 
-    private static string FormatElapsed(TimeSpan t) =>
+    internal static string FormatElapsed(TimeSpan t) =>
         t.TotalHours >= 1 ? t.ToString(@"hh\:mm\:ss") : t.ToString(@"mm\:ss");
 
     private static void Dispatch(Action action)
