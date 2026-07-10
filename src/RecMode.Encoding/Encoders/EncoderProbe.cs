@@ -6,8 +6,8 @@ namespace RecMode.Encoding.Encoders;
 
 /// <summary>
 /// Default <see cref="IEncoderProbe"/>: parses <c>ffmpeg -encoders</c> once and intersects the reported
-/// encoder ids with <see cref="EncoderCatalog.All"/>. Falls back to software-only if ffmpeg can't be run,
-/// reporting a warning rather than throwing (so the UI still works with x264).
+/// encoder ids with <see cref="EncoderCatalog.All"/>. Every candidate is trial-opened, including software
+/// encoders, so VM/no-GPU environments only offer CPU encoders that actually work with the bundled ffmpeg.
 /// </summary>
 public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) : IEncoderProbe
 {
@@ -28,8 +28,8 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) 
         if (!ff.IsAvailable || ff.FfmpegPath is null)
         {
             errors.Warn("encoder.probe-no-ffmpeg", "Couldn't detect encoders — ffmpeg is unavailable.",
-                "Only software encoding will be offered once ffmpeg is present.");
-            return SoftwareOnly();
+                "Recording is disabled until ffmpeg is present.");
+            return [];
         }
 
         try
@@ -37,29 +37,54 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) 
             string output = RunEncodersList(ff.FfmpegPath);
 
             // `-encoders` lists every *compiled* encoder, including hardware ones absent on this machine
-            // (e.g. h264_nvenc reports present but fails with "Cannot load nvcuda.dll" on an AMD GPU). So
-            // gate hardware encoders behind a fast trial-encode (plan §3.2). Software is always available.
-            var available = new List<EncoderInfo>();
-            foreach (EncoderInfo e in EncoderCatalog.All)
+            // (e.g. h264_nvenc reports present but fails with "Cannot load nvcuda.dll" on an AMD GPU). Some
+            // unusual ffmpeg builds can also list a software encoder whose linked runtime is unusable. Gate
+            // every encoder behind a fast trial encode, with libx264 treated as the baseline CPU path.
+            List<EncoderInfo> available = SelectAvailableEncoders(output, id => TrialEncode(ff.FfmpegPath, id));
+            if (available.Count == 0)
             {
-                if (!ContainsEncoderId(output, e.FfmpegId))
-                {
-                    continue;
-                }
-
-                if (!e.IsHardware || TrialEncode(ff.FfmpegPath, e.FfmpegId))
-                {
-                    available.Add(e);
-                }
+                errors.Warn("encoder.probe-none-working", "No working video encoders were detected.",
+                    "Install a full ffmpeg build with libx264 support or configure a valid ffmpeg override.");
             }
 
-            return available.Count == 0 ? SoftwareOnly() : available;
+            return available;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
-            errors.Warn("encoder.probe-failed", "Encoder detection failed; defaulting to software.", null, ex);
-            return SoftwareOnly();
+            errors.Warn("encoder.probe-failed", "Encoder detection failed; recording is disabled until encoders can be probed.", null, ex);
+            return [];
         }
+    }
+
+    /// <summary>
+    /// Selects encoders from ffmpeg's <c>-encoders</c> output using a supplied trial-open function. Kept public
+    /// so tests can lock the no-GPU/software-fallback behavior without launching a real ffmpeg process.
+    /// </summary>
+    public static List<EncoderInfo> SelectAvailableEncoders(string encodersOutput, Func<string, bool> trialEncode)
+    {
+        ArgumentNullException.ThrowIfNull(encodersOutput);
+        ArgumentNullException.ThrowIfNull(trialEncode);
+
+        var available = new List<EncoderInfo>();
+        foreach (EncoderInfo e in EncoderCatalog.All)
+        {
+            if (ContainsEncoderId(encodersOutput, e.FfmpegId) && trialEncode(e.FfmpegId))
+            {
+                available.Add(e);
+            }
+        }
+
+        // A full bundled ffmpeg should expose libx264. If an odd ffmpeg build hides it from -encoders but it
+        // still opens successfully, keep the app usable in CPU-only/VM environments.
+        EncoderInfo? x264 = EncoderCatalog.All.FirstOrDefault(e => e.FfmpegId == "libx264");
+        if (x264 is not null &&
+            !available.Exists(e => e.FfmpegId == x264.FfmpegId) &&
+            trialEncode(x264.FfmpegId))
+        {
+            available.Add(x264);
+        }
+
+        return available;
     }
 
     private static string RunEncodersList(string ffmpegPath)
@@ -131,6 +156,4 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors) 
         return false;
     }
 
-    private static List<EncoderInfo> SoftwareOnly() =>
-        EncoderCatalog.All.Where(e => e.Backend is Core.Settings.EncoderBackend.Software).ToList();
 }

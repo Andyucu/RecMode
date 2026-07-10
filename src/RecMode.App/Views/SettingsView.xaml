@@ -466,6 +466,26 @@
                     </Grid>
                 </StackPanel>
             </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE9CE;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_License}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_LicenseDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="View license" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Open the RecMode LICENSE file"
+                                Click="OpenLicense_Click" Margin="0,0,8,0" />
+                        <Button Content="Third-party notices" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Open the folder with third-party license notices"
+                                Click="OpenThirdPartyNotices_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

@@ -147,6 +147,7 @@ public sealed class RecordingCoordinator : IDisposable
             (int dstW, int dstH) = CaptureSizing.Resolve(pf.SourceWidth, pf.SourceHeight, encoder);
 
             _capture = _captureFactory();
+            _capture.Faulted += OnCaptureFaulted;
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
 
             // Webcam picture-in-picture overlay (Phase 7): best-effort — a missing/busy camera warns but
@@ -330,6 +331,16 @@ public sealed class RecordingCoordinator : IDisposable
         }
     }
 
+    /// <summary>Raised from the capture engine's background (DDA) thread when it hits an unrecoverable
+    /// error but has already shut itself down safely. The recording keeps running in a degraded state
+    /// (frames simply stop updating) rather than crashing the process — surface it so the user knows.</summary>
+    private void OnCaptureFaulted(object? sender, Exception ex)
+    {
+        _errors.Warn("record.capture-faulted", "The screen capture stopped unexpectedly.",
+            "Recording may continue without new frames. Stop and restart the recording if this persists.");
+        Log.Warning(ex, "Capture engine faulted");
+    }
+
     /// <summary>Builds the <see cref="FfmpegJob"/> for the first segment and snapshots everything the rest
     /// of the recording (safe-remux, auto-split, library metadata) needs — as instance-field side effects,
     /// same as the inline code this was extracted from.</summary>
@@ -426,9 +437,25 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         _mixer = _mixerFactory();
-        _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
+        AudioMixerStartResult startResult = _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
         _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
         _mixer.MicGain = _settings.Current.MicVolume / 100f;
+
+        // A requested audio source that failed to start is not fatal — recording continues without it —
+        // but silently dropping it would leave the user wondering why the file has no audio.
+        if (startResult.SystemDegraded)
+        {
+            _errors.Warn("record.audio-system-unavailable",
+                "System audio couldn't be captured for this recording.",
+                "The recording will continue without system audio.");
+        }
+
+        if (startResult.MicDegraded)
+        {
+            _errors.Warn("record.audio-mic-unavailable",
+                "The microphone couldn't be captured for this recording.",
+                "The recording will continue without microphone audio.");
+        }
     }
 
     /// <summary>Stops the current recording and finalizes the file.</summary>
@@ -755,6 +782,10 @@ public sealed class RecordingCoordinator : IDisposable
         _capture?.Stop();
         _webcamCapture?.Stop();
         _session?.Dispose();
+        if (_capture is not null)
+        {
+            _capture.Faulted -= OnCaptureFaulted;
+        }
         _capture?.Dispose();
         _mixer?.Dispose();
         _audioStop?.Dispose();
@@ -1044,6 +1075,7 @@ public sealed class RecordingCoordinator : IDisposable
         try { _audioStop?.Cancel(); } catch (Exception) { }
         try { _audioThread?.Join(1000); } catch (Exception) { }
         try { _session?.Dispose(); } catch (Exception) { }
+        try { if (_capture is not null) { _capture.Faulted -= OnCaptureFaulted; } } catch (Exception) { }
         try { _capture?.Dispose(); } catch (Exception) { }
         try { _webcamCapture?.Stop(); } catch (Exception) { }
         try { _mixer?.Dispose(); } catch (Exception) { }

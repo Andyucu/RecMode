@@ -68,6 +68,10 @@ if ((Test-Path $ffmpegSrc) -and (Get-ChildItem $ffmpegSrc -Filter *.exe -ErrorAc
     Write-Warning "No ffmpeg binaries in tools/ffmpeg — the installer ships without ffmpeg (slim variant). See ffmpeg/README.md."
 }
 
+$licenseSrc = Join-Path $root 'LICENSE'
+if (Test-Path $licenseSrc) {
+    Copy-Item $licenseSrc $stage -Force
+}
 $licSrc = Join-Path $root 'licenses'
 if (Test-Path $licSrc) {
     Copy-Item $licSrc $stage -Recurse -Force

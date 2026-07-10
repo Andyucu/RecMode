@@ -211,6 +211,25 @@ public sealed class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Opens the RecMode LICENSE file (shipped next to the executable) in the default viewer.</summary>
+    public void OpenLicense()
+    {
+        string path = Path.Combine(_paths.AppDirectory, "LICENSE");
+        if (File.Exists(path))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+    }
+
+    /// <summary>Opens the folder with third-party license notices (<see cref="IAppPaths.LicensesDirectory"/>).</summary>
+    public void OpenThirdPartyNotices()
+    {
+        if (Directory.Exists(_paths.LicensesDirectory))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_paths.LicensesDirectory) { UseShellExecute = true });
+        }
+    }
+
     public ShellLayout SelectedLayout
     {
         get => _layout;

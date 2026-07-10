@@ -37,12 +37,12 @@ public class EncoderFallbackChainTests
     }
 
     [Fact]
-    public void Build_FallsBackThroughSameCodecThenAnyHardwareH264ThenSoftware()
+    public void Build_FallsBackThroughSameCodecThenSoftwareBaselineThenAnyHardwareH264()
     {
         var chain = new EncoderFallbackChain(new FakeEncoderProbe(HevcAmf, H264Nvenc, HevcSoftware, H264Software))
             .Build(HevcAmf);
 
-        Assert.Equal([HevcAmf, HevcSoftware, H264Nvenc, H264Software], chain);
+        Assert.Equal([HevcAmf, HevcSoftware, H264Software, H264Nvenc], chain);
     }
 
     [Fact]

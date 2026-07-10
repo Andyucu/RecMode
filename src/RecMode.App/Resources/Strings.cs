@@ -92,6 +92,8 @@ public static class Strings
     public static string Settings_Startup => Get(nameof(Settings_Startup));
     public static string Settings_StartupDesc => Get(nameof(Settings_StartupDesc));
     public static string Settings_Updates => Get(nameof(Settings_Updates));
+    public static string Settings_License => Get(nameof(Settings_License));
+    public static string Settings_LicenseDesc => Get(nameof(Settings_LicenseDesc));
 
     public static string Library_Empty => Get(nameof(Library_Empty));
     public static string Library_Videos => Get(nameof(Library_Videos));

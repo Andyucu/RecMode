@@ -19,6 +19,13 @@ public interface ICaptureEngine : IDisposable
     /// <summary>Unique frames delivered by WGC so far (on-change; the pacer duplicates to CFR).</summary>
     long CapturedFrameCount { get; }
 
+    /// <summary>
+    /// Raised (never on the calling thread) if a background capture thread (e.g. Desktop Duplication's pump)
+    /// fails unexpectedly and had to stop itself. Capture keeps running in a degraded state (frames simply
+    /// stop updating) rather than the process crashing; subscribers should surface this to the user.
+    /// </summary>
+    event EventHandler<Exception>? Faulted;
+
     /// <summary>Starts capturing <paramref name="target"/>, converting to NV12 scaled to <paramref name="dstW"/>×<paramref name="dstH"/>.</summary>
     void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor);
 

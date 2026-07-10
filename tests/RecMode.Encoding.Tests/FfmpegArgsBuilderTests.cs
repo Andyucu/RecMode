@@ -193,6 +193,47 @@ public class FfmpegArgsBuilderTests
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
+    [Theory]
+    [InlineData(0, 1440)]
+    [InlineData(-2, 1440)]
+    [InlineData(2561, 1440)]
+    public void Build_RejectsInvalidWidth(int width, int height)
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { Width = width, Height = height };
+        Assert.Throws<ArgumentException>(() => FfmpegArgsBuilder.Build(job));
+    }
+
+    [Fact]
+    public void Build_RejectsInvalidFrameRate()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { FrameRate = 0 };
+        Assert.Throws<ArgumentException>(() => FfmpegArgsBuilder.Build(job));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(@"bad\name")]
+    [InlineData("bad/name")]
+    public void Build_RejectsInvalidPipeName(string pipeName)
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { PipeName = pipeName };
+        Assert.Throws<ArgumentException>(() => FfmpegArgsBuilder.Build(job));
+    }
+
+    [Fact]
+    public void Build_RejectsEmptyOutputPath()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { OutputPath = "" };
+        Assert.Throws<ArgumentException>(() => FfmpegArgsBuilder.Build(job));
+    }
+
+    [Fact]
+    public void Build_RejectsNegativeThreadCap()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { CpuThreadCap = -1 };
+        Assert.Throws<ArgumentException>(() => FfmpegArgsBuilder.Build(job));
+    }
+
     [Fact]
     public void Snapshot_Libx264_Mp4_WithThreadCap()
     {

@@ -21,6 +21,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private DesktopDuplicationCaptureSource? _ddaSource;
     private Thread? _ddaThread;
     private volatile bool _ddaStopping;
+    private readonly ManualResetEventSlim _ddaThreadExited = new(initialState: false);
     private byte[] _latest = [];
     private byte[] _scratch = [];
     private bool _hasLatest;
@@ -33,6 +34,8 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     public int OutputHeight { get; private set; }
     public int Nv12ByteSize { get; private set; }
     public long CapturedFrameCount => Interlocked.Read(ref _capturedFrames);
+
+    public event EventHandler<Exception>? Faulted;
 
     public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor)
     {
@@ -113,24 +116,63 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         _capturedFrames = 0;
 
         _ddaStopping = false;
+        _ddaThreadExited.Reset();
         _ddaThread = new Thread(DdaPumpLoop) { IsBackground = true, Name = "recmode-dda" };
         _ddaThread.Start();
         IsRunning = true;
     }
 
+    /// <summary>
+    /// Runs on its own thread for the lifetime of the "All Displays" source. Owns <see cref="_ddaSource"/>
+    /// and <see cref="_converter"/> exclusively while running: no other thread touches them, and (critically)
+    /// only this thread disposes them, in its own <c>finally</c>, once it has actually stopped using them.
+    /// <see cref="Stop"/> only signals <see cref="_ddaStopping"/> and waits — it must never dispose these out
+    /// from under a thread that might still be inside <c>AcquireNextFrame</c>/<c>Convert</c>. Any exception
+    /// (a GPU hiccup, a dead output, etc.) is caught here so it degrades capture instead of taking the whole
+    /// process down, since unhandled exceptions on a non-UI thread terminate the app by default.
+    /// </summary>
     private void DdaPumpLoop()
     {
-        while (!_ddaStopping)
+        DesktopDuplicationCaptureSource? ddaSource = _ddaSource;
+        Nv12Converter? converter = _converter;
+        ID3D11DeviceContext? context = _context;
+        ID3D11Device? device = _device;
+        try
         {
-            ID3D11Texture2D canvas = _ddaSource!.AcquireNextFrame(timeoutMs: 16);
-            _converter!.Convert(canvas, _scratch);
-            lock (_sync)
+            while (!_ddaStopping)
             {
-                (_scratch, _latest) = (_latest, _scratch);
-                _hasLatest = true;
-            }
+                ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16);
+                converter!.Convert(canvas, _scratch);
+                lock (_sync)
+                {
+                    (_scratch, _latest) = (_latest, _scratch);
+                    _hasLatest = true;
+                }
 
-            Interlocked.Increment(ref _capturedFrames);
+                Interlocked.Increment(ref _capturedFrames);
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                Faulted?.Invoke(this, ex);
+            }
+            catch (Exception)
+            {
+                // A misbehaving subscriber must not prevent this thread from shutting down cleanly.
+            }
+        }
+        finally
+        {
+            // Device/context for the DDA path are created by _ddaSource and used only by this thread
+            // (via AcquireNextFrame/Convert) — dispose them here too, alongside the source and converter,
+            // rather than in Stop(), for the same "only the last user disposes" reasoning.
+            ddaSource?.Dispose();
+            converter?.Dispose();
+            context?.Dispose();
+            device?.Dispose();
+            _ddaThreadExited.Set();
         }
     }
 
@@ -169,15 +211,33 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             _framePool.FrameArrived -= OnFrameArrived;
         }
 
-        _ddaStopping = true;
-        _ddaThread?.Join(1000);
+        bool wasDda = _ddaThread is not null;
+        if (wasDda)
+        {
+            // Signal and wait for confirmation the thread actually stopped — never dispose _ddaSource,
+            // _converter, _context, or _device out from under it. If it doesn't exit in time (a stuck
+            // AcquireNextFrame/GPU call), those resources are deliberately left alive: the thread's own
+            // finally block (DdaPumpLoop) disposes them itself whenever it does eventually exit, and this
+            // instance just drops its references below instead of double-disposing.
+            _ddaStopping = true;
+            bool exited = _ddaThreadExited.Wait(TimeSpan.FromSeconds(5));
+            if (!exited)
+            {
+                Faulted?.Invoke(this, new TimeoutException(
+                    "The desktop-duplication capture thread did not stop within 5 seconds; its resources will be released once it does."));
+            }
+        }
 
         _session?.Dispose();
         _framePool?.Dispose();
-        _ddaSource?.Dispose();
-        _converter?.Dispose();
-        _context?.Dispose();
-        _device?.Dispose();
+
+        if (!wasDda)
+        {
+            // The WGC path has no background thread — this call owns and disposes these directly.
+            _converter?.Dispose();
+            _context?.Dispose();
+            _device?.Dispose();
+        }
 
         _session = null;
         _framePool = null;

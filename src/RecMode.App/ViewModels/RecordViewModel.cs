@@ -555,6 +555,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             e.Codec == _settings.Current.Codec && e.Backend == _settings.Current.Backend);
         return saved
             ?? Encoders.FirstOrDefault(e => e is { Codec: VideoCodec.H264, IsHardware: true })
+            ?? Encoders.FirstOrDefault(e => e.FfmpegId == "libx264")
             ?? Encoders.FirstOrDefault(e => e.Codec == VideoCodec.H264)
             ?? Encoders.FirstOrDefault();
     }

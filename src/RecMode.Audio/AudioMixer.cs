@@ -33,7 +33,7 @@ public sealed class AudioMixer : IAudioMixer
     public AudioLevel SystemLevel => _system?.Level ?? AudioLevel.Silent;
     public AudioLevel MicLevel => _mic?.Level ?? AudioLevel.Silent;
 
-    public void Start(bool captureSystem, bool captureMic, int? targetProcessId = null)
+    public AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null)
     {
         if (IsRunning)
         {
@@ -56,6 +56,11 @@ public sealed class AudioMixer : IAudioMixer
                 // silently substituting full-system loopback, which the user didn't ask for.
                 _system = null;
             }
+            catch (Exception)
+            {
+                // Loopback device unavailable/exclusive-mode conflict — continue without system audio.
+                _system = null;
+            }
         }
 
         if (captureMic)
@@ -74,6 +79,14 @@ public sealed class AudioMixer : IAudioMixer
         }
 
         IsRunning = _system is not null || _mic is not null;
+
+        return new AudioMixerStartResult
+        {
+            SystemRequested = captureSystem,
+            SystemStarted = _system is not null,
+            MicRequested = captureMic,
+            MicStarted = _mic is not null,
+        };
     }
 
     public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> activeElapsed, CancellationToken token)

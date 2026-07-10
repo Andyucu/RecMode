@@ -28,8 +28,10 @@ public interface IAudioMixer : IDisposable
     /// Starts capture/metering for the requested sources. When <paramref name="targetProcessId"/> is set and
     /// <paramref name="captureSystem"/> is true, the system source captures only that process's (and by
     /// default its child processes') audio instead of the whole system — per-app audio (plan §7).
+    /// Returns which of the requested sources actually started, so callers can surface a recoverable
+    /// warning when a source silently degraded instead of just continuing without audio.
     /// </summary>
-    void Start(bool captureSystem, bool captureMic, int? targetProcessId = null);
+    AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null);
 
     void Stop();
 
@@ -39,4 +41,21 @@ public interface IAudioMixer : IDisposable
     /// pads silence on underflow. Returns bytes written.
     /// </summary>
     long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> activeElapsed, CancellationToken token);
+}
+
+/// <summary>
+/// Outcome of <see cref="IAudioMixer.Start"/>: which sources were requested vs. actually started.
+/// Recording always continues even when a source fails to start (§ audio degrades gracefully), but the
+/// caller can use this to tell the user which source silently dropped out instead of staying quiet about it.
+/// </summary>
+public sealed record AudioMixerStartResult
+{
+    public required bool SystemRequested { get; init; }
+    public required bool SystemStarted { get; init; }
+    public required bool MicRequested { get; init; }
+    public required bool MicStarted { get; init; }
+
+    /// <summary>True if a requested source failed to start (i.e. it degraded rather than being started).</summary>
+    public bool SystemDegraded => SystemRequested && !SystemStarted;
+    public bool MicDegraded => MicRequested && !MicStarted;
 }

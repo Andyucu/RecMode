@@ -16,7 +16,7 @@
 [CmdletBinding()]
 param(
     # 0.9.x-beta scheme: bump x on every new build (see CLAUDE.md working notes).
-    [string]$Version = '0.9.19-beta',
+    [string]$Version = '0.9.20-beta',
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'artifacts')
 )
 
@@ -53,7 +53,11 @@ if ((Test-Path $ffmpegSrc) -and (Get-ChildItem $ffmpegSrc -Filter *.exe -ErrorAc
     Write-Warning "No ffmpeg binaries in tools/ffmpeg — the zip ships without ffmpeg (slim variant). See ffmpeg/README.md."
 }
 
-# licenses
+# LICENSE + third-party notices
+$licenseSrc = Join-Path $root 'LICENSE'
+if (Test-Path $licenseSrc) {
+    Copy-Item $licenseSrc $stage -Force
+}
 $licSrc = Join-Path $root 'licenses'
 if (Test-Path $licSrc) {
     Copy-Item $licSrc $stage -Recurse -Force

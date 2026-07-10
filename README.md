@@ -79,6 +79,7 @@ Portable builds keep state beside the app:
 ```text
 RecMode/
   RecMode.exe
+  LICENSE
   portable.marker
   ffmpeg/
   licenses/
@@ -124,4 +125,4 @@ Known beta limitation: full-system audio recording is tracked as an open issue i
 
 ## License
 
-License information is not finalized in this repository yet. Third-party notices for redistributed components are kept under `licenses/`.
+RecMode is proprietary, freeware software: you may use it free of charge, but you may not modify, redistribute, or sell it. See `LICENSE` for the full terms. Third-party notices for redistributed components are kept under `licenses/`.

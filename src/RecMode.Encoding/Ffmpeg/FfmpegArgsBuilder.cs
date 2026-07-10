@@ -44,6 +44,7 @@ public static class FfmpegArgsBuilder
     public static string Build(FfmpegJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
+        Validate(job);
 
         string videoIn =
             $"-f rawvideo -pix_fmt nv12 -s {job.Width}x{job.Height} -r {job.FrameRate} " +
@@ -67,6 +68,55 @@ public static class FfmpegArgsBuilder
 
         return $"-hide_banner -loglevel warning {videoIn} {audioIn} {audioMap} " +
                $"{threads}{encoder} -pix_fmt yuv420p {audioEnc} {faststart} -y \"{job.OutputPath}\"";
+    }
+
+    /// <summary>Rejects an <see cref="FfmpegJob"/> that would produce a malformed or nonsensical command line,
+    /// so a bad job fails fast at the boundary instead of surfacing as a cryptic ffmpeg process failure.</summary>
+    private static void Validate(FfmpegJob job)
+    {
+        if (string.IsNullOrWhiteSpace(job.Encoder.FfmpegId))
+        {
+            throw new ArgumentException("Encoder.FfmpegId must be set.", nameof(job));
+        }
+        if (job.Width <= 0 || job.Width % 2 != 0)
+        {
+            throw new ArgumentException($"Width must be a positive even number, got {job.Width}.", nameof(job));
+        }
+        if (job.Height <= 0 || job.Height % 2 != 0)
+        {
+            throw new ArgumentException($"Height must be a positive even number, got {job.Height}.", nameof(job));
+        }
+        if (job.FrameRate <= 0)
+        {
+            throw new ArgumentException($"FrameRate must be positive, got {job.FrameRate}.", nameof(job));
+        }
+        if (job.CpuThreadCap < 0)
+        {
+            throw new ArgumentException($"CpuThreadCap can't be negative, got {job.CpuThreadCap}.", nameof(job));
+        }
+        if (job.AudioPipeName is not null && job.AudioBitrateKbps <= 0)
+        {
+            throw new ArgumentException($"AudioBitrateKbps must be positive, got {job.AudioBitrateKbps}.", nameof(job));
+        }
+        if (string.IsNullOrWhiteSpace(job.OutputPath))
+        {
+            throw new ArgumentException("OutputPath must be set.", nameof(job));
+        }
+        ValidatePipeName(job.PipeName, nameof(job.PipeName));
+        if (job.AudioPipeName is not null)
+        {
+            ValidatePipeName(job.AudioPipeName, nameof(job.AudioPipeName));
+        }
+    }
+
+    /// <summary>Pipe names are interpolated directly into a <c>\\.\pipe\{name}</c> path, so they must not
+    /// contain path separators or be empty — either would produce a malformed or unintended pipe path.</summary>
+    private static void ValidatePipeName(string name, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Contains('\\') || name.Contains('/'))
+        {
+            throw new ArgumentException($"'{name}' is not a valid pipe name.", paramName);
+        }
     }
 
     /// <summary>Audio codec steered by container (plan §3.3): MP4/MOV→AAC, MKV/WebM→Opus, with FLAC where valid.</summary>

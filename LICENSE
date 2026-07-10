@@ -1,0 +1,57 @@
+RecMode License
+
+Copyright (c) 2026 the RecMode authors. All rights reserved.
+
+This is not an open-source license. It is a proprietary, royalty-free license
+that permits free personal and commercial use of the RecMode application in
+compiled, unmodified form, subject to the restrictions below.
+
+1. Grant of use
+   Permission is hereby granted, free of charge, to any person obtaining a
+   copy of the RecMode application (the "Software") in its official,
+   unmodified, compiled/distributed form, to use the Software for any lawful
+   purpose, including personal, educational, and commercial use, at no cost.
+
+2. Restrictions
+   Except as expressly permitted in Section 1, you may NOT, without prior
+   written permission from the copyright holder(s):
+   a. Modify, adapt, translate, reverse engineer, decompile, disassemble, or
+      create derivative works based on the Software or its source code;
+   b. Redistribute, publish, mirror, or otherwise make available the
+      Software, in whole or in part, or any modified or derivative version
+      of it, whether for free or for a fee;
+   c. Sell, rent, lease, sublicense, or otherwise commercially exploit the
+      Software itself, or bundle/repackage it as part of another product or
+      service offered to third parties.
+
+   For clarity: you may use the Software as an end user free of charge, but
+   you may not distribute copies of it (source or binary) to others, and you
+   may not sell it or charge for access to it.
+
+3. Source code visibility
+   Source code may be made available in this repository for transparency,
+   auditing, and personal build purposes only. Availability of the source
+   code does NOT grant any rights beyond those in Section 1; the
+   restrictions in Section 2 apply equally to the source code.
+
+4. Third-party components
+   The Software depends on and/or is packaged with third-party components
+   (for example, ffmpeg and NuGet dependencies) that are licensed under their
+   own separate terms. Those components retain their own licenses, which are
+   not affected by this license. See the `licenses/` directory for details.
+   Nothing in this license limits the rights granted to you under the
+   license terms of those third-party components with respect to those
+   components themselves.
+
+5. No warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL
+   THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE
+   OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Termination
+   Any use in violation of Section 2 automatically terminates the rights
+   granted in Section 1. The copyright holder(s) reserve all rights not
+   expressly granted by this license.

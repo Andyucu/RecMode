@@ -124,6 +124,8 @@
   <data name="Settings_Startup" xml:space="preserve"><value>Start with Windows</value></data>
   <data name="Settings_StartupDesc" xml:space="preserve"><value>Launch minimized to the tray at sign-in</value></data>
   <data name="Settings_Updates" xml:space="preserve"><value>Check for updates on launch</value></data>
+  <data name="Settings_License" xml:space="preserve"><value>License</value></data>
+  <data name="Settings_LicenseDesc" xml:space="preserve"><value>RecMode is free to use, but modification, redistribution and resale are not permitted</value></data>
 
   <data name="Library_Empty" xml:space="preserve"><value>Your recordings will appear here. Full library arrives in a later build.</value></data>
   <data name="Library_Videos" xml:space="preserve"><value>Videos</value></data>

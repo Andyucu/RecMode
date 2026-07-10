@@ -74,7 +74,9 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             item.Enabled = false;
         }
 
-        settings.RequestSave();
+        // Save immediately (not the debounced RequestSave): if the app crashes right after this fires, the
+        // fired-state must already be durable on disk, or a restart could re-fire the same schedule again.
+        settings.Save();
 
         Log.Information("Firing schedule {Name} ({Recurrence} @ {Time}, {Dur} min)",
             item.Name, item.Recurrence, item.Time, item.DurationMinutes);
