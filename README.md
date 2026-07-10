@@ -91,30 +91,6 @@ RecMode/
     Screenshots/
 ```
 
-## Development
-
-Restore, build, and test:
-
-```powershell
-.\build.ps1
-```
-
-Release build:
-
-```powershell
-.\build.ps1 -Configuration Release
-```
-
-Portable package:
-
-```powershell
-.\publish-portable.ps1
-```
-
-Installer package:
-
-```powershell
-.\publish-installer.ps1 -Version 0.9.19-beta
 ```
 
 ## Status
