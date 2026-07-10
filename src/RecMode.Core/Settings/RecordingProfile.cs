@@ -38,32 +38,32 @@ public static class RecordingProfiles
     [
         new()
         {
-            Name = "Tutorial", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 75,
+            Name = "Tutorial (Balanced quality, 30 fps)", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 75,
             SystemAudioEnabled = true, MicrophoneEnabled = true, AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 192,
         },
         new()
         {
-            Name = "Gameplay", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 60, Quality = 85,
+            Name = "Gameplay (High quality, 60 fps)", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 60, Quality = 85,
             SystemAudioEnabled = true, MicrophoneEnabled = false, AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 192,
         },
         new()
         {
-            Name = "Meeting", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 60,
+            Name = "Meeting (Standard quality, 30 fps)", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 60,
             SystemAudioEnabled = true, MicrophoneEnabled = true, AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 128,
         },
         new()
         {
-            Name = "Bug report", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 55,
+            Name = "Bug report (Small file, 30 fps)", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 30, Quality = 55,
             SystemAudioEnabled = true, MicrophoneEnabled = false, AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 128,
         },
         new()
         {
-            Name = "GIF clip", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 15, Quality = 50,
+            Name = "Quick clip (Low quality, 15 fps, no audio)", IsBuiltIn = true, Container = MediaContainer.Mp4, FrameRate = 15, Quality = 50,
             SystemAudioEnabled = false, MicrophoneEnabled = false, AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 128,
         },
         new()
         {
-            Name = "High-quality archive", IsBuiltIn = true, Container = MediaContainer.Mkv, FrameRate = 60, Quality = 95,
+            Name = "Archive (Maximum quality, 60 fps, lossless audio)", IsBuiltIn = true, Container = MediaContainer.Mkv, FrameRate = 60, Quality = 95,
             SystemAudioEnabled = true, MicrophoneEnabled = true, AudioCodec = AudioCodec.Flac, AudioBitrateKbps = 192,
         },
     ];

@@ -6,7 +6,14 @@ namespace RecMode.Core.Tests;
 public class RecordingProfilesTests
 {
     private static readonly string[] ExpectedNames =
-        ["Tutorial", "Gameplay", "Meeting", "Bug report", "GIF clip", "High-quality archive"];
+    [
+        "Tutorial (Balanced quality, 30 fps)",
+        "Gameplay (High quality, 60 fps)",
+        "Meeting (Standard quality, 30 fps)",
+        "Bug report (Small file, 30 fps)",
+        "Quick clip (Low quality, 15 fps, no audio)",
+        "Archive (Maximum quality, 60 fps, lossless audio)",
+    ];
 
     [Fact]
     public void BuiltIn_HasThePlanNamedPresets()
