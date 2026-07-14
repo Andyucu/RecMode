@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/RecMode.App/Assets/AppIcon.ico" alt="RecMode" width="96" />
+</p>
+
 # RecMode
 
 RecMode is a modern Windows screen recorder built with .NET 10 and WPF. It focuses on fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface.
