@@ -20,12 +20,18 @@ artifacts/
 *.vsidx
 *.code-workspace
 
+## Local-only scripts, tooling, tests, docs (keep off GitHub)
+/publish-portable.ps1
+/publish-installer.ps1
+/tools/
+/tests/
+/DOCS/
+/.abacusai/
+
 ## Local project docs / working memory (keep off GitHub)
 /CHANGELOG.md
 /CLAUDE.md
 /PROJECT_MEMORY.md
-/DOCS/*
-!/DOCS/RecMode_User_Guide.html
 /RecMode notes.txt
 
 ## Test / coverage

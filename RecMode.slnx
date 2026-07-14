@@ -6,14 +6,4 @@
     <Project Path="src/RecMode.Core/RecMode.Core.csproj" />
     <Project Path="src/RecMode.Encoding/RecMode.Encoding.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/RecMode.App.Tests/RecMode.App.Tests.csproj" />
-    <Project Path="tests/RecMode.Audio.Tests/RecMode.Audio.Tests.csproj">
-      <Platform Project="x64" />
-    </Project>
-    <Project Path="tests/RecMode.Capture.Tests/RecMode.Capture.Tests.csproj" />
-    <Project Path="tests/RecMode.Core.Tests/RecMode.Core.Tests.csproj" />
-    <Project Path="tests/RecMode.Encoding.Tests/RecMode.Encoding.Tests.csproj" />
-    <Project Path="tests/RecMode.Recording.Tests/RecMode.Recording.Tests.csproj" />
-  </Folder>
 </Solution>

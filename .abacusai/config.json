@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(build.ps1 *)",
-      "Bash(powershell *)",
-      "Bash(dir *)"
-    ]
-  }
-}

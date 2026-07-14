@@ -1,3 +1,0 @@
-# Test-project overrides: underscore-separated test names are idiomatic.
-[*.cs]
-dotnet_diagnostic.CA1707.severity = none
