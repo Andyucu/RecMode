@@ -64,6 +64,15 @@ public sealed class GlobalHotkeys : IDisposable
         _registered.Clear();
     }
 
+    /// <summary>Unregisters a single hotkey by the id <see cref="Register"/> returned, leaving the others intact.</summary>
+    public void Unregister(int id)
+    {
+        if (_registered.Remove(id))
+        {
+            UnregisterHotKey(_source.Handle, id);
+        }
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_HOTKEY)
@@ -91,8 +100,10 @@ public sealed class GlobalHotkeys : IDisposable
 /// <summary>Common virtual-key codes for the default hotkeys.</summary>
 public static class VirtualKeys
 {
+    public const uint Escape = 0x1B;
     public const uint F8 = 0x77;
     public const uint F9 = 0x78;
     public const uint F10 = 0x79;
     public const uint F11 = 0x7A;
+    public const uint F12 = 0x7B;
 }

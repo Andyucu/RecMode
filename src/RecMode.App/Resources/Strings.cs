@@ -37,6 +37,10 @@ public static class Strings
     public static string Record_Format => Get(nameof(Record_Format));
     public static string Record_FrameRate => Get(nameof(Record_FrameRate));
     public static string Record_Quality => Get(nameof(Record_Quality));
+    public static string Record_Brightness => Get(nameof(Record_Brightness));
+    public static string Record_QualityPresetWeb => Get(nameof(Record_QualityPresetWeb));
+    public static string Record_QualityPresetBalanced => Get(nameof(Record_QualityPresetBalanced));
+    public static string Record_QualityPresetArchive => Get(nameof(Record_QualityPresetArchive));
     public static string Record_Start => Get(nameof(Record_Start));
     public static string Record_Stop => Get(nameof(Record_Stop));
     public static string Record_Screenshot => Get(nameof(Record_Screenshot));
@@ -81,6 +85,8 @@ public static class Strings
     public static string Settings_CursorDesc => Get(nameof(Settings_CursorDesc));
     public static string Settings_Clicks => Get(nameof(Settings_Clicks));
     public static string Settings_ClicksDesc => Get(nameof(Settings_ClicksDesc));
+    public static string Settings_BitrateGuardrail => Get(nameof(Settings_BitrateGuardrail));
+    public static string Settings_BitrateGuardrailDesc => Get(nameof(Settings_BitrateGuardrailDesc));
     public static string Settings_AutoSplit => Get(nameof(Settings_AutoSplit));
     public static string Settings_AutoSplitDesc => Get(nameof(Settings_AutoSplitDesc));
     public static string Settings_KeyboardShortcuts => Get(nameof(Settings_KeyboardShortcuts));

@@ -24,11 +24,43 @@ public class FfmpegArgsBuilderTests
 
     [Theory]
     [InlineData(0, 51)]
-    [InlineData(100, 13)]
-    [InlineData(70, 24)]
-    public void QualityToCrf_FollowsDesignModel(int quality, int expectedCrf)
+    [InlineData(100, 1)]
+    [InlineData(70, 25)]
+    [InlineData(50, 37)]
+    public void QualityToCrf_FollowsCurvedModel(int quality, int expectedCrf)
     {
         Assert.Equal(expectedCrf, FfmpegArgsBuilder.QualityToCrf(quality));
+    }
+
+    [Fact]
+    public void QualityToCrf_SvtAv1RangeReachesUpTo63()
+    {
+        // SVT-AV1's wider CRF range (0-63) must be reachable via the maxCrf override, not clamped to 51.
+        Assert.Equal(63, FfmpegArgsBuilder.QualityToCrf(0, FfmpegArgsBuilder.MaxCrfAv1));
+        Assert.Equal(1, FfmpegArgsBuilder.QualityToCrf(100, FfmpegArgsBuilder.MaxCrfAv1));
+        Assert.True(FfmpegArgsBuilder.QualityToCrf(30, FfmpegArgsBuilder.MaxCrfAv1) > 51,
+            "a low-quality slider value on AV1 should be able to reach above the H.264/HEVC-family ceiling of 51");
+    }
+
+    [Theory]
+    [InlineData(EncoderBackend.Software, 0)]
+    [InlineData(EncoderBackend.Nvenc, -2)]
+    [InlineData(EncoderBackend.Amf, -2)]
+    [InlineData(EncoderBackend.Qsv, -1)]
+    public void EffectiveQualityValue_AppliesPerEncoderCalibration(EncoderBackend backend, int expectedOffset)
+    {
+        var encoder = Enc("x", VideoCodec.H264, backend);
+        int baseline = FfmpegArgsBuilder.QualityToCrf(70);
+        Assert.Equal(baseline + expectedOffset, FfmpegArgsBuilder.EffectiveQualityValue(encoder, 70));
+    }
+
+    [Fact]
+    public void EffectiveQualityValue_ClampsCalibratedValueToValidRange()
+    {
+        // At quality=100 the curved CRF already sits at MinCrf (1); a negative hardware-encoder offset must
+        // not push the calibrated value below 1 (which would otherwise not be a valid ffmpeg CRF/CQ/QP).
+        var nvenc = Enc("h264_nvenc", VideoCodec.H264, EncoderBackend.Nvenc);
+        Assert.Equal(FfmpegArgsBuilder.MinCrf, FfmpegArgsBuilder.EffectiveQualityValue(nvenc, 100));
     }
 
     [Fact]
@@ -43,21 +75,21 @@ public class FfmpegArgsBuilderTests
     public void Software_UsesCrf()
     {
         string args = FfmpegArgsBuilder.Build(Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), quality: 70));
-        Assert.Contains("-c:v libx264 -preset veryfast -crf 24", args);
+        Assert.Contains("-c:v libx264 -preset veryfast -crf 25", args);
     }
 
     [Fact]
     public void Amf_UsesCqp()
     {
         string args = FfmpegArgsBuilder.Build(Job(Enc("h264_amf", VideoCodec.H264, EncoderBackend.Amf), quality: 70));
-        Assert.Contains("-c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 24 -qp_p 24", args);
+        Assert.Contains("-c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 23 -qp_p 23", args);
     }
 
     [Fact]
     public void Nvenc_UsesCq()
     {
         string args = FfmpegArgsBuilder.Build(Job(Enc("h264_nvenc", VideoCodec.H264, EncoderBackend.Nvenc), quality: 70));
-        Assert.Contains("-c:v h264_nvenc -preset p4 -rc vbr -cq 24", args);
+        Assert.Contains("-c:v h264_nvenc -preset p4 -rc vbr -cq 23", args);
     }
 
     [Fact]
@@ -110,7 +142,7 @@ public class FfmpegArgsBuilderTests
     {
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4);
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 25 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
@@ -119,7 +151,7 @@ public class FfmpegArgsBuilderTests
     {
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mkv);
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v libx264 -preset veryfast -crf 25 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
@@ -128,7 +160,7 @@ public class FfmpegArgsBuilderTests
     {
         var job = Job(Enc("h264_amf", VideoCodec.H264, EncoderBackend.Amf), MediaContainer.Mkv);
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 24 -qp_p 24 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 23 -qp_p 23 -pix_fmt yuv420p -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
@@ -138,7 +170,7 @@ public class FfmpegArgsBuilderTests
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4)
             with { AudioPipeName = "aud", AudioCodec = AudioCodec.Aac, AudioBitrateKbps = 192 };
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 25 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
@@ -148,14 +180,74 @@ public class FfmpegArgsBuilderTests
         var job = Job(Enc("libsvtav1", VideoCodec.Av1, EncoderBackend.Software), MediaContainer.WebM)
             with { AudioPipeName = "aud", AudioCodec = AudioCodec.Opus, AudioBitrateKbps = 192 };
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libsvtav1 -preset 8 -crf 24 -pix_fmt yuv420p -c:a libopus -b:a 192k -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libsvtav1 -preset 8 -crf 30 -pix_fmt yuv420p -c:a libopus -b:a 192k -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
+    [Fact]
+    public void Guardrail_OffByDefault_NoMaxrateInArgs()
+    {
+        string args = FfmpegArgsBuilder.Build(Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), quality: 70));
+        Assert.DoesNotContain("-maxrate", args);
+    }
+
+    [Fact]
+    public void Guardrail_WhenEnabled_AddsMaxrateAndBufsizeForSoftwareEncoder()
+    {
+        var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), quality: 70) with { BitrateGuardrailEnabled = true };
+        string args = FfmpegArgsBuilder.Build(job);
+        (int maxRateKbps, int bufSizeKbps) = FfmpegArgsBuilder.EstimateGuardrail(2560, 1440, 60, 70);
+        Assert.Contains($"-maxrate {maxRateKbps}k -bufsize {bufSizeKbps}k", args);
+    }
+
+    [Fact]
+    public void Guardrail_WhenEnabled_AddsMaxrateForNvenc()
+    {
+        var job = Job(Enc("h264_nvenc", VideoCodec.H264, EncoderBackend.Nvenc), quality: 70) with { BitrateGuardrailEnabled = true };
+        Assert.Contains("-maxrate", FfmpegArgsBuilder.Build(job));
+    }
+
     [Theory]
-    [InlineData(EncoderEffort.Fast, "-c:v libx264 -preset ultrafast -crf 24")]
-    [InlineData(EncoderEffort.Balanced, "-c:v libx264 -preset veryfast -crf 24")] // default preserved
-    [InlineData(EncoderEffort.Quality, "-c:v libx264 -preset medium -crf 24")]
+    [InlineData("h264_amf", EncoderBackend.Amf)]
+    [InlineData("h264_qsv", EncoderBackend.Qsv)]
+    public void Guardrail_WhenEnabled_SkipsAmfAndQsv(string ffmpegId, EncoderBackend backend)
+    {
+        // AMF's constant-QP mode and QSV's ICQ mode don't rate-limit under their current rc mode — adding
+        // -maxrate there wouldn't do anything, so it's deliberately left out rather than emitting a no-op flag.
+        var job = Job(Enc(ffmpegId, VideoCodec.H264, backend), quality: 70) with { BitrateGuardrailEnabled = true };
+        Assert.DoesNotContain("-maxrate", FfmpegArgsBuilder.Build(job));
+    }
+
+    [Theory]
+    [InlineData(0, "Small file")]
+    [InlineData(25, "Small file")]
+    [InlineData(26, "Balanced")]
+    [InlineData(55, "Balanced")]
+    [InlineData(56, "High quality")]
+    [InlineData(85, "High quality")]
+    [InlineData(86, "Visually lossless")]
+    [InlineData(100, "Visually lossless")]
+    public void QualityTier_BucketsAcrossTheFullRange(int quality, string expectedTier)
+    {
+        Assert.Equal(expectedTier, FfmpegArgsBuilder.QualityTier(quality));
+    }
+
+    [Fact]
+    public void EstimateTypicalKbps_IncreasesWithQualityResolutionAndFps()
+    {
+        int low = FfmpegArgsBuilder.EstimateTypicalKbps(1920, 1080, 30, 10);
+        int high = FfmpegArgsBuilder.EstimateTypicalKbps(1920, 1080, 30, 90);
+        Assert.True(high > low, "higher quality should estimate a higher typical bitrate");
+
+        int biggerRes = FfmpegArgsBuilder.EstimateTypicalKbps(3840, 2160, 30, 70);
+        int smallerRes = FfmpegArgsBuilder.EstimateTypicalKbps(1920, 1080, 30, 70);
+        Assert.True(biggerRes > smallerRes, "higher resolution should estimate a higher typical bitrate");
+    }
+
+    [Theory]
+    [InlineData(EncoderEffort.Fast, "-c:v libx264 -preset ultrafast -crf 25")]
+    [InlineData(EncoderEffort.Balanced, "-c:v libx264 -preset veryfast -crf 25")] // default preserved
+    [InlineData(EncoderEffort.Quality, "-c:v libx264 -preset medium -crf 25")]
     public void Effort_MapsX264Preset(EncoderEffort effort, string expected)
     {
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software)) with { Effort = effort };
@@ -189,7 +281,7 @@ public class FfmpegArgsBuilderTests
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mkv)
             with { AudioPipeName = "aud", AudioCodec = AudioCodec.Flac };
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -c:a flac -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -f f32le -ar 48000 -ac 2 -i \\.\pipe\aud -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 25 -pix_fmt yuv420p -c:a flac -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 
@@ -240,7 +332,7 @@ public class FfmpegArgsBuilderTests
         var job = Job(Enc("libx264", VideoCodec.H264, EncoderBackend.Software), MediaContainer.Mp4)
             with { CpuThreadCap = 4 };
         Assert.Equal(
-            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -threads 4 -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
+            @"-hide_banner -loglevel warning -f rawvideo -pix_fmt nv12 -s 2560x1440 -r 60 -i \\.\pipe\testpipe -threads 4 -c:v libx264 -preset veryfast -crf 25 -pix_fmt yuv420p -movflags +faststart -y ""C:\out\clip.mp4""",
             Norm(FfmpegArgsBuilder.Build(job)));
     }
 }

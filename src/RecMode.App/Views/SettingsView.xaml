@@ -171,6 +171,21 @@
                               AutomationProperties.LabeledBy="{Binding ElementName=AudioBitrateLabel}" />
                 </Grid>
             </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xEA18;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="BitrateGuardrailLabel" Text="{x:Static res:Strings.Settings_BitrateGuardrail}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_BitrateGuardrailDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding BitrateGuardrailEnabled, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=BitrateGuardrailLabel}" />
+                </Grid>
+            </Border>
 
             <!-- ===== Output ===== -->
             <TextBlock Text="{x:Static res:Strings.Settings_Output}" Style="{StaticResource SectionHeader}" />

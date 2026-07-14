@@ -28,6 +28,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private long _capturedFrames;
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+    private double _brightness;
 
     public bool IsRunning { get; private set; }
     public int OutputWidth { get; private set; }
@@ -65,6 +66,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
         _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
         _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+        _converter.SetBrightness(_brightness);
         OutputWidth = dstW;
         OutputHeight = dstH;
         Nv12ByteSize = _converter.Nv12ByteSize;
@@ -107,6 +109,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
         _converter = new Nv12Converter(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
         _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+        _converter.SetBrightness(_brightness);
         OutputWidth = dstW;
         OutputHeight = dstH;
         Nv12ByteSize = _converter.Nv12ByteSize;
@@ -195,6 +198,12 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         _webcamSource = source;
         _webcamRect = rect;
         _converter?.SetWebcamOverlay(source, rect);
+    }
+
+    public void SetBrightness(double value)
+    {
+        _brightness = value;
+        _converter?.SetBrightness(value);
     }
 
     public void Stop()

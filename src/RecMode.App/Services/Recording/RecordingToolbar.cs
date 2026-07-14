@@ -14,6 +14,10 @@ public sealed class RecordingToolbar(RecordViewModel record, IOsCapabilities os)
 {
     private RecordingToolbarWindow? _window;
 
+    /// <summary>The live toolbar window while a recording is in progress, or null — exposed so overlays that
+    /// float above it (e.g. draw-on-screen annotation) can carve its bounds out of their own hit-test region.</summary>
+    public RecordingToolbarWindow? Window => _window;
+
     public void Attach() => record.PropertyChanged += OnPropertyChanged;
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -47,6 +47,7 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _checkForUpdates;
     private int _cpuThreadCap;
     private bool _lowerEncoderPriority;
+    private bool _bitrateGuardrailEnabled;
     private EncoderEffort _effort;
     private ShellLayout _layout;
 
@@ -77,6 +78,7 @@ public sealed class SettingsViewModel : ObservableObject
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
         _cpuThreadCap = ThreadCaps.Contains(s.CpuThreadCap) ? s.CpuThreadCap : 0; // clamp a value from a bigger machine
         _lowerEncoderPriority = s.BelowNormalEncoderPriority;
+        _bitrateGuardrailEnabled = s.BitrateGuardrailEnabled;
         _effort = s.Effort;
         _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
@@ -339,6 +341,14 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get => _highlightClicks;
         set => Persist(ref _highlightClicks, value, v => _settings.Current.HighlightClicks = v);
+    }
+
+    /// <summary>Adds a generous -maxrate/-bufsize ceiling alongside CRF/CQ encoding on encoders whose
+    /// rate-control mode supports it, to guard against surprise multi-GB files on unusually complex content.</summary>
+    public bool BitrateGuardrailEnabled
+    {
+        get => _bitrateGuardrailEnabled;
+        set => Persist(ref _bitrateGuardrailEnabled, value, v => _settings.Current.BitrateGuardrailEnabled = v);
     }
 
     public bool AutoSplitEnabled

@@ -46,6 +46,7 @@ internal static class Composition
 
         // Region selection.
         services.AddSingleton<IRegionPicker, RegionPicker>();
+        services.AddSingleton<IWindowPicker, WindowPicker>();
 
         // MVP UX services (Phase 5).
         services.AddSingleton<ScreenshotService>();

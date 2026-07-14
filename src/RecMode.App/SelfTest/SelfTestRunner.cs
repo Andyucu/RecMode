@@ -87,6 +87,13 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var coord = host.Services.GetRequiredService<RecordingCoordinator>();
             coord.TestForceWebcamSource(new SolidColorWebcamFrameSource(320, 180, 0xFF, 0x00, 0xFF)); // magenta BGRA
         }
+        // "brightness" mode: crank the brightness slider to its max so a downstream ffmpeg signalstats
+        // check can prove the GPU VideoProcessor filter actually changed the recorded pixels.
+        if (mode == "brightness")
+        {
+            var s = host.Services.GetRequiredService<ISettingsService>();
+            s.Current.Brightness = 100;
+        }
         // "split" mode: force the smallest allowed auto-split threshold and a high-bitrate quality so a
         // rollover happens quickly, to verify the segment rotation end-to-end.
         if (mode == "split")
@@ -272,7 +279,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
             var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
 
-            var overlay = new AnnotationOverlay(() => { });
+            var overlay = new AnnotationOverlay(() => { }, null);
             overlay.Show();
             await Task.Delay(200);
 

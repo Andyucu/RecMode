@@ -13,7 +13,7 @@
         TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
 
     <WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" />
+        <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" />
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -25,12 +25,16 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="56" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <!-- ===== Title bar ===== -->
-        <Grid Grid.Row="0">
+        <!-- Background="Transparent" (not the default null) so the whole row is hit-testable, not just the
+             sub-areas actually covered by a child element with its own Background — gives WindowChrome's
+             caption drag the full 56px strip to work with, not just the icon/title/status-pill/blank-space
+             pieces. -->
+        <Grid Grid.Row="0" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />

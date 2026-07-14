@@ -30,6 +30,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     private long _lastFrameTicks;
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+    private double _brightness;
 
     public bool IsRunning { get; private set; }
     public int Width { get; private set; }
@@ -66,6 +67,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         (int dstW, int dstH) = FitPreview(Math.Max(2, effectiveW), Math.Max(2, effectiveH));
         _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
         _scaler.SetWebcamOverlay(_webcamSource, _webcamRect);
+        _scaler.SetBrightness(_brightness);
         Width = dstW;
         Height = dstH;
         Stride = _scaler.Stride;
@@ -117,6 +119,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         (int dstW, int dstH) = FitPreview(Math.Max(2, _ddaSource.VirtualWidth), Math.Max(2, _ddaSource.VirtualHeight));
         _scaler = new BgraScaler(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
         _scaler.SetWebcamOverlay(_webcamSource, _webcamRect);
+        _scaler.SetBrightness(_brightness);
         Width = dstW;
         Height = dstH;
         Stride = _scaler.Stride;
@@ -176,6 +179,12 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         _webcamSource = source;
         _webcamRect = rect;
         _scaler?.SetWebcamOverlay(source, rect);
+    }
+
+    public void SetBrightness(double value)
+    {
+        _brightness = value;
+        _scaler?.SetBrightness(value);
     }
 
     public void Stop()

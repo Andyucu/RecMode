@@ -35,6 +35,9 @@ public interface ICaptureEngine : IDisposable
     /// <summary>Enables/disables the webcam picture-in-picture overlay on this capture's output; call after <see cref="Start"/>. Null source disables it.</summary>
     void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect);
 
+    /// <summary>Sets the captured-video brightness adjustment, -100..100, 0 = unchanged; call before or after <see cref="Start"/>.</summary>
+    void SetBrightness(double value);
+
     void Stop();
 }
 
@@ -48,6 +51,65 @@ public static class CaptureCapabilities
     public static IReadOnlyList<AudioProcessTarget> EnumerateAudioProcesses() => CaptureInterop.EnumerateAudioProcesses();
 
     public static bool IsSupported() => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported();
+
+    /// <summary>Current on-screen bounds of any top-level window, in absolute virtual-desktop physical pixels
+    /// — used to keep overlay windows (e.g. draw-on-screen annotation) from covering other floating chrome.</summary>
+    public static bool TryGetWindowScreenRect(nint hwnd, out RegionRect rect) => CaptureInterop.TryGetWindowRect(hwnd, out rect);
+
+    /// <summary>The topmost capturable window whose bounds contain the given absolute virtual-desktop physical
+    /// pixel point, or null. Used by the "pick a window with the mouse" picker: <see cref="EnumerateWindows"/>
+    /// already returns windows in top-to-bottom Z-order and already excludes title-less windows (which is how
+    /// RecMode's own transient overlays — including the picker itself — stay out of the way), so the first
+    /// bounds match is the topmost real window under the cursor.</summary>
+    public static WindowInfo? FindWindowAtPoint(int x, int y)
+    {
+        foreach (WindowInfo w in EnumerateWindows())
+        {
+            if (CaptureInterop.TryGetWindowRect(w.Handle, out RegionRect r) &&
+                x >= r.X && x < r.X + r.Width && y >= r.Y && y < r.Y + r.Height)
+            {
+                return w;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Absolute virtual-desktop physical-pixel bounds of a capture target, when resolvable — used to
+    /// size overlay windows (draw-on-screen annotation) so they only cover what's actually being recorded
+    /// rather than always the primary monitor.</summary>
+    public static bool TryGetScreenBounds(CaptureTarget target, out RegionRect bounds)
+    {
+        if (target.Kind == CaptureKind.AllDisplays)
+        {
+            if (target.VirtualDesktopBounds is { } vdb)
+            {
+                bounds = vdb;
+                return true;
+            }
+        }
+        else if (target.Kind == CaptureKind.Window)
+        {
+            if (CaptureInterop.TryGetWindowRect(target.Handle, out bounds))
+            {
+                return true;
+            }
+        }
+        else
+        {
+            MonitorInfo? mon = EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle);
+            if (mon is not null)
+            {
+                bounds = target.Region is { } region
+                    ? new RegionRect(mon.X + region.X, mon.Y + region.Y, region.Width, region.Height)
+                    : new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+                return true;
+            }
+        }
+
+        bounds = default;
+        return false;
+    }
 
     /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>
     public static bool TryGetSourceSize(CaptureTarget target, out int width, out int height)

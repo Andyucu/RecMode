@@ -149,6 +149,7 @@ public sealed class RecordingCoordinator : IDisposable
             _capture = _captureFactory();
             _capture.Faulted += OnCaptureFaulted;
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
+            _capture.SetBrightness(_settings.Current.Brightness);
 
             // Webcam picture-in-picture overlay (Phase 7): best-effort — a missing/busy camera warns but
             // never blocks the recording. Runs synchronously before capture is considered "started" so the
@@ -405,6 +406,7 @@ public sealed class RecordingCoordinator : IDisposable
             CpuThreadCap = _settings.Current.CpuThreadCap,
             BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
             Effort = _settings.Current.Effort,
+            BitrateGuardrailEnabled = _settings.Current.BitrateGuardrailEnabled,
         };
 
         return (job, audioEnabled);
@@ -540,6 +542,10 @@ public sealed class RecordingCoordinator : IDisposable
             mixer.MicGain = micGain;
         }
     }
+
+    /// <summary>Applies the captured-video brightness adjustment (-100..100) to the live recording, so
+    /// changes on the Record screen take effect mid-recording, not just on the next session.</summary>
+    public void SetBrightness(double value) => _capture?.SetBrightness(value);
 
     /// <summary>Starts the audio-pump thread for the given pipe — shared by <see cref="Start"/> and
     /// <see cref="RotateSegment"/> (auto-split / hw→sw downgrade), which each open a fresh audio pipe per

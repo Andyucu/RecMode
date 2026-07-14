@@ -37,6 +37,32 @@
                                  ToolTip="Coming soon — record from a webcam as the source"
                                  Content="{x:Static res:Strings.Source_Webcam}" />
                 </StackPanel>
+
+                <!-- Which window to record — lives right under the Source tiles (not in the Video card further
+                     down) so picking a window is immediate, right where the Window tile was just clicked. -->
+                <StackPanel Margin="0,16,0,0" Visibility="{Binding ShowWindowPicker, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock x:Name="WindowLabel" Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,8,0"
+                                  ToolTip="Which open window to record"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
+                        <Button Grid.Column="1" Content="Manual Pick" Command="{Binding PickWindowCommand}"
+                                ToolTip="Pick a window by clicking it on screen"
+                                AutomationProperties.Name="Pick a window with the mouse"
+                                Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
+                    </Grid>
+                    <Grid ToolTip="Keep recording the same app if it recreates its window before capture starts">
+                        <TextBlock x:Name="FollowWindowLabel" Text="Follow selected window" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding FollowWindowEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=FollowWindowLabel}" />
+                    </Grid>
+                </StackPanel>
             </StackPanel>
         </Border>
 
@@ -138,17 +164,12 @@
                                 Visibility="{Binding CanDeleteProfile, Converter={StaticResource BoolToVisibility}}" />
                     </Grid>
 
-                    <!-- Display picker (screen source) -->
-                    <StackPanel>
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ShowWindowPicker}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
+                    <!-- Display picker (screen source). Direct Visibility binding rather than a Style/DataTrigger:
+                         a locally-set Visibility attribute always beats a Style trigger's setter in WPF's
+                         property-value precedence, which is exactly the bug that made the sibling Window/Region
+                         panels below never actually show (see their comments) — this one happened to look fine
+                         only because it never had a competing local value to begin with. -->
+                    <StackPanel Visibility="{Binding ShowWindowPicker, Converter={StaticResource InverseBoolToVisibility}}">
                         <TextBlock x:Name="DisplayLabel" Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                                   ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12"
@@ -156,41 +177,11 @@
                                   AutomationProperties.LabeledBy="{Binding ElementName=DisplayLabel}" />
                     </StackPanel>
 
-                    <!-- Window picker (window source) -->
-                    <StackPanel Visibility="Collapsed">
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ShowWindowPicker}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
-                        <TextBlock x:Name="WindowLabel" Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-                        <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
-                                  ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,0,12"
-                                  ToolTip="Which open window to record"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
-                        <Grid Margin="0,0,0,12" ToolTip="Keep recording the same app if it recreates its window before capture starts">
-                            <TextBlock x:Name="FollowWindowLabel" Text="Follow selected window" VerticalAlignment="Center" />
-                            <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
-                                          IsChecked="{Binding FollowWindowEnabled, Mode=TwoWay}"
-                                          AutomationProperties.LabeledBy="{Binding ElementName=FollowWindowLabel}" />
-                        </Grid>
-                    </StackPanel>
+                    <!-- Window picker now lives in the Source card above, right under the tiles, instead of here. -->
 
-                    <!-- Region info (region source) -->
-                    <StackPanel Visibility="Collapsed">
-                        <StackPanel.Style>
-                            <Style TargetType="StackPanel">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ShowRegionInfo}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Style>
+                    <!-- Region info (region source). Same local-Visibility-beats-Style-trigger bug as the Window
+                         picker above — this panel (region size + "Change…") never actually appeared either. -->
+                    <StackPanel Visibility="{Binding ShowRegionInfo, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Text="{x:Static res:Strings.Source_Region}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                         <Grid Margin="0,0,0,12">
                             <TextBlock Text="{Binding RegionLabel}" VerticalAlignment="Center" />
@@ -228,6 +219,26 @@
                     <Slider Style="{StaticResource AppSlider}" Minimum="0" Maximum="100" Value="{Binding Quality}"
                             AutomationProperties.LabeledBy="{Binding ElementName=QualityLabelText}"
                             ToolTip="Higher quality means larger files"
+                            IsSnapToTickEnabled="True" TickFrequency="1" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0" HorizontalAlignment="Right">
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetWeb}" Command="{Binding SetQualityPresetCommand}" CommandParameter="15"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11" Margin="0,0,6,0"
+                                ToolTip="Smaller file, good enough for quick sharing" />
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetBalanced}" Command="{Binding SetQualityPresetCommand}" CommandParameter="50"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11" Margin="0,0,6,0"
+                                ToolTip="A reasonable balance of quality and file size" />
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetArchive}" Command="{Binding SetQualityPresetCommand}" CommandParameter="90"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11"
+                                ToolTip="Highest quality, larger files" />
+                    </StackPanel>
+
+                    <Grid Margin="0,12,0,2">
+                        <TextBlock x:Name="BrightnessLabelText" Text="{x:Static res:Strings.Record_Brightness}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding BrightnessLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Slider Style="{StaticResource AppSlider}" Minimum="-100" Maximum="100" Value="{Binding Brightness}"
+                            AutomationProperties.LabeledBy="{Binding ElementName=BrightnessLabelText}"
+                            ToolTip="Adjusts the brightness of the recorded video"
                             IsSnapToTickEnabled="True" TickFrequency="1" />
                 </StackPanel>
             </Border>

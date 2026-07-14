@@ -3,17 +3,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:res="clr-namespace:RecMode.App.Resources"
         Title="RecMode"
-        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStyle="None" Background="{DynamicResource SurfaceCardBrush}"
         Topmost="True" ShowInTaskbar="True" ResizeMode="NoResize"
         SizeToContent="Height" Width="392" WindowStartupLocation="Manual">
+    <!-- No AllowsTransparency: a per-pixel-alpha layered window (which AllowsTransparency creates) captures
+         as black/broken via Windows Graphics Capture — confirmed live (recording "RecMode itself" as a Window
+         source produced an almost entirely black frame). Win11 rounds top-level window corners natively, so
+         dropping AllowsTransparency still gets the floating-card look there; Win10 falls back to square
+         corners (same "opaque fallback Win10" pattern used for Mica elsewhere). The DropShadowEffect below
+         is gone too — it needs transparent window margin to bleed into, which no longer exists. -->
     <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
             BorderThickness="1" CornerRadius="8" Padding="14">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="48" ShadowDepth="16" Opacity="0.3" Color="Black" Direction="270" />
-        </Border.Effect>
         <StackPanel>
-            <!-- Header: app icon/title + theme toggle + expand -->
-            <Grid Margin="0,0,0,12" MouseLeftButtonDown="OnHeaderDrag">
+            <!-- Header: app icon/title + theme toggle + expand. Background="Transparent" (not the default
+                 null) so the blank space around the title is hit-testable too, not just the icon/text glyphs
+                 themselves — makes the whole header row draggable, not just a thin strip of it. -->
+            <Grid Margin="0,0,0,12" Background="Transparent" MouseLeftButtonDown="OnHeaderDrag">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -59,6 +64,23 @@
                              IsEnabled="{Binding Record.HasWebcamDevices}"
                              ToolTip="{x:Static res:Strings.Source_Webcam}"
                              AutomationProperties.Name="{x:Static res:Strings.Source_Webcam}" />
+            </Grid>
+
+            <!-- Which window to record (Window source only) — the tile above only picks the source kind, this
+                 picks the actual window; without it Compact silently recorded whatever window happened to
+                 enumerate first. -->
+            <Grid Margin="0,0,0,12" Visibility="{Binding Record.IsWindowSource, Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                          ItemsSource="{Binding Record.Windows}" SelectedItem="{Binding Record.SelectedWindow}" Margin="0,0,8,0"
+                          ToolTip="Which open window to record" AutomationProperties.Name="Window to record" />
+                <Button Grid.Column="1" Content="Pick…" Command="{Binding Record.PickWindowCommand}"
+                        ToolTip="Pick a window by clicking it on screen"
+                        AutomationProperties.Name="Pick a window with the mouse"
+                        Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
             </Grid>
 
             <!-- Quick audio: System + Mic -->

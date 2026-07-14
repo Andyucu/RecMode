@@ -33,6 +33,9 @@ internal static class CaptureInterop
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int max);
 
@@ -114,6 +117,19 @@ internal static class CaptureInterop
         }, IntPtr.Zero);
 
         return results;
+    }
+
+    /// <summary>Current on-screen bounds of a window, in absolute virtual-desktop physical pixels.</summary>
+    public static bool TryGetWindowRect(nint hwnd, out RegionRect rect)
+    {
+        if (GetWindowRect(hwnd, out RECT r))
+        {
+            rect = new RegionRect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
+            return true;
+        }
+
+        rect = default;
+        return false;
     }
 
     public static IReadOnlyList<WindowInfo> EnumerateWindows()

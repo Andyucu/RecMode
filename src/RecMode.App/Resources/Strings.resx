@@ -69,6 +69,10 @@
   <data name="Record_Format" xml:space="preserve"><value>Format</value></data>
   <data name="Record_FrameRate" xml:space="preserve"><value>Frame rate</value></data>
   <data name="Record_Quality" xml:space="preserve"><value>Quality</value></data>
+  <data name="Record_Brightness" xml:space="preserve"><value>Brightness</value></data>
+  <data name="Record_QualityPresetWeb" xml:space="preserve"><value>Web</value></data>
+  <data name="Record_QualityPresetBalanced" xml:space="preserve"><value>Balanced</value></data>
+  <data name="Record_QualityPresetArchive" xml:space="preserve"><value>Archive</value></data>
   <data name="Record_Start" xml:space="preserve"><value>Record</value></data>
   <data name="Record_Stop" xml:space="preserve"><value>Stop</value></data>
   <data name="Record_Screenshot" xml:space="preserve"><value>Screenshot</value></data>
@@ -113,6 +117,8 @@
   <data name="Settings_CursorDesc" xml:space="preserve"><value>Include the pointer in recordings and screenshots</value></data>
   <data name="Settings_Clicks" xml:space="preserve"><value>Highlight mouse clicks</value></data>
   <data name="Settings_ClicksDesc" xml:space="preserve"><value>Draw a ripple around each click</value></data>
+  <data name="Settings_BitrateGuardrail" xml:space="preserve"><value>Limit maximum bitrate</value></data>
+  <data name="Settings_BitrateGuardrailDesc" xml:space="preserve"><value>Cap file size growth on unusually complex content, without changing the quality setting</value></data>
   <data name="Settings_AutoSplit" xml:space="preserve"><value>Auto-split large recordings</value></data>
   <data name="Settings_AutoSplitDesc" xml:space="preserve"><value>Start a new file when a segment reaches this size</value></data>
   <data name="Settings_KeyboardShortcuts" xml:space="preserve"><value>Keyboard shortcuts</value></data>

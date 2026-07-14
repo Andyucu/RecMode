@@ -24,5 +24,8 @@ public interface IPreviewEngine : IDisposable
     /// <summary>Enables/disables the webcam picture-in-picture overlay on the preview; call after <see cref="Start"/>. Null source disables it.</summary>
     void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect);
 
+    /// <summary>Sets the captured-video brightness adjustment, -100..100, 0 = unchanged; call before or after <see cref="Start"/>.</summary>
+    void SetBrightness(double value);
+
     void Stop();
 }

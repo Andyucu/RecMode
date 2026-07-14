@@ -53,6 +53,7 @@ public sealed partial class RecordViewModel
         bool started = _coordinator.Start(target, SelectedEncoder, SelectedFormat, SelectedFrameRate, Quality);
         if (started)
         {
+            ActiveCaptureTarget = target;
             IsRecording = true;
             StatusText = "Recording";
             StatsText = "";
@@ -91,6 +92,7 @@ public sealed partial class RecordViewModel
         IsRecording = false;
         IsHealthy = true;
         IsAnnotating = false;
+        ActiveCaptureTarget = null;
         ElapsedText = "00:00";
         StatusText = result.Success
             ? $"Saved {Path.GetFileName(result.OutputPath)}"

@@ -36,6 +36,7 @@ public sealed partial class RecordViewModel
             _previewBitmap = new WriteableBitmap(engine.Width, engine.Height, 96, 96, PixelFormats.Bgra32, null);
             engine.FrameAvailable += OnPreviewFrame;
             _preview = engine;
+            _preview.SetBrightness(Brightness);
             PreviewImage = _previewBitmap;
             OnPropertyChanged(nameof(HasPreview));
             StartWebcamPreview();

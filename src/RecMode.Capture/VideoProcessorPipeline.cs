@@ -1,4 +1,5 @@
 using RecMode.Capture.Webcam;
+using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -32,6 +33,13 @@ internal abstract class VideoProcessorPipeline : IDisposable
     private readonly WebcamOverlayCompositor _webcamCompositor;
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+
+    // Brightness (§ brightness slider): the device's actual filter range varies (driver-dependent), so the
+    // user-facing -100..100 value is mapped into it via VideoProcessorFilterRange.Multiplier at apply time
+    // rather than assumed to match 1:1. Queried once at construction; unsupported hardware just no-ops.
+    private readonly bool _brightnessSupported;
+    private readonly VideoProcessorFilterRange _brightnessRange;
+    private double _brightnessValue;
 
     public int OutputWidth { get; }
     public int OutputHeight { get; }
@@ -91,6 +99,9 @@ internal abstract class VideoProcessorPipeline : IDisposable
         }
 
         _webcamCompositor = new WebcamOverlayCompositor(device, context, VideoDevice, Enumerator);
+
+        Result filterHr = Enumerator.GetVideoProcessorFilterRange(VideoProcessorFilter.Brightness, out _brightnessRange);
+        _brightnessSupported = filterHr.Success;
     }
 
     /// <summary>Enables/disables the webcam picture-in-picture overlay; null source disables it.</summary>
@@ -100,11 +111,16 @@ internal abstract class VideoProcessorPipeline : IDisposable
         _webcamRect = rect;
     }
 
+    /// <summary>Sets the captured-video brightness adjustment, -100 (darkest) .. 100 (brightest), 0 = unchanged.
+    /// No-ops on hardware whose VideoProcessor doesn't expose a Brightness filter (fails closed, not an error).</summary>
+    public void SetBrightness(double value) => _brightnessValue = Math.Clamp(value, -100, 100);
+
     /// <summary>Blts <paramref name="src"/> through the VideoProcessor (compositing the webcam overlay, if
     /// set and available) and reads the result back via the subclass's format-specific readback.</summary>
     protected void BltAndReadback(ID3D11Texture2D src, byte[] dest)
     {
         ID3D11VideoProcessorInputView inputView = GetOrCreateInputView(src);
+        ApplyBrightnessFilter();
 
         if (_webcamSource is not null && _webcamRect is { } rect)
         {
@@ -133,6 +149,26 @@ internal abstract class VideoProcessorPipeline : IDisposable
     /// <summary>Maps <see cref="StagingTexture"/> and copies it into <paramref name="dest"/> in the
     /// subclass's tightly-packed format (NV12 two-plane vs BGRA single-plane).</summary>
     protected abstract void ReadbackTightlyPacked(byte[] dest);
+
+    /// <summary>Applies the current brightness value to stream 0 (the captured content only — never the
+    /// webcam overlay, which keeps its own natural exposure). Cheap enough to call every frame; no allocation.</summary>
+    private void ApplyBrightnessFilter()
+    {
+        if (!_brightnessSupported)
+        {
+            return;
+        }
+
+        bool enable = Math.Abs(_brightnessValue) > 0.01;
+        int level = _brightnessRange.Default;
+        if (enable)
+        {
+            double t = (_brightnessValue + 100) / 200; // 0..1 across the UI's -100..100 range
+            level = (int)Math.Round(_brightnessRange.Minimum + t * (_brightnessRange.Maximum - _brightnessRange.Minimum));
+        }
+
+        VideoContext.VideoProcessorSetStreamFilter(Processor, 0, VideoProcessorFilter.Brightness, enable, level);
+    }
 
     private ID3D11VideoProcessorInputView GetOrCreateInputView(ID3D11Texture2D src)
     {

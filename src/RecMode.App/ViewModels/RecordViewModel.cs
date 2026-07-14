@@ -26,6 +26,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private readonly ISettingsService _settings;
     private readonly Func<IPreviewEngine> _previewFactory;
     private readonly IRegionPicker _regionPicker;
+    private readonly IWindowPicker _windowPicker;
     private readonly Func<RecMode.Audio.IAudioMixer> _mixerFactory;
 
     private MonitorInfo? _selectedMonitor;
@@ -34,6 +35,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private MediaContainer _selectedFormat;
     private int _selectedFrameRate;
     private int _quality;
+    private double _brightness;
     private RegionRect? _region;
     private bool _isScreenSource = true;
     private bool _isWindowSource;
@@ -56,14 +58,16 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
-        Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots, IScreenshotFlash screenshotFlash,
-        ICountdownController countdown, IProfileNamePrompt profilePrompt, RecMode.Core.Infrastructure.IAppPaths paths)
+        IWindowPicker windowPicker, Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots,
+        IScreenshotFlash screenshotFlash, ICountdownController countdown, IProfileNamePrompt profilePrompt,
+        RecMode.Core.Infrastructure.IAppPaths paths)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
         _settings = settings;
         _previewFactory = previewFactory;
         _regionPicker = regionPicker;
+        _windowPicker = windowPicker;
         _mixerFactory = mixerFactory;
         _screenshots = screenshots;
         _screenshotFlash = screenshotFlash;
@@ -90,15 +94,18 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mp4;
         _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 60;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
+        _brightness = Math.Clamp(settings.Current.Brightness, -100, 100);
 
         RecordCommand = new RelayCommand(ToggleRecord,
             () => CurrentTarget(refreshFollowedWindow: false) is not null && SelectedEncoder is not null);
         ChangeRegionCommand = new RelayCommand(() => PickRegion(revertOnCancel: false));
+        PickWindowCommand = new RelayCommand(PickWindowWithMouse);
         PauseResumeCommand = new RelayCommand(TogglePause);
         ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget(refreshFollowedWindow: false) is not null);
         ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
+        SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
 
         LoadProfiles();
 
@@ -114,11 +121,16 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     public IRelayCommand RecordCommand { get; }
     public IRelayCommand ChangeRegionCommand { get; }
+    public IRelayCommand PickWindowCommand { get; }
     public IRelayCommand PauseResumeCommand { get; }
     public IRelayCommand ScreenshotCommand { get; }
     public IRelayCommand ToggleAnnotateCommand { get; }
     public IRelayCommand SaveProfileCommand { get; }
     public IRelayCommand DeleteProfileCommand { get; }
+
+    /// <summary>Sets Quality to a named snap-point value (Web/Balanced/Archive), so users can land on a
+    /// sensible value without dragging — the same anchors <see cref="FfmpegArgsBuilder.QualityTier"/> names.</summary>
+    public IRelayCommand<string> SetQualityPresetCommand { get; }
 
     /// <summary>Captures a still of the current source (F11 / button). Runs on the UI thread.</summary>
     public void TakeScreenshot()
@@ -220,6 +232,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             _settings.Current.RegionHeight = r.Height;
             _settings.RequestSave();
             OnPropertyChanged(nameof(RegionLabel));
+            OnPropertyChanged(nameof(QualityLabel));
             RestartPreview();
             RecordCommand.NotifyCanExecuteChanged();
         }
@@ -233,6 +246,31 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             // Region source even if this pick was triggered by switching tiles rather than "Change…".
             RestartPreview();
         }
+    }
+
+    /// <summary>Shows the point-and-click "pick a window with the mouse" overlay (alternative to the Windows
+    /// combo box). Also flips on Window source, so this works as a one-click entry point even before the
+    /// Window tile is selected.</summary>
+    private void PickWindowWithMouse()
+    {
+        WindowInfo? picked = _windowPicker.Pick();
+        if (picked is null)
+        {
+            return;
+        }
+
+        LoadWindows(); // refresh so the picked window (and anything opened since the last load) is present
+        WindowInfo? match = Windows.FirstOrDefault(w => w.Handle == picked.Handle);
+        if (match is null)
+        {
+            // Rare: the picked window closed, or otherwise dropped out of the filtered enumeration, between
+            // the overlay resolving it and this refresh — fall back to what was actually picked.
+            match = picked;
+            Windows.Add(match);
+        }
+
+        IsWindowSource = true;
+        SelectedWindow = match;
     }
 
     public string RegionLabel => _region is { } r ? $"Region {r.Width} × {r.Height}" : "No region selected";
@@ -257,13 +295,13 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public MonitorInfo? SelectedMonitor
     {
         get => _selectedMonitor;
-        set { if (SetProperty(ref _selectedMonitor, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); } }
+        set { if (SetProperty(ref _selectedMonitor, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
     }
 
     public WindowInfo? SelectedWindow
     {
         get => _selectedWindow;
-        set { if (SetProperty(ref _selectedWindow, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); } }
+        set { if (SetProperty(ref _selectedWindow, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
     }
 
     public EncoderInfo? SelectedEncoder
@@ -278,6 +316,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 _settings.Current.HardwareEncoding = value.IsHardware;
                 _settings.RequestSave();
                 OnPropertyChanged(nameof(HardwareBadge));
+                OnPropertyChanged(nameof(QualityLabel));
                 RecordCommand.NotifyCanExecuteChanged();
             }
         }
@@ -292,7 +331,15 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public int SelectedFrameRate
     {
         get => _selectedFrameRate;
-        set { if (SetProperty(ref _selectedFrameRate, value)) { _settings.Current.FrameRate = value; _settings.RequestSave(); } }
+        set
+        {
+            if (SetProperty(ref _selectedFrameRate, value))
+            {
+                _settings.Current.FrameRate = value;
+                _settings.RequestSave();
+                OnPropertyChanged(nameof(QualityLabel));
+            }
+        }
     }
 
     public int Quality
@@ -309,7 +356,57 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         }
     }
 
-    public string QualityLabel => $"{Quality} · CRF {FfmpegArgsBuilder.QualityToCrf(Quality)}";
+    /// <summary>Friendlier than a bare CRF number: a qualitative tier + an estimated file size, with the raw
+    /// CRF/CQ/QP number (the actual value the selected encoder will use — <see cref="FfmpegArgsBuilder.EffectiveQualityValue"/>,
+    /// not just the uncalibrated curve) kept alongside for technical users. The size estimate uses the
+    /// currently selected source's resolution when known, falling back to a 1080p assumption otherwise — it's
+    /// a rough anchor ("roughly how big"), not a precise prediction (see <see cref="FfmpegArgsBuilder.EstimateTypicalKbps"/>).</summary>
+    public string QualityLabel
+    {
+        get
+        {
+            (int w, int h) = EstimatedResolutionForSizeLabel();
+            int kbps = FfmpegArgsBuilder.EstimateTypicalKbps(w, h, SelectedFrameRate, Quality);
+            double mbPerMinute = kbps * 60.0 / 8000.0; // kbit/s -> MB/min (decimal MB, "roughly how big")
+            int crf = SelectedEncoder is { } enc ? FfmpegArgsBuilder.EffectiveQualityValue(enc, Quality) : FfmpegArgsBuilder.QualityToCrf(Quality);
+            return $"{FfmpegArgsBuilder.QualityTier(Quality)} · ~{mbPerMinute:0.#} MB/min · CRF {crf}";
+        }
+    }
+
+    /// <summary>Best-effort source resolution for <see cref="QualityLabel"/>'s size estimate — the current
+    /// capture target's raw size (not the post-<c>CaptureSizing</c> encode size, close enough for an estimate),
+    /// falling back to a common 1080p assumption when no target is selected yet or its size can't be read.</summary>
+    private (int Width, int Height) EstimatedResolutionForSizeLabel()
+    {
+        CaptureTarget? target = CurrentTarget(refreshFollowedWindow: false);
+        if (target is not null && CaptureCapabilities.TryGetSourceSize(target, out int w, out int h))
+        {
+            return (w, h);
+        }
+        return (1920, 1080);
+    }
+
+    public double Brightness
+    {
+        get => _brightness;
+        set
+        {
+            if (SetProperty(ref _brightness, value))
+            {
+                _settings.Current.Brightness = value;
+                _settings.RequestSave();
+                _preview?.SetBrightness(value);
+                if (IsRecording)
+                {
+                    _coordinator.SetBrightness(value);
+                }
+                OnPropertyChanged(nameof(BrightnessLabel));
+            }
+        }
+    }
+
+    public string BrightnessLabel => Brightness == 0 ? "0" : $"{Brightness:+0;-0}";
+
     public string HardwareBadge => SelectedEncoder?.HardwareBadge ?? "";
 
     public bool IsRecording
@@ -347,6 +444,12 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     /// <summary>Turns annotation off (called by the overlay on Esc and when the recording ends).</summary>
     public void StopAnnotating() => IsAnnotating = false;
+
+    /// <summary>The capture target actually being recorded, fixed at the moment recording started (not
+    /// re-evaluated from the Record screen's current selection). Null when not recording. Lets the
+    /// draw-on-screen overlay cover exactly what's being captured — the selected monitor/region/window —
+    /// instead of always the primary monitor.</summary>
+    public CaptureTarget? ActiveCaptureTarget { get; private set; }
 
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }

@@ -40,8 +40,21 @@ public sealed class RecModeSettings
     public bool HardwareEncoding { get; set; } = true;
     public int FrameRate { get; set; } = 60;
 
-    /// <summary>0–100 quality slider; mapped to CRF/CQ in the encoding layer (CRF = 51 − q·0.38).</summary>
+    /// <summary>0–100 quality slider; mapped to CRF/CQ/QP in the encoding layer via a perceptually-curved,
+    /// per-encoder-calibrated model (see <c>FfmpegArgsBuilder.EffectiveQualityValue</c>).</summary>
     public int Quality { get; set; } = 70;
+
+    /// <summary>Captured-video brightness adjustment, -100 (darkest) .. 100 (brightest), 0 = unchanged.
+    /// Applied on the GPU VideoProcessor pass; no-ops on hardware without a Brightness filter.</summary>
+    public double Brightness { get; set; }
+
+    /// <summary>Adds a generous <c>-maxrate/-bufsize</c> ceiling (derived from resolution/fps/quality) alongside
+    /// CRF/CQ encoding, so unusually complex content (fast motion, busy screen content) can't produce a
+    /// surprise multi-GB file — the ceiling is set well above the typical bitrate for the chosen quality, so it
+    /// rarely engages. Applies only where the encoder's rate-control mode supports it without changing behavior
+    /// (software x264/x265/SVT-AV1, and NVENC's existing VBR mode); AMF's constant-QP mode and QSV's ICQ mode
+    /// don't support a bitrate ceiling without switching rate-control modes entirely, so they're left alone.</summary>
+    public bool BitrateGuardrailEnabled { get; set; } = true;
 
     /// <summary>Safe-recording: capture to MKV then auto-remux to MP4 on stop (plan §3, on by default).</summary>
     public bool SafeRecording { get; set; } = true;

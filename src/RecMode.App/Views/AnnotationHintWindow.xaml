@@ -10,7 +10,7 @@
             <TextBlock Text="Drawing on screen" VerticalAlignment="Center" Margin="0,0,12,0"
                        Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13" />
             <Button x:Name="ExitButton" Content="Exit draw mode" Click="OnExitClick" Style="{StaticResource SecondaryButton}"
-                    ToolTip="Stop drawing (Esc)" Height="28" Padding="12,0" FontSize="13" />
+                    ToolTip="Stop drawing (Esc or F12)" Height="28" Padding="12,0" FontSize="13" />
         </StackPanel>
     </Border>
 </Window>

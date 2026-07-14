@@ -6,6 +6,18 @@ using RecMode.Core.Infrastructure;
 
 namespace RecMode.App.Views;
 
+/// <summary>
+/// Shared by every top-level main-window candidate (<see cref="ShellWindow"/>, <see cref="CompactWindow"/>) so
+/// their <c>OnClosing</c> overrides gate on one flag instead of each their own — <see
+/// cref="Application.Shutdown"/> re-closes every open window, so a per-instance flag would make each hidden
+/// window (e.g. the other layout's window, kept alive but hidden by <c>ShellPresenter</c>) re-enter its own
+/// "redirect to Shutdown" branch and call <see cref="Application.Shutdown"/> again.
+/// </summary>
+internal static class AppShutdownState
+{
+    public static bool InProgress { get; set; }
+}
+
 public partial class ShellWindow : Window
 {
     private readonly IOsCapabilities _os;
@@ -59,6 +71,25 @@ public partial class ShellWindow : Window
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     // Explicit shutdown: the app runs under ShutdownMode.OnExplicitShutdown (so transient overlay windows and
-    // tray-only operation don't end the process), so the main window's close button must quit the app itself.
-    private void OnClose(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
+    // tray-only operation don't end the process), so any path that closes this window must quit the app
+    // itself. The caption X button routes here; Alt+F4 (or a taskbar/System-menu close) instead closes the
+    // window directly via WM_SYSCOMMAND, bypassing this handler — OnClosing below catches that path too.
+    private void OnClose(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // First pass (any close, including Alt+F4): redirect to a full app shutdown instead of letting this
+        // window merely close, which would otherwise leave the process (and tray icon) running headless.
+        // Application.Shutdown() re-closes every open window, including this one — the second time through,
+        // AppShutdownState.InProgress lets it actually proceed.
+        if (!AppShutdownState.InProgress)
+        {
+            e.Cancel = true;
+            AppShutdownState.InProgress = true;
+            Application.Current.Shutdown();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
 }

@@ -53,7 +53,7 @@
                     ToolTip="Save a still image of the current source (F11)"
                     Style="{StaticResource SecondaryButton}" Height="28" Padding="10,0" Margin="6,0,0,0" />
             <Button Command="{Binding ToggleAnnotateCommand}" Content="{x:Static res:Strings.Record_Annotate}"
-                    ToolTip="Draw on screen while recording (Esc to exit, right-click to clear)"
+                    ToolTip="Draw on screen while recording (Esc or F12 to exit, right-click to clear)"
                     Height="28" Padding="10,0" Margin="6,0,0,0">
                 <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
