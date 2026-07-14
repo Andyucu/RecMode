@@ -24,7 +24,8 @@ artifacts/
 /CHANGELOG.md
 /CLAUDE.md
 /PROJECT_MEMORY.md
-/DOCS/
+/DOCS/*
+!/DOCS/RecMode_User_Guide.html
 /RecMode notes.txt
 
 ## Test / coverage

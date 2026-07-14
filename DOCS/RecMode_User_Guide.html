@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RecMode User Guide</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --muted: #5c5c5c;
+      --accent: #0078d4;
+      --accent-soft: #e8f3fc;
+      --border: #e1e4ea;
+      --code-bg: #f0f2f5;
+      --warn-bg: #fff8e6;
+      --warn-border: #f0c000;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121316;
+        --surface: #1c1e24;
+        --text: #f0f2f5;
+        --muted: #a8adb8;
+        --accent: #60b4ff;
+        --accent-soft: #1a2a3d;
+        --border: #2e3340;
+        --code-bg: #252830;
+        --warn-bg: #2a2410;
+        --warn-border: #c4a000;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    a { color: var(--accent); }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      max-width: 1200px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      padding: 24px 16px 24px 24px;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      max-height: 100vh;
+      overflow-y: auto;
+    }
+    nav h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 20px 0 8px;
+    }
+    nav h2:first-child { margin-top: 0; }
+    nav a {
+      display: block;
+      padding: 4px 0;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    nav a:hover { text-decoration: underline; }
+    main {
+      padding: 32px 40px 80px;
+      max-width: 860px;
+    }
+    header.hero {
+      margin-bottom: 40px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    header.hero h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      font-weight: 600;
+    }
+    header.hero .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    h2 {
+      margin: 48px 0 16px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      scroll-margin-top: 24px;
+    }
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+    p { margin: 0 0 14px; }
+    ul, ol { margin: 0 0 16px; padding-left: 1.4em; }
+    li { margin-bottom: 6px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin: 16px 0;
+    }
+    .warn {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      font-size: 15px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 15px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--accent-soft); font-weight: 600; }
+    code, pre {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 14px;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.45;
+    }
+    .diagram {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.4;
+      white-space: pre;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    kbd {
+      display: inline-block;
+      padding: 2px 7px;
+      font-size: 13px;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      box-shadow: 0 1px 0 var(--border);
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      nav {
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: none;
+      }
+      main { padding: 24px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav aria-label="Table of contents">
+      <h2>Guide</h2>
+      <a href="#overview">Overview</a>
+      <a href="#requirements">Requirements</a>
+      <a href="#install">Installation</a>
+      <a href="#layouts">App layouts</a>
+      <a href="#record">Record screen</a>
+      <a href="#sources">Capture sources</a>
+      <a href="#video">Video settings</a>
+      <a href="#audio">Audio</a>
+      <a href="#webcam">Webcam overlay</a>
+      <a href="#recording">While recording</a>
+      <a href="#library">Library</a>
+      <a href="#schedule">Schedule</a>
+      <a href="#settings">Settings</a>
+      <a href="#hotkeys">Hotkeys</a>
+      <a href="#cli">Command line</a>
+      <a href="#files">Files and folders</a>
+      <a href="#workflows">Common workflows</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+      <a href="#limitations">Beta limitations</a>
+    </nav>
+
+    <main>
+      <header class="hero">
+        <h1>RecMode User Guide</h1>
+        <p class="meta">Version 0.9.27-beta · Windows screen recorder · Last updated July 2026</p>
+        <p>RecMode captures your desktop, windows, or regions, encodes with hardware or software ffmpeg, and saves shareable video files — with optional audio, webcam overlay, annotations, and automation.</p>
+      </header>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>RecMode is a portable-first Windows application. After you extract or install it, recordings and settings stay in folders next to the executable (portable mode) or in your chosen install location. No account, no cloud upload, and no telemetry.</p>
+
+        <div class="diagram">┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────┐
+│   Capture   │ ──► │ GPU pipeline │ ──► │   ffmpeg    │ ──► │  Output  │
+│ WGC / DXGI  │     │ NV12 + audio │     │ HW or SW enc│     │ MP4/MKV… │
+└─────────────┘     └──────────────┘     └─────────────┘     └──────────┘
+       ▲                    ▲
+       │                    └── Brightness, region crop, webcam PIP
+       └── Screen / Window / Region / All Displays</div>
+
+        <p>Main areas of the app:</p>
+        <ul>
+          <li><strong>Record</strong> — choose what to capture, adjust quality and audio, start/stop.</li>
+          <li><strong>Library</strong> — browse saved videos and screenshots.</li>
+          <li><strong>Schedule</strong> — set timed recordings that fire while RecMode is running.</li>
+          <li><strong>Settings</strong> — defaults, appearance, hotkeys, performance, and startup.</li>
+        </ul>
+      </section>
+
+      <section id="requirements">
+        <h2>Requirements</h2>
+        <table>
+          <tr><th>Item</th><th>Detail</th></tr>
+          <tr><td>Operating system</td><td>Windows 10 version 2004 (build 19041) or newer; Windows 11 recommended</td></tr>
+          <tr><td>Architecture</td><td>64-bit (x64) only</td></tr>
+          <tr><td>.NET runtime</td><td>Not required for official portable/installer builds (self-contained)</td></tr>
+          <tr><td>ffmpeg</td><td>Included in packaged builds under <code>ffmpeg\</code></td></tr>
+          <tr><td>GPU encoding</td><td>Optional — NVIDIA (NVENC), AMD (AMF), or Intel (QSV) with working drivers</td></tr>
+          <tr><td>Microphone / webcam</td><td>Optional — only needed if you use those features</td></tr>
+        </table>
+      </section>
+
+      <section id="install">
+        <h2>Installation</h2>
+
+        <h3>Portable (recommended for USB or no-install use)</h3>
+        <ol>
+          <li>Download <code>RecMode-*-portable-win-x64.zip</code> and extract to any folder.</li>
+          <li>Run <code>RecMode.exe</code>.</li>
+          <li>The presence of <code>portable.marker</code> tells RecMode to keep all data inside this folder.</li>
+        </ol>
+
+        <h3>Installer</h3>
+        <p>Run <strong>RecMode-win-Setup.exe</strong> for a guided install, or deploy <strong>RecMode-win.msi</strong> in managed environments. Both include bundled ffmpeg and third-party license notices.</p>
+        <p>Custom location (Setup):</p>
+        <pre>RecMode-win-Setup.exe --installto "D:\Apps\RecMode"</pre>
+        <p>Custom location (MSI):</p>
+        <pre>msiexec /i RecMode-win.msi VELOPACK_INSTALLDIR="D:\Apps\RecMode"</pre>
+
+        <h3>Start with Windows</h3>
+        <p>Enable <strong>Settings → General → Start with Windows</strong> to launch RecMode minimized to the tray at sign-in (<code>RecMode.exe --tray</code>).</p>
+      </section>
+
+      <section id="layouts">
+        <h2>App layouts</h2>
+        <p>Under <strong>Settings → Appearance → Navigation layout</strong>, choose how the main window is arranged:</p>
+        <table>
+          <tr><th>Layout</th><th>Description</th></tr>
+          <tr><td><strong>Sidebar</strong></td><td>Default — navigation on the left, content on the right.</td></tr>
+          <tr><td><strong>Top bar</strong></td><td>Horizontal tabs across the top; more vertical space for content.</td></tr>
+          <tr><td><strong>Compact</strong></td><td>Small floating card (~392 px) with source tiles, audio rows, Record/Screenshot, and elapsed time. Use <strong>Expand to full window</strong> to switch to the full shell.</td></tr>
+        </table>
+        <p>Theme (<strong>System / Light / Dark</strong>) and accent colour apply immediately. Compact layout includes the same window picker as the full Record screen when Window source is selected.</p>
+      </section>
+
+      <section id="record">
+        <h2>Record screen</h2>
+        <div class="diagram">┌──────────────────────────────────────────────────────────────┐
+│  Record                                                       │
+├──────────────────────────────────────────────────────────────┤
+│  Source:  [Screen] [Window] [Region] [Webcam*]               │
+│           └─ Window picker / Follow toggle (when Window)       │
+├─────────────────────────────┬────────────────────────────────┤
+│  Live preview               │  Video: Profile, encoder,      │
+│                             │  format, fps, quality,         │
+│  [Record] [Pause] [Shot]    │  brightness                    │
+│  Status · stats · timer     │  Audio: system, mic, per-app   │
+│  Disk space on output drive │  Webcam: PIP overlay           │
+└─────────────────────────────┴────────────────────────────────┘
+  * Webcam as primary source — coming soon</div>
+
+        <h3>Basic recording steps</h3>
+        <ol>
+          <li>Select a <strong>source</strong> tile (Screen, Window, or Region).</li>
+          <li>Configure the target (display, window, or region).</li>
+          <li>Choose a <strong>Profile</strong> or adjust encoder, format, frame rate, and quality.</li>
+          <li>Set <strong>Audio</strong> and optional <strong>Webcam</strong> overlay.</li>
+          <li>Click <strong>Record</strong> or press <kbd>F9</kbd>.</li>
+          <li>When finished, click <strong>Stop</strong> or press <kbd>F9</kbd> again.</li>
+        </ol>
+        <p>If countdown is enabled, a full-screen 3-2-1 overlay appears before recording starts (Esc cancels). CLI <code>--record</code> skips the countdown.</p>
+        <p>The status bar shows elapsed time, live stats (fps, bitrate, size), and free space on the drive where recordings are saved.</p>
+      </section>
+
+      <section id="sources">
+        <h2>Capture sources</h2>
+
+        <h3>Screen</h3>
+        <p>Records an entire monitor. Choose the display from the <strong>Display</strong> dropdown in the Video card. If you have two or more monitors, an <strong>All Displays</strong> entry composites every monitor into one virtual-desktop-sized recording.</p>
+
+        <h3>Window</h3>
+        <p>Records one application window. After clicking the Window tile:</p>
+        <ul>
+          <li><strong>Dropdown</strong> — lists open top-level windows (title-less overlays are excluded).</li>
+          <li><strong>Manual Pick</strong> — dims the screen; move the mouse to highlight a window, then click to select it.</li>
+          <li><strong>Follow selected window</strong> — before capture starts, RecMode re-resolves the window by handle, then process+title, so apps that recreate their window can still be recorded without repicking.</li>
+        </ul>
+        <p>While attached to a window handle, Windows Graphics Capture follows normal move and resize.</p>
+
+        <h3>Region</h3>
+        <p>Records a rectangle on a monitor. Click the Region tile to open the region picker:</p>
+        <ul>
+          <li>Drag to define the area; live pixel size is shown.</li>
+          <li>Presets: 1920×1080, 1280×720, or Full (entire monitor).</li>
+          <li><kbd>Enter</kbd> confirms; <kbd>Esc</kbd> cancels (keeps the previous region if one existed).</li>
+        </ul>
+        <p>Click Region again later to change the area (when not actively recording).</p>
+
+        <h3>Live preview</h3>
+        <p>The preview panel shows a throttled live view of the selected source. Preview pauses during recording and when you navigate away or minimize — this saves CPU and GPU.</p>
+      </section>
+
+      <section id="video">
+        <h2>Video settings</h2>
+
+        <h3>Recording profiles</h3>
+        <p>Profiles bundle container, frame rate, quality, and audio settings. They do <em>not</em> change the encoder — hardware availability is machine-specific.</p>
+        <table>
+          <tr><th>Built-in profile</th><th>Typical use</th></tr>
+          <tr><td>Tutorial (Balanced quality, 30 fps)</td><td>How-to videos with voice and system audio</td></tr>
+          <tr><td>Gameplay (High quality, 60 fps)</td><td>Fast motion, system audio only</td></tr>
+          <tr><td>Meeting (Standard quality, 30 fps)</td><td>Calls with mic and system audio</td></tr>
+          <tr><td>Bug report (Small file, 30 fps)</td><td>Short demos, smaller files</td></tr>
+          <tr><td>Quick clip (Low quality, 15 fps, no audio)</td><td>Silent, small shareable clips</td></tr>
+          <tr><td>Archive (Maximum quality, 60 fps, lossless audio)</td><td>MKV + FLAC for best fidelity</td></tr>
+        </table>
+        <p>Use <strong>Save as…</strong> to store custom profiles; <strong>Delete</strong> removes custom ones only. Press <kbd>F8</kbd> to cycle profiles (skipped while recording). Hover profile names in the list for tooltips.</p>
+
+        <h3>Encoder</h3>
+        <p>RecMode probes encoders at startup with a short trial encode — only working backends are offered. Hardware H.264, HEVC, and AV1 are used when available; software <code>libx264</code> / x265 / SVT-AV1 are fallbacks.</p>
+
+        <h3>Format (container)</h3>
+        <table>
+          <tr><th>Container</th><th>Notes</th></tr>
+          <tr><td>MP4</td><td>Best for sharing; AAC audio</td></tr>
+          <tr><td>MKV</td><td>Crash-safe intermediate when Safe recording is on; Opus or FLAC audio</td></tr>
+          <tr><td>MOV</td><td>Similar to MP4; safe remux supported</td></tr>
+          <tr><td>WebM</td><td>AV1 video + Opus only — incompatible combos are blocked before recording</td></tr>
+        </table>
+
+        <h3>Quality</h3>
+        <p>The slider maps to encoder-specific quality (CRF/CQ/QP) with a perceptual curve. The label shows a tier (Small file / Balanced / High quality / Visually lossless), an estimated MB/min, and the actual encoder value. Quick buttons: <strong>Web</strong> (15), <strong>Balanced</strong> (50), <strong>Archive</strong> (90).</p>
+
+        <h3>Brightness</h3>
+        <p>Range −100 to +100, applied on the GPU in the capture pipeline. Changes apply live in preview and during an active recording. Effect intensity depends on your GPU driver.</p>
+
+        <h3>Safe recording</h3>
+        <p>When enabled (default), RecMode writes to a temporary <code>.recording.mkv</code> and remuxes to MP4/MOV on stop without re-encoding. If the app crashes mid-recording, the MKV can often be recovered on next launch.</p>
+      </section>
+
+      <section id="audio">
+        <h2>Audio</h2>
+        <p>Audio is mixed at 48 kHz stereo and encoded according to the container.</p>
+
+        <h3>System audio</h3>
+        <p>Captures what your PC is playing (WASAPI loopback). Toggle on/off, adjust volume, and watch the level meter. Past ~82% RMS the meter turns caution amber to warn of near-clipping.</p>
+
+        <h3>Limit to app</h3>
+        <p>When system audio is on, choose one running application to isolate its audio instead of the full system mix. The target must be running when recording starts; if it is not found, system audio is omitted rather than falling back silently to full-system capture.</p>
+
+        <h3>Microphone</h3>
+        <p>Enable your mic, set volume, and monitor levels the same way as system audio.</p>
+
+        <div class="warn">
+          <strong>Known beta issue:</strong> Full-system loopback audio may produce a silent track in some environments. Per-app audio targeting has been verified separately. Check your output with a short test recording if audio is critical.
+        </div>
+      </section>
+
+      <section id="webcam">
+        <h2>Webcam overlay</h2>
+        <p>Add a picture-in-picture camera box on top of the recording (and preview):</p>
+        <ol>
+          <li>Enable <strong>Show webcam</strong>.</li>
+          <li>Choose the <strong>Camera</strong> device.</li>
+          <li>Set <strong>Position</strong> (corners) and <strong>Size</strong> (10–50% of frame width).</li>
+        </ol>
+        <p>If no camera is detected, the toggle is disabled. The overlay is composited on the GPU alongside the main capture.</p>
+      </section>
+
+      <section id="recording">
+        <h2>While recording</h2>
+
+        <h3>Floating toolbar</h3>
+        <p>A bottom-centre bar shows the red recording dot, timer, pause, screenshot, live stats, and stop. It is <strong>excluded from capture</strong> so it never appears in your video.</p>
+
+        <h3>Pause and resume</h3>
+        <p>Pause with the toolbar button or <kbd>F10</kbd>. Paused time is excluded from the output — the final file has no gap where you paused.</p>
+
+        <h3>Screenshot</h3>
+        <p>Press <kbd>F11</kbd>, use the toolbar, or the Record page button. Saves a PNG of the current source to the screenshots folder and copies it to the clipboard. A brief flash confirms the capture.</p>
+
+        <h3>Click highlights</h3>
+        <p>Enable <strong>Settings → Recording → Highlight mouse clicks</strong>. During recording, each click draws an accent ripple that <em>is</em> included in the video.</p>
+
+        <h3>Draw mode</h3>
+        <p>Toggle <strong>Draw</strong> on the recording toolbar while recording. Ink covers only the captured area (monitor, window, or region — not the wrong screen). Exit with:</p>
+        <ul>
+          <li>The <strong>Exit draw mode</strong> hint bar</li>
+          <li><kbd>Esc</kbd> (global while annotating)</li>
+          <li><kbd>F12</kbd> (global while annotating)</li>
+        </ul>
+        <p>Right-click clears strokes. The hint bar and toolbar are carved out of the ink surface so you can always reach exit controls.</p>
+
+        <h3>Health and disk warnings</h3>
+        <ul>
+          <li>If the encoder falls behind, stats show a warning and the rec dot may turn amber.</li>
+          <li>Low disk space (&lt; 2 GB) warns at start; critically low space stops the recording gracefully.</li>
+          <li>Slow output drives (&lt; 10 MB/s) warn at start.</li>
+          <li>Recording on battery shows an optional warning.</li>
+        </ul>
+      </section>
+
+      <section id="library">
+        <h2>Library</h2>
+        <p>The Library lists files from your recordings and screenshots folders.</p>
+        <ul>
+          <li><strong>Videos</strong> — newest first; shows codec, resolution, duration, size, and date when indexed.</li>
+          <li><strong>Screenshots</strong> — thumbnails for quick browsing.</li>
+          <li><strong>Open</strong> — play or view in the default app.</li>
+          <li><strong>Show in folder</strong> — open Explorer with the file selected.</li>
+          <li><strong>Delete</strong> — send to Recycle Bin.</li>
+          <li><strong>Record again</strong> — apply that video's format, frame rate, quality, and audio toggles to the Record screen (capture target is not restored).</li>
+        </ul>
+        <p>Metadata is stored in <code>Data\library.json</code> as recordings finish.</p>
+      </section>
+
+      <section id="schedule">
+        <h2>Schedule</h2>
+        <p>Create timed recordings that run while RecMode is open (including from the tray):</p>
+        <ol>
+          <li>Click <strong>New schedule</strong> and set name, recurrence (Once / Daily / Weekdays / Weekly), start time, and duration.</li>
+          <li>Optionally bind a <strong>Recording profile</strong>; otherwise the schedule follows current Record settings for container/fps/quality/audio.</li>
+          <li>Toggle schedules on or off; edit or delete as needed.</li>
+        </ol>
+        <p>RecMode does not catch up missed runs from while it was fully closed. An active recording is never interrupted by a schedule.</p>
+      </section>
+
+      <section id="settings">
+        <h2>Settings</h2>
+
+        <h3>Appearance</h3>
+        <ul>
+          <li>Theme: System, Light, or Dark</li>
+          <li>Accent colour (five presets)</li>
+          <li>Navigation layout: Sidebar, Top bar, or Compact</li>
+        </ul>
+
+        <h3>Encoding defaults</h3>
+        <p>Defaults applied when you open Record or start from tray/CLI. Includes video encoder, container, audio format, audio bitrate, and <strong>Limit maximum bitrate</strong> guardrail.</p>
+
+        <h3>Output</h3>
+        <ul>
+          <li>Recordings folder and screenshots folder</li>
+          <li>Filename pattern with tokens <code>{date}</code> <code>{time}</code> <code>{source}</code> — live preview shown in Settings</li>
+        </ul>
+
+        <h3>Recording</h3>
+        <ul>
+          <li>Countdown before recording</li>
+          <li>Capture mouse cursor</li>
+          <li>Highlight mouse clicks</li>
+          <li>Auto-split large recordings (size threshold)</li>
+        </ul>
+
+        <h3>Hotkeys</h3>
+        <p>Global shortcuts work while any app has focus. Click <strong>Change</strong>, press the new chord (modifiers + key), Esc to cancel.</p>
+
+        <h3>Performance</h3>
+        <ul>
+          <li><strong>Encoder effort</strong> — Fast / Balanced / Quality</li>
+          <li><strong>CPU thread cap</strong> — for software encoders only</li>
+          <li><strong>Lower encoder process priority</strong> — keeps foreground apps responsive</li>
+        </ul>
+
+        <h3>General</h3>
+        <ul>
+          <li>Start with Windows (tray)</li>
+          <li>Check for updates on launch</li>
+          <li>License and third-party notices</li>
+        </ul>
+      </section>
+
+      <section id="hotkeys">
+        <h2>Hotkeys</h2>
+        <table>
+          <tr><th>Default</th><th>Action</th></tr>
+          <tr><td><kbd>F8</kbd></td><td>Next recording profile</td></tr>
+          <tr><td><kbd>F9</kbd></td><td>Start / stop recording</td></tr>
+          <tr><td><kbd>F10</kbd></td><td>Pause / resume</td></tr>
+          <tr><td><kbd>F11</kbd></td><td>Screenshot</td></tr>
+          <tr><td><kbd>Esc</kbd> / <kbd>F12</kbd></td><td>Exit draw mode (while annotating)</td></tr>
+        </table>
+        <p>Profile cycling is ignored during an active recording. Remap any shortcut under Settings.</p>
+      </section>
+
+      <section id="cli">
+        <h2>Command line</h2>
+        <p>RecMode allows only one instance. A second launch forwards flags to the running process.</p>
+        <table>
+          <tr><th>Flag</th><th>Action</th></tr>
+          <tr><td><code>--record</code> / <code>-r</code></td><td>Start recording immediately (no countdown)</td></tr>
+          <tr><td><code>--stop</code></td><td>Stop current recording</td></tr>
+          <tr><td><code>--screenshot</code></td><td>Capture still image from current source</td></tr>
+          <tr><td><code>--tray</code></td><td>Start without showing the main window</td></tr>
+        </table>
+        <pre>RecMode.exe --tray
+RecMode.exe --record
+RecMode.exe --stop
+RecMode.exe --screenshot</pre>
+        <p>Tray + record is useful for automation: start headless, then stop from another script or hotkey.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files and folders</h2>
+        <div class="diagram">RecMode/
+├── RecMode.exe
+├── portable.marker          ← portable mode flag
+├── ffmpeg/
+│   ├── ffmpeg.exe
+│   └── ffprobe.exe
+├── licenses/                ← third-party notices
+├── Data/
+│   ├── settings.json        ← all app settings
+│   ├── library.json         ← recording metadata index
+│   └── logs/
+└── Recordings/
+    ├── *.mp4 / *.mkv / …
+    └── Screenshots/
+        └── *.png</div>
+        <p>Portable builds do not write to <code>%AppData%</code> or <code>%Videos%</code> unless you explicitly choose an output folder there.</p>
+      </section>
+
+      <section id="workflows">
+        <h2>Common workflows</h2>
+
+        <h3>Tutorial with voice</h3>
+        <ol>
+          <li>Profile: <strong>Tutorial</strong></li>
+          <li>Source: Screen or Region</li>
+          <li>Enable Microphone + System audio</li>
+          <li>Record → Stop → open from Library</li>
+        </ol>
+
+        <h3>Gameplay clip</h3>
+        <ol>
+          <li>Profile: <strong>Gameplay</strong></li>
+          <li>Source: Window → pick the game → Follow selected window on</li>
+          <li>System audio on; mic off</li>
+          <li>60 fps hardware encoder if available</li>
+        </ol>
+
+        <h3>Bug report</h3>
+        <ol>
+          <li>Profile: <strong>Bug report</strong></li>
+          <li>Region around the affected UI</li>
+          <li>Enable Draw mode to circle issues while narrating</li>
+        </ol>
+
+        <h3>Repeat a previous recording</h3>
+        <ol>
+          <li>Library → Videos → <strong>Record again</strong> on a past clip</li>
+          <li>RecMode applies format, fps, quality, and audio from that entry</li>
+          <li>Re-select capture source if needed, then Record</li>
+        </ol>
+
+        <h3>Overnight scheduled capture</h3>
+        <ol>
+          <li>Enable Start with Windows</li>
+          <li>Schedule → New → set time, duration, and optional profile</li>
+          <li>Leave RecMode running in the tray</li>
+        </ol>
+      </section>
+
+      <section id="privacy">
+        <h2>Privacy</h2>
+        <ul>
+          <li><strong>No telemetry</strong> — RecMode does not collect or transmit usage data.</li>
+          <li>Update checks contact your configured feed only when you enable them and click Check now or launch with check enabled.</li>
+          <li>Crash minidumps are <strong>opt-in</strong> (off by default).</li>
+          <li>All recordings stay on your machine unless you upload them yourself.</li>
+        </ul>
+      </section>
+
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <table>
+          <tr><th>Problem</th><th>Things to try</th></tr>
+          <tr><td>Encoder missing or fails</td><td>Update GPU drivers; try software encoder; confirm <code>ffmpeg\ffmpeg.exe</code> exists beside the app</td></tr>
+          <tr><td>Black or empty window capture</td><td>Some layered/transparent windows capture poorly — try Screen or Region instead</td></tr>
+          <tr><td>No audio in output</td><td>Test per-app audio; verify mic permission; see known full-system audio limitation</td></tr>
+          <tr><td>File won't play after crash</td><td>Look for <code>*.recording.mkv</code> — RecMode remuxes orphans on next launch</td></tr>
+          <tr><td>Hotkey does nothing</td><td>Another app may own the chord — remap in Settings; check for collision warning</td></tr>
+          <tr><td>Can't exit draw mode</td><td>Press <kbd>F12</kbd> or click Exit draw mode; ink area excludes the hint bar by design</td></tr>
+          <tr><td>Recording stops with disk message</td><td>Free space on the output drive; avoid very slow network shares</td></tr>
+        </table>
+      </section>
+
+      <section id="limitations">
+        <h2>Beta limitations</h2>
+        <p>RecMode 0.9.x-beta is feature-rich but still in beta. Expect occasional rough edges.</p>
+        <ul>
+          <li>Webcam as a <em>primary</em> source tile is not yet available (overlay works today).</li>
+          <li>Hardware encoder matrix not fully verified on all NVIDIA/Intel systems.</li>
+          <li>All Displays compositing best verified on multi-monitor hardware.</li>
+          <li>Animated GIF export is not included — Quick clip profile is a low-fps MP4 substitute.</li>
+        </ul>
+        <p>For version history and fixes, see <code>CHANGELOG.md</code> in the repository.</p>
+      </section>
+
+      <footer style="margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:14px;">
+        <p>RecMode — proprietary freeware. See LICENSE for terms. Third-party licenses in <code>licenses/</code>.</p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -4,81 +4,156 @@
 
 # RecMode
 
-RecMode is a modern Windows screen recorder built with .NET 10 and WPF. It focuses on fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface.
+**RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
+
+**Current version:** `0.9.27-beta` · **Full user guide:** [DOCS/RecMode_User_Guide.html](DOCS/RecMode_User_Guide.html)
+
+## Highlights
+
+| Area | What you get |
+| --- | --- |
+| **Capture** | Full display, single window (dropdown or click-to-pick), custom region, or all displays on multi-monitor setups |
+| **Encoding** | H.264, HEVC, or AV1 via NVIDIA NVENC, AMD AMF, Intel QSV, or software fallback |
+| **Containers** | MP4, MKV, MOV, WebM with compatibility checks |
+| **Audio** | System loopback, microphone, or per-app isolation |
+| **Overlays** | Webcam picture-in-picture, click highlights, draw-on-screen annotation |
+| **Automation** | Global hotkeys, scheduled recordings, CLI flags, system-tray quick actions |
+| **Library** | Browse videos and screenshots, open, reveal, delete, or **Record again** |
 
 ## Features
 
-- Record a full display, a single window, a custom region, or all displays on multi-monitor systems.
-- Follow selected window mode for apps that recreate their top-level window.
-- Capture screenshots from the current source.
-- Record system audio, microphone audio, or isolate audio to a selected app.
-- Use H.264, HEVC/H.265, or AV1 where supported by the local hardware and ffmpeg build.
-- Use hardware encoders when available: NVIDIA NVENC, AMD AMF, Intel QSV, or software fallback.
-- Save as MP4, MKV, MOV, or WebM, with compatibility checks.
-- Use built-in recording profiles such as Tutorial, Gameplay, Meeting, Bug report, GIF clip, and High-quality archive.
-- Save custom recording profiles.
-- Cycle recording profiles with a global hotkey.
-- Pause and resume recordings.
-- Add click highlights, draw annotations, and webcam picture-in-picture overlays.
-- Schedule recordings and optionally bind schedules to profiles.
-- Browse recordings and screenshots in the Library, including a Record again action.
-- Use portable or installer-based distribution.
+### Capture sources
+
+- **Screen** — record a chosen monitor, or **All Displays** when you have two or more monitors.
+- **Window** — pick from a list, use **Manual Pick** to click a window on screen, or enable **Follow selected window** for apps that recreate their window handle.
+- **Region** — drag a rectangle with presets (1920×1080, 1280×720, Full); re-open the picker any time by clicking the Region tile.
+- **Live preview** — see what will be recorded before you press Record (pauses while recording to save resources).
+
+### Video and encoding
+
+- Hardware encoders probed at startup (trial-encoded, not just listed).
+- **Quality** slider with perceptual mapping, per-encoder calibration, tier readout, and Web / Balanced / Archive snap points.
+- **Brightness** adjustment applied on the GPU in the capture pipeline (live in preview and during recording).
+- **Safe recording** (default on) — writes a crash-safe MKV first, then remuxes to MP4/MOV on stop.
+- **Auto-split** for very large files (optional, FAT32-aware size threshold).
+- **Bitrate guardrail** (default on) to cap surprise file growth on complex content.
+
+### Audio
+
+- System audio and microphone, each with enable toggle, volume slider, and live level meter.
+- **Limit to app** — capture only one running application's audio instead of the full system mix.
+- Codecs steered by container: AAC (MP4/MOV), Opus (MKV/WebM), FLAC (MKV).
+
+### Recording profiles
+
+Built-in presets (with tooltips describing quality and frame rate):
+
+- Tutorial (Balanced quality, 30 fps)
+- Gameplay (High quality, 60 fps)
+- Meeting (Standard quality, 30 fps)
+- Bug report (Small file, 30 fps)
+- Quick clip (Low quality, 15 fps, no audio)
+- Archive (Maximum quality, 60 fps, lossless audio)
+
+Save your own custom profiles, delete them, cycle presets with **F8**, or bind a profile to a scheduled recording.
+
+### While recording
+
+- Floating **recording toolbar** (timer, pause, screenshot, stats, stop) — excluded from the capture.
+- Optional **countdown** before interactive starts.
+- **Click highlights** — accent ripple at each mouse click (included in the recording).
+- **Draw mode** — freehand ink over the capture area; exit with Esc, F12, or the on-screen button.
+- **Webcam overlay** — corner picture-in-picture with device, position, and size controls.
+- **Pause / resume** with gapless output timing.
+
+### Library, schedule, and settings
+
+- **Library** — Videos and Screenshots tabs, thumbnails, metadata from `library.json`, Record again.
+- **Schedule** — recurring or one-off timed recordings; optional profile binding; fires while the app runs (including from tray).
+- **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles, remappable global hotkeys, performance controls, startup and update check.
+
+### Distribution and privacy
+
+- **Portable zip** — self-contained, no `%AppData%` writes; state lives in `.\Data\`.
+- **Installer** — Velopack `Setup.exe` or MSI; bundled ffmpeg and license notices included.
+- **No telemetry** — RecMode does not phone home; update check is opt-in and can be disabled.
 
 ## Requirements
 
-- Windows 11 recommended.
-- Windows 10 version 2004 or newer supported.
-- x64 Windows.
-- No separate .NET runtime required for packaged builds; RecMode is published self-contained.
-- Bundled ffmpeg/ffprobe are included in packaged builds.
-- Optional GPU hardware encoder support depends on installed hardware and drivers.
-- Optional microphone and webcam hardware for those capture modes.
+- **Windows 11** recommended; **Windows 10 version 2004 (build 19041)** or newer supported.
+- **x64** Windows only.
+- Packaged builds are **self-contained** — no separate .NET runtime install required.
+- **ffmpeg/ffprobe** bundled in portable and installer packages.
+- GPU hardware encoding depends on your GPU and drivers (NVENC / AMF / QSV).
+- Microphone and webcam are optional hardware for those features.
 
-## Quick Start
+## Quick start
 
-1. Open RecMode.
-2. Choose a source on the Record page: Screen, Window, or Region.
-3. Select a recording profile, or choose encoder, format, frame rate, and quality manually.
-4. Choose audio sources: system audio, microphone, or a specific app.
-5. Optional: enable webcam overlay, click highlights, or draw mode.
-6. Press Record or use `F9`.
-7. Pause/resume with `F10`.
-8. Stop with `F9`.
-9. Open the Library page to find the recording.
+1. Extract the portable zip or run the installer, then launch **RecMode.exe**.
+2. On the **Record** page, choose **Screen**, **Window**, or **Region**.
+3. Pick a **Profile** or set encoder, format, frame rate, and quality manually.
+4. Enable **System audio**, **Microphone**, or **Limit to app** as needed.
+5. Press **Record** or press **F9**.
+6. Use **F10** to pause/resume and **F9** again to stop.
+7. Open **Library** to play, reveal, or **Record again**.
 
-## Default Hotkeys
+## Default hotkeys
 
 | Hotkey | Action |
 | --- | --- |
-| `F8` | Cycle to next recording profile |
+| `F8` | Next recording profile |
 | `F9` | Start / stop recording |
 | `F10` | Pause / resume |
 | `F11` | Screenshot |
+| `Esc` / `F12` | Exit draw mode (while annotating) |
 
-Hotkeys are global and can be changed in Settings.
+All global hotkeys can be remapped under **Settings → Hotkeys**.
+
+## Command line
+
+RecMode is single-instance: a second launch forwards commands to the running app.
+
+| Flag | Action |
+| --- | --- |
+| `--record` / `-r` | Start recording (skips countdown) |
+| `--stop` | Stop the current recording |
+| `--screenshot` | Capture a still from the current source |
+| `--tray` | Start minimized to the system tray |
+
+Examples:
+
+```powershell
+RecMode.exe --tray
+RecMode.exe --record
+RecMode.exe --stop
+RecMode.exe --screenshot
+```
 
 ## Installation
 
-RecMode can be distributed in two main forms:
+### Portable
 
-- Portable zip: extract the folder and run `RecMode.exe`.
-- Installer: run `RecMode-win-Setup.exe` or use the generated MSI package.
+1. Download and extract `RecMode-*-portable-win-x64.zip`.
+2. Run `RecMode.exe` from the extracted folder.
+3. Recordings default to `.\Recordings\`; settings to `.\Data\`.
 
-The one-click setup installer can be installed to a custom path from a terminal:
+### Installer
+
+- Run **RecMode-win-Setup.exe** for a one-click install, or use the **MSI** for managed deployment.
+
+Custom install path (Setup):
 
 ```powershell
 RecMode-win-Setup.exe --installto "D:\Apps\RecMode"
 ```
 
-The MSI supports Windows Installer deployment. Administrators can override the target folder with:
+Custom install path (MSI):
 
 ```powershell
 msiexec /i RecMode-win.msi VELOPACK_INSTALLDIR="D:\Apps\RecMode"
 ```
 
-## Portable Layout
-
-Portable builds keep state beside the app:
+## Portable folder layout
 
 ```text
 RecMode/
@@ -86,6 +161,8 @@ RecMode/
   LICENSE
   portable.marker
   ffmpeg/
+    ffmpeg.exe
+    ffprobe.exe
   licenses/
   Data/
     settings.json
@@ -95,14 +172,20 @@ RecMode/
     Screenshots/
 ```
 
-```
+## Documentation
 
-## Status
+- **[User guide (HTML)](DOCS/RecMode_User_Guide.html)** — detailed walkthrough of every screen, feature, workflow, and setting.
+- **[Changelog](CHANGELOG.md)** — version history.
 
-RecMode is currently beta software. Some hardware-specific verification is still dependent on access to specific NVIDIA, Intel, webcam, microphone, and Windows 10 test hardware.
+## Status and known limitations
 
-Known beta limitation: full-system audio recording is tracked as an open issue in local project notes; per-app audio targeting has been separately verified.
+RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor:
+
+- NVENC and QSV encoding on real NVIDIA / Intel hardware (development machine is AMD).
+- Full-system audio recording is tracked as an open issue in project notes; **per-app audio targeting is verified**.
+- Multi-monitor **All Displays** compositing on machines with two or more physical monitors.
+- Real webcam hardware verification (synthetic test path is verified).
 
 ## License
 
-RecMode is proprietary, freeware software: you may use it free of charge, but you may not modify, redistribute, or sell it. See `LICENSE` for the full terms. Third-party notices for redistributed components are kept under `licenses/`.
+RecMode is **proprietary freeware**: free to use, but you may not modify, redistribute, or sell it. See [LICENSE](LICENSE). Third-party notices for bundled components are in `licenses/`.
