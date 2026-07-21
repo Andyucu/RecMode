@@ -1,0 +1,506 @@
+<UserControl x:Class="RecMode.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="clr-namespace:RecMode.App.Resources"
+             xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             Focusable="True" PreviewKeyDown="OnCaptureKeyDown">
+
+    <UserControl.Resources>
+        <Style x:Key="CardCombo" TargetType="ComboBox" BasedOn="{StaticResource AppComboBox}">
+            <Setter Property="Width" Value="190" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="KeyCap" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource StrokeControlBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8,1" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,20" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="{x:Static res:Strings.Nav_Settings}" Style="{StaticResource TitleText}" Margin="0,0,0,6" />
+
+            <!-- ===== Appearance ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Appearance}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE771;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_Theme}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_ThemeDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" VerticalAlignment="Center" Background="{DynamicResource SurfaceInputBrush}"
+                            BorderBrush="{DynamicResource StrokeControlBrush}" BorderThickness="1" CornerRadius="5" Padding="2">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="System"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=System}" />
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="Light"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Light}" />
+                            <RadioButton GroupName="theme" Style="{StaticResource SegmentedButton}" Content="Dark"
+                                         IsChecked="{Binding SelectedTheme, Converter={StaticResource EnumToBool}, ConverterParameter=Dark}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE790;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_Accent}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AccentDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0078D4"
+                                     ToolTip="Blue accent" AutomationProperties.Name="Blue accent"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Blue}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#D13438"
+                                     ToolTip="Red accent" AutomationProperties.Name="Red accent"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Red}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#8B6CCB"
+                                     ToolTip="Purple accent" AutomationProperties.Name="Purple accent"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Purple}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#0F7B7B"
+                                     ToolTip="Teal accent" AutomationProperties.Name="Teal accent"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Teal}" />
+                        <RadioButton GroupName="accent" Style="{StaticResource AccentSwatch}" Background="#CA5010" Margin="0"
+                                     ToolTip="Orange accent" AutomationProperties.Name="Orange accent"
+                                     IsChecked="{Binding SelectedAccent, Converter={StaticResource EnumToBool}, ConverterParameter=Orange}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE8A1;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_Layout}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_LayoutDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" VerticalAlignment="Center" Background="{DynamicResource SurfaceInputBrush}"
+                            BorderBrush="{DynamicResource StrokeControlBrush}" BorderThickness="1" CornerRadius="5" Padding="2">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="layout" Style="{StaticResource SegmentedButton}" Content="Sidebar"
+                                         IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=Sidebar}" />
+                            <RadioButton GroupName="layout" Style="{StaticResource SegmentedButton}" Content="Top bar"
+                                         IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=TopTab}" />
+                            <RadioButton GroupName="layout" Style="{StaticResource SegmentedButton}" Content="Compact"
+                                         ToolTip="A small always-on-top launcher instead of the full window"
+                                         IsChecked="{Binding SelectedLayout, Converter={StaticResource EnumToBool}, ConverterParameter=Compact}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- ===== Encoding defaults ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_EncodingDefaults}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE714;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="EncoderLabel" Text="{x:Static res:Strings.Settings_Encoder}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_EncoderDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Codecs}" SelectedItem="{Binding SelectedCodec}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=EncoderLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C3;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="ContainerLabel" Text="{x:Static res:Strings.Settings_Container}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_ContainerDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=ContainerLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE767;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="AudioFormatLabel" Text="{x:Static res:Strings.Settings_AudioFormat}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AudioFormatDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding AudioCodecs}" SelectedItem="{Binding SelectedAudioCodec}"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=AudioFormatLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE9E9;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="AudioBitrateLabel" Text="{x:Static res:Strings.Settings_AudioBitrate}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AudioBitrateDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding AudioBitrates}" SelectedItem="{Binding SelectedAudioBitrate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=AudioBitrateLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xEA18;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="BitrateGuardrailLabel" Text="{x:Static res:Strings.Settings_BitrateGuardrail}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_BitrateGuardrailDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding BitrateGuardrailEnabled, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=BitrateGuardrailLabel}" />
+                </Grid>
+            </Border>
+
+            <!-- ===== Output ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Output}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE838;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_SaveTo}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{Binding OutputFolder}" Style="{StaticResource SettingsCardDesc}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="{x:Static res:Strings.Settings_Browse}" Command="{Binding BrowseCommand}"
+                            ToolTip="Choose a different folder for recordings"
+                            Style="{StaticResource SecondaryButton}" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE8AC;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="PatternLabel" Text="{x:Static res:Strings.Settings_Pattern}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{Binding FilenamePatternPreview}" Style="{StaticResource SettingsCardDesc}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBox Grid.Column="2" Text="{Binding FilenamePattern, UpdateSourceTrigger=LostFocus}" Width="240"
+                             Style="{StaticResource AppTextBox}" VerticalAlignment="Center"
+                             ToolTip="{x:Static res:Strings.Settings_PatternDesc}"
+                             AutomationProperties.LabeledBy="{Binding ElementName=PatternLabel}" />
+                </Grid>
+            </Border>
+
+            <!-- ===== Recording ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Recording}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE916;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="CountdownLabel" Text="{x:Static res:Strings.Settings_Countdown}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_CountdownDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding CountdownEnabled, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=CountdownLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE962;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="CursorLabel" Text="{x:Static res:Strings.Settings_Cursor}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_CursorDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding CaptureCursor, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=CursorLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C9;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="ClicksLabel" Text="{x:Static res:Strings.Settings_Clicks}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_ClicksDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding HighlightClicks, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=ClicksLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C1;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="AutoSplitLabel" Text="{x:Static res:Strings.Settings_AutoSplit}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_AutoSplitDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ComboBox Style="{StaticResource CardCombo}" Width="110" Margin="0,0,10,0"
+                                  ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding AutoSplitSizes}" SelectedItem="{Binding AutoSplitSizeMb}"
+                                  ItemTemplate="{StaticResource AutoSplitSizeItemTemplate}"
+                                  IsEnabled="{Binding AutoSplitEnabled}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=AutoSplitLabel}" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                      IsChecked="{Binding AutoSplitEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=AutoSplitLabel}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===== Performance ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Performance}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xEC4A;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="EffortLabel" Text="{x:Static res:Strings.Settings_Effort}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_EffortDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=EffortLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE950;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="ThreadCapLabel" Text="{x:Static res:Strings.Settings_ThreadCap}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_ThreadCapDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="2" Style="{StaticResource CardCombo}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding ThreadCaps}" SelectedItem="{Binding CpuThreadCap}"
+                              ItemTemplate="{StaticResource ThreadCapItemTemplate}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=ThreadCapLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE945;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="EncoderPriorityLabel" Text="{x:Static res:Strings.Settings_EncoderPriority}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_EncoderPriorityDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding LowerEncoderPriority, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=EncoderPriorityLabel}" />
+                </Grid>
+            </Border>
+
+            <!-- ===== Hotkeys (remappable) ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Hotkeys}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE765;" VerticalAlignment="Top" Margin="0,2,14,0" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{x:Static res:Strings.Settings_KeyboardShortcuts}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_HotkeysDesc}" Style="{StaticResource SettingsCardDesc}" Margin="0,2,0,8" />
+
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkStartStop}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyStartStop}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="startstop" Click="OnChangeHotkey"
+                                    ToolTip="Change the start/stop shortcut"
+                                    AutomationProperties.Name="Change start/stop shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkPauseResume}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyPauseResume}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="pause" Click="OnChangeHotkey"
+                                    ToolTip="Change the pause/resume shortcut"
+                                    AutomationProperties.Name="Change pause/resume shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_HkScreenshot}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyScreenshot}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="screenshot" Click="OnChangeHotkey"
+                                    ToolTip="Change the screenshot shortcut"
+                                    AutomationProperties.Name="Change screenshot shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Next profile" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyNextProfile}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="nextprofile" Click="OnChangeHotkey"
+                                    ToolTip="Change the shortcut that cycles to the next recording profile"
+                                    AutomationProperties.Name="Change next profile shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
+
+                        <!-- Capture prompt -->
+                        <Border Margin="0,10,0,0" Padding="12,8" CornerRadius="6"
+                                Background="{DynamicResource SurfaceInputBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                                Visibility="{Binding IsCapturingHotkey, Converter={StaticResource BoolToVisibility}}">
+                            <Grid>
+                                <TextBlock Text="{Binding HotkeyCaptureHint}" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <Button Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Command="{Binding CancelHotkeyCommand}"
+                                        HorizontalAlignment="Right" Style="{StaticResource SecondaryButton}" Height="26" Padding="10,0" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===== General ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_General}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7E8;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="StartupLabel" Text="{x:Static res:Strings.Settings_Startup}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_StartupDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=StartupLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE895;" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock x:Name="UpdatesLabel" Text="{x:Static res:Strings.Settings_Updates}" Style="{StaticResource BodyStrongText}" />
+                            <TextBlock Text="{Binding VersionInfo}" Style="{StaticResource SettingsCardDesc}" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                      IsChecked="{Binding CheckForUpdates, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=UpdatesLabel}" />
+                    </Grid>
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding UpdateStatusText}" Style="{StaticResource SettingsCardDesc}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Download portable ZIP" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Download the latest portable package in your browser"
+                                Click="OpenUpdateLink_Click" Margin="0,0,8,0"
+                                Visibility="{Binding HasUpdateLink, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Grid.Column="2" Content="Update &amp; restart" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Download and install the update, then restart RecMode"
+                                Command="{Binding ApplyUpdateCommand}" Margin="0,0,8,0"
+                                Visibility="{Binding CanApplyUpdate, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Grid.Column="3" Content="Check now" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Check for a newer version of RecMode"
+                                Command="{Binding CheckForUpdatesCommand}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE9CE;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock Text="{x:Static res:Strings.Settings_License}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_LicenseDesc}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Content="View license" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Open the RecMode LICENSE file"
+                                Click="OpenLicense_Click" Margin="0,0,8,0" />
+                        <Button Content="Third-party notices" Style="{StaticResource SecondaryButton}"
+                                ToolTip="Open the folder with third-party license notices"
+                                Click="OpenThirdPartyNotices_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>RecMode</AssemblyName>
+    <RootNamespace>RecMode.App</RootNamespace>
+    <!-- exe/taskbar icon — the design's adopted logo (RecMode Icon Options.dc.html, "Notch"). -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <!-- Portable-first: self-contained publish set in publish profile / publish-portable.ps1. -->
+    <!-- Custom Main (App.xaml.cs) so VelopackApp.Build().Run() runs before any WPF startup cost — the
+         Velopack-recommended pattern, since App.xaml's auto-generated Main can't run code first. -->
+    <StartupObject>RecMode.App.App</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Sinks.Async" />
+    <PackageReference Include="H.NotifyIcon.Wpf" />
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App.xaml is normally auto-included as the ApplicationDefinition (which generates its own Main).
+         Re-included as a Page instead so our hand-written Main in App.xaml.cs is used. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Portable by default in dev + publish: marker ships next to the exe (§3.5). -->
+    <None Update="portable.marker" CopyToOutputDirectory="PreserveNewest" Condition="'$(RecModePortable)' == 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded so Window.Icon (pack URI) and the title-bar logo can reference it; TrayIconService loads
+         the same bytes via GetResourceStream rather than duplicating the asset as a loose file. -->
+    <Resource Include="Assets\AppIcon.ico" />
+    <!-- App-wide font (Exo 2, SIL OFL — licenses\Exo2\OFL.txt): static Regular/Medium/SemiBold/Bold
+         instances embedded so the portable build never depends on a system font install. -->
+    <Resource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Localization-ready strings (plan §1): resx embedded; accessed via a hand-written ResourceManager
+         wrapper (Resources/Strings.cs) so the type exists during WPF markup compilation. -->
+    <EmbeddedResource Update="Resources\Strings.resx" />
+  </ItemGroup>
+
+  <!-- Dev convenience: stage the bundled ffmpeg next to the exe so portable-mode resolution works when
+       running from bin. SkipUnchangedFiles keeps rebuilds fast. publish-portable.ps1 handles releases. -->
+  <Target Name="StageFfmpeg" AfterTargets="Build">
+    <ItemGroup>
+      <FfmpegFiles Include="$(MSBuildThisFileDirectory)..\..\tools\ffmpeg\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FfmpegFiles)" DestinationFolder="$(OutDir)ffmpeg" SkipUnchangedFiles="true"
+          Condition="'@(FfmpegFiles)' != ''" />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RecMode.Core\RecMode.Core.csproj" />
+    <ProjectReference Include="..\RecMode.Capture\RecMode.Capture.csproj" />
+    <ProjectReference Include="..\RecMode.Audio\RecMode.Audio.csproj" />
+    <ProjectReference Include="..\RecMode.Encoding\RecMode.Encoding.csproj" />
+  </ItemGroup>
+
+</Project>

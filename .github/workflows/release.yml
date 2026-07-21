@@ -1,0 +1,55 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 0.9.37-beta
+        required: true
+        type: string
+      prerelease:
+        description: Publish as a GitHub prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install release tools
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path tools/vpk vpk --version 1.2.0
+          dotnet tool install --tool-path tools/wix wix --version 5.0.2
+          "${{ github.workspace }}\tools\vpk" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Build portable and installer packages
+        shell: pwsh
+        run: |
+          ./publish-portable.ps1 -Version '${{ inputs.version }}'
+          ./publish-installer.ps1 -Version '${{ inputs.version }}'
+
+      - name: Publish Velopack feed and installer assets
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          vpk upload github --repoUrl https://github.com/Andyucu/RecMode --token $env:GITHUB_TOKEN --publish --tag v${{ inputs.version }}
+          gh release upload v${{ inputs.version }} "Releases/RecMode-${{ inputs.version }}-portable-win-x64.zip#RecMode-win-Portable.zip" --clobber
+
+      - name: Mark prerelease when requested
+        if: ${{ inputs.prerelease }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release edit v${{ inputs.version }} --prerelease

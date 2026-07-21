@@ -1,0 +1,137 @@
+<Window x:Class="RecMode.App.Views.CompactWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:res="clr-namespace:RecMode.App.Resources"
+        Title="RecMode"
+        WindowStyle="None" Background="{DynamicResource SurfaceCardBrush}"
+        Topmost="True" ShowInTaskbar="True" ResizeMode="NoResize"
+        SizeToContent="Height" Width="392" WindowStartupLocation="Manual">
+    <!-- No AllowsTransparency: a per-pixel-alpha layered window (which AllowsTransparency creates) captures
+         as black/broken via Windows Graphics Capture — confirmed live (recording "RecMode itself" as a Window
+         source produced an almost entirely black frame). Win11 rounds top-level window corners natively, so
+         dropping AllowsTransparency still gets the floating-card look there; Win10 falls back to square
+         corners (same "opaque fallback Win10" pattern used for Mica elsewhere). The DropShadowEffect below
+         is gone too — it needs transparent window margin to bleed into, which no longer exists. -->
+    <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="14">
+        <StackPanel>
+            <!-- Header: app icon/title + theme toggle + expand. Background="Transparent" (not the default
+                 null) so the blank space around the title is hit-testable too, not just the icon/text glyphs
+                 themselves — makes the whole header row draggable, not just a thin strip of it. -->
+            <Grid Margin="0,0,0,12" Background="Transparent" MouseLeftButtonDown="OnHeaderDrag">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Image Grid.Column="0" Source="pack://application:,,,/Assets/AppIcon.ico" Width="18" Height="18" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="RecMode" Style="{StaticResource BodyStrongText}"
+                           VerticalAlignment="Center" Margin="8,0,0,0" />
+                <Button Grid.Column="2" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="Toggle theme"
+                        AutomationProperties.Name="Toggle theme"
+                        Style="{StaticResource SecondaryButton}" Width="32" Height="32" Padding="0" />
+                <Button Grid.Column="3" Content="Expand" Command="{Binding ExpandCommand}"
+                        ToolTip="Expand to full window" AutomationProperties.Name="Expand to full window"
+                        Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="6,0,0,0" />
+            </Grid>
+
+            <!-- Source tiles -->
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <RadioButton Grid.Column="0" Style="{StaticResource CompactSourceTile}" GroupName="compact-src" Tag="&#xE7F4;"
+                             IsChecked="{Binding Record.IsScreenSource, Mode=TwoWay}"
+                             ToolTip="{x:Static res:Strings.Source_Screen}"
+                             AutomationProperties.Name="{x:Static res:Strings.Source_Screen}" />
+                <RadioButton Grid.Column="2" Style="{StaticResource CompactSourceTile}" GroupName="compact-src" Tag="&#xE737;"
+                             IsChecked="{Binding Record.IsWindowSource, Mode=TwoWay}"
+                             ToolTip="{x:Static res:Strings.Source_Window}"
+                             AutomationProperties.Name="{x:Static res:Strings.Source_Window}" />
+                <RadioButton Grid.Column="4" Style="{StaticResource CompactSourceTile}" GroupName="compact-src" Tag="&#xEF20;"
+                             IsChecked="{Binding Record.IsRegionSource, Mode=TwoWay}"
+                             ToolTip="{x:Static res:Strings.Source_Region}"
+                             AutomationProperties.Name="{x:Static res:Strings.Source_Region}" />
+                <RadioButton Grid.Column="6" Style="{StaticResource CompactSourceTile}" GroupName="compact-src" Tag="&#xE960;"
+                             IsChecked="{Binding Record.WebcamEnabled, Mode=TwoWay}"
+                             IsEnabled="{Binding Record.HasWebcamDevices}"
+                             ToolTip="{x:Static res:Strings.Source_Webcam}"
+                             AutomationProperties.Name="{x:Static res:Strings.Source_Webcam}" />
+            </Grid>
+
+            <!-- Which window to record (Window source only) — the tile above only picks the source kind, this
+                 picks the actual window; without it Compact silently recorded whatever window happened to
+                 enumerate first. -->
+            <Grid Margin="0,0,0,12" Visibility="{Binding Record.IsWindowSource, Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                          ItemsSource="{Binding Record.Windows}" SelectedItem="{Binding Record.SelectedWindow}" Margin="0,0,8,0"
+                          ToolTip="Which open window to record" AutomationProperties.Name="Window to record" />
+                <Button Grid.Column="1" Content="Pick…" Command="{Binding Record.PickWindowCommand}"
+                        ToolTip="Pick a window by clicking it on screen"
+                        AutomationProperties.Name="Pick a window with the mouse"
+                        Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
+            </Grid>
+
+            <!-- Quick audio: System + Mic -->
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="System" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center" Width="40" />
+                <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                        Value="{Binding Record.SystemVolume, Mode=TwoWay}" Margin="6,0"
+                        IsEnabled="{Binding Record.SystemAudioEnabled}"
+                        AutomationProperties.Name="System audio volume" />
+                <ToggleButton Grid.Column="2" IsChecked="{Binding Record.SystemAudioEnabled, Mode=TwoWay}"
+                              Style="{StaticResource CompactAudioToggle}"
+                              ToolTip="Enable/disable system audio" AutomationProperties.Name="System audio enabled" />
+            </Grid>
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Mic" Style="{StaticResource CaptionText}"
+                           VerticalAlignment="Center" Width="40" />
+                <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                        Value="{Binding Record.MicVolume, Mode=TwoWay}" Margin="6,0"
+                        IsEnabled="{Binding Record.MicEnabled}"
+                        AutomationProperties.Name="Microphone volume" />
+                <ToggleButton Grid.Column="2" IsChecked="{Binding Record.MicEnabled, Mode=TwoWay}"
+                              Style="{StaticResource CompactAudioToggle}"
+                              ToolTip="Enable/disable microphone" AutomationProperties.Name="Microphone enabled" />
+            </Grid>
+
+            <!-- Record / Screenshot + summary -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Command="{Binding Record.RecordCommand}" Content="{Binding Record.RecordButtonText}"
+                        Style="{StaticResource AccentButton}" Height="32" Padding="14,0" />
+                <Button Grid.Column="1" Command="{Binding Record.ScreenshotCommand}" Content="{x:Static res:Strings.Record_Screenshot}"
+                        Style="{StaticResource SecondaryButton}" Height="32" Padding="14,0" Margin="8,0,0,0" />
+                <TextBlock Grid.Column="3" Text="{Binding Record.ElapsedText}" Style="{StaticResource MonoText}"
+                           FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>

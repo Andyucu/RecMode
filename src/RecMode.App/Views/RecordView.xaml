@@ -1,0 +1,361 @@
+<UserControl x:Class="RecMode.App.Views.RecordView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="clr-namespace:RecMode.App.Resources"
+             xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:RecordViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="{x:Static res:Strings.Nav_Record}" Style="{StaticResource TitleText}" Margin="0,0,0,16" />
+
+        <!-- Body: left column (source + preview + controls) and right column (settings). The right column
+             spans the full body height so it starts level with the Source card instead of the preview,
+             giving the settings list the source card's height back as scrollable room (rather than the
+             Source card spanning the full window width above both columns). -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="326" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0" Margin="0,0,16,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Source picker -->
+                <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="{x:Static res:Strings.Record_SourceHeader}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE7F4;"
+                                         IsChecked="{Binding IsScreenSource, Mode=TwoWay}"
+                                         ToolTip="Record the entire display"
+                                         Content="{x:Static res:Strings.Source_Screen}" Margin="0,0,10,0" />
+                            <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xE737;"
+                                         IsChecked="{Binding IsWindowSource, Mode=TwoWay}"
+                                         ToolTip="Record a single application window"
+                                         Content="{x:Static res:Strings.Source_Window}" Margin="0,0,10,0" />
+                            <RadioButton Style="{StaticResource SourceTile}" GroupName="src" Tag="&#xEF20;"
+                                         IsChecked="{Binding IsRegionSource, Mode=TwoWay}"
+                                         ToolTip="Record a custom rectangular area"
+                                         Content="{x:Static res:Strings.Source_Region}" Margin="0,0,10,0" />
+                            <RadioButton Style="{StaticResource SourceTile}" GroupName="src" IsEnabled="False" Tag="&#xE960;"
+                                         ToolTip="Coming soon — record from a webcam as the source"
+                                         Content="{x:Static res:Strings.Source_Webcam}" />
+                        </StackPanel>
+
+                        <!-- Which window to record — lives right under the Source tiles (not in the Video card further
+                             down) so picking a window is immediate, right where the Window tile was just clicked. -->
+                        <StackPanel Margin="0,16,0,0" Visibility="{Binding ShowWindowPicker, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock x:Name="WindowLabel" Text="{x:Static res:Strings.Source_Window}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                          ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" Margin="0,0,8,0"
+                                          ToolTip="Which open window to record"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
+                                <Button Grid.Column="1" Content="Manual Pick" Command="{Binding PickWindowCommand}"
+                                        ToolTip="Pick a window by clicking it on screen"
+                                        AutomationProperties.Name="Pick a window with the mouse"
+                                        Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
+                            </Grid>
+                            <Grid ToolTip="Keep recording the same app if it recreates its window before capture starts">
+                                <TextBlock x:Name="FollowWindowLabel" Text="Follow selected window" VerticalAlignment="Center" />
+                                <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                              IsChecked="{Binding FollowWindowEnabled, Mode=TwoWay}"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=FollowWindowLabel}" />
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="1" Background="{DynamicResource SurfaceSecondaryBrush}" CornerRadius="8"
+                        BorderBrush="{DynamicResource StrokeCardBrush}" BorderThickness="1" ClipToBounds="True">
+                    <Grid>
+                        <Image Source="{Binding PreviewImage}" Stretch="Uniform" Margin="6"
+                               RenderOptions.BitmapScalingMode="LowQuality" />
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasPreview}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="&#xE7F4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="40"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Preview paused" Style="{StaticResource CaptionText}"
+                                       Margin="0,10,0,0" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Button Command="{Binding RecordCommand}" Content="{Binding RecordButtonText}"
+                                    ToolTip="Start or stop recording (F9)"
+                                    Style="{StaticResource AccentButton}" Width="120" Height="36" />
+                            <Button Command="{Binding PauseResumeCommand}" Content="{Binding PauseButtonText}"
+                                    ToolTip="Pause or resume the recording (F10)"
+                                    Style="{StaticResource SecondaryButton}" Width="96" Height="36" Margin="8,0,0,0"
+                                    Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Command="{Binding ScreenshotCommand}" Content="{x:Static res:Strings.Record_Screenshot}"
+                                    ToolTip="Save a still image of the current source (F11)"
+                                    Style="{StaticResource SecondaryButton}" Width="112" Height="36" Margin="8,0,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
+                            <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />
+                            <TextBlock Text="{Binding StatsText}" Style="{StaticResource CaptionText}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource MonoText}"
+                                       FontSize="22" HorizontalAlignment="Right" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding DiskSpaceText}" Style="{StaticResource CaptionText}"
+                                       HorizontalAlignment="Right"
+                                       ToolTip="Free space on the drive where recordings are saved" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Right panel: Video + Audio cards -->
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+            <Border Style="{StaticResource Card}">
+                <StackPanel IsEnabled="{Binding CanEditSettings}">
+                    <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <!-- Recording profile (plan §7 backlog #4, pulled forward): applies container/fps/quality/audio -->
+                    <TextBlock x:Name="ProfileLabel" Text="{x:Static res:Strings.Record_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" Margin="0,0,8,0"
+                                  ToolTip="Presets that set format, frame rate, quality, and audio together"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=ProfileLabel}" />
+                        <Button Grid.Column="1" Content="{x:Static res:Strings.Profile_SaveAs}" Command="{Binding SaveProfileCommand}"
+                                ToolTip="Save the current settings as a new custom profile"
+                                Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="0,0,8,0" />
+                        <Button Grid.Column="2" Content="{x:Static res:Strings.Profile_Delete}" Command="{Binding DeleteProfileCommand}"
+                                ToolTip="Delete this custom profile"
+                                Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0"
+                                Visibility="{Binding CanDeleteProfile, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+
+                    <!-- Display picker (screen source). Direct Visibility binding rather than a Style/DataTrigger:
+                         a locally-set Visibility attribute always beats a Style trigger's setter in WPF's
+                         property-value precedence, which is exactly the bug that made the sibling Window/Region
+                         panels below never actually show (see their comments) — this one happened to look fine
+                         only because it never had a competing local value to begin with. -->
+                    <StackPanel Visibility="{Binding ShowWindowPicker, Converter={StaticResource InverseBoolToVisibility}}">
+                        <TextBlock x:Name="DisplayLabel" Text="{x:Static res:Strings.Record_Display}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                                  ItemsSource="{Binding Monitors}" SelectedItem="{Binding SelectedMonitor}" Margin="0,0,0,12"
+                                  ToolTip="Which monitor to record"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=DisplayLabel}" />
+                    </StackPanel>
+
+                    <!-- Window picker now lives in the Source card above, right under the tiles, instead of here. -->
+
+                    <!-- Region info (region source). Same local-Visibility-beats-Style-trigger bug as the Window
+                         picker above — this panel (region size + "Change…") never actually appeared either. -->
+                    <StackPanel Visibility="{Binding ShowRegionInfo, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{x:Static res:Strings.Source_Region}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,12">
+                            <TextBlock Text="{Binding RegionLabel}" VerticalAlignment="Center" />
+                            <Button Content="Change…" Command="{Binding ChangeRegionCommand}"
+                                    ToolTip="Pick a new region to record"
+                                    Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right" />
+                        </Grid>
+                    </StackPanel>
+
+                    <TextBlock x:Name="EncoderLabel" Text="{x:Static res:Strings.Record_Encoder}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Encoders}" SelectedItem="{Binding SelectedEncoder}" Margin="0,0,0,4"
+                              ToolTip="Video codec and hardware/software backend used to encode"
+                              AutomationProperties.LabeledBy="{Binding ElementName=EncoderLabel}" />
+                    <TextBlock Text="{Binding HardwareBadge}" Style="{StaticResource CaptionText}"
+                               Foreground="{DynamicResource AccentBrush}" Margin="0,0,0,12" />
+
+                    <TextBlock x:Name="FormatLabel" Text="{x:Static res:Strings.Record_Format}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" Margin="0,0,0,12"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              ToolTip="Container file format for the output"
+                              AutomationProperties.LabeledBy="{Binding ElementName=FormatLabel}" />
+
+                    <TextBlock x:Name="FrameRateLabel" Text="{x:Static res:Strings.Record_FrameRate}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding FrameRates}" SelectedItem="{Binding SelectedFrameRate}" Margin="0,0,0,12"
+                              ToolTip="Frames captured per second"
+                              AutomationProperties.LabeledBy="{Binding ElementName=FrameRateLabel}" />
+
+                    <Grid Margin="0,0,0,2">
+                        <TextBlock x:Name="QualityLabelText" Text="{x:Static res:Strings.Record_Quality}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding QualityLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Slider Style="{StaticResource AppSlider}" Minimum="0" Maximum="100" Value="{Binding Quality}"
+                            AutomationProperties.LabeledBy="{Binding ElementName=QualityLabelText}"
+                            ToolTip="Higher quality means larger files"
+                            IsSnapToTickEnabled="True" TickFrequency="1" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0" HorizontalAlignment="Right">
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetWeb}" Command="{Binding SetQualityPresetCommand}" CommandParameter="15"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11" Margin="0,0,6,0"
+                                ToolTip="Smaller file, good enough for quick sharing" />
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetBalanced}" Command="{Binding SetQualityPresetCommand}" CommandParameter="50"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11" Margin="0,0,6,0"
+                                ToolTip="A reasonable balance of quality and file size" />
+                        <Button Content="{x:Static res:Strings.Record_QualityPresetArchive}" Command="{Binding SetQualityPresetCommand}" CommandParameter="90"
+                                Style="{StaticResource SecondaryButton}" Padding="10,3" FontSize="11"
+                                ToolTip="Highest quality, larger files" />
+                    </StackPanel>
+
+                    <Grid Margin="0,12,0,2">
+                        <TextBlock x:Name="BrightnessLabelText" Text="{x:Static res:Strings.Record_Brightness}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding BrightnessLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Slider Style="{StaticResource AppSlider}" Minimum="-100" Maximum="100" Value="{Binding Brightness}"
+                            AutomationProperties.LabeledBy="{Binding ElementName=BrightnessLabelText}"
+                            ToolTip="Adjusts the brightness of the recorded video"
+                            IsSnapToTickEnabled="True" TickFrequency="1" />
+                </StackPanel>
+            </Border>
+
+            <!-- Audio mixer card -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="Audio" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <!-- System audio -->
+                    <Grid Margin="0,0,0,6" ToolTip="Include what your computer is playing">
+                        <TextBlock x:Name="SystemAudioLabel" Text="System audio" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding SystemAudioEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=SystemAudioLabel}" />
+                    </Grid>
+                    <!-- Per-app audio (plan §7): narrows System audio to one running app via WASAPI
+                         process-loopback. Re-enabled 2026-07-08 after re-investigating the original
+                         2026-07-06 "leak" finding with a controlled two-independent-process test — the
+                         isolation itself works correctly; the original test's two "separate" processes
+                         both happened to be hosted by the same shared terminal process. See
+                         PROJECT_MEMORY.md for the investigation. -->
+                    <TextBlock x:Name="PerAppAudioLabel" Text="Limit to app" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding SystemAudioEnabled}" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding PerAppAudioTargets}" SelectedItem="{Binding SelectedPerAppAudioTarget}"
+                              IsEnabled="{Binding SystemAudioEnabled}" Margin="0,0,0,10"
+                              AutomationProperties.LabeledBy="{Binding ElementName=PerAppAudioLabel}" />
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
+                                 AutomationProperties.Name="System audio level"
+                                 Foreground="{Binding SystemMeter, Converter={StaticResource MeterCaution}}"
+                                 Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 BorderThickness="0" />
+                    <Grid Margin="0,0,0,14" IsEnabled="{Binding SystemAudioEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding SystemVolume}" VerticalAlignment="Center"
+                                ToolTip="Adjust the system audio level in the recording"
+                                AutomationProperties.Name="System audio volume" />
+                        <TextBlock Grid.Column="1" Text="{Binding SystemVolumeLabel}" Style="{StaticResource CaptionText}"
+                                   MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <!-- Microphone -->
+                    <Grid Margin="0,0,0,6" ToolTip="Include your microphone">
+                        <TextBlock x:Name="MicLabel" Text="Microphone" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding MicEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=MicLabel}" />
+                    </Grid>
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
+                                 AutomationProperties.Name="Microphone level"
+                                 Foreground="{Binding MicMeter, Converter={StaticResource MeterCaution}}"
+                                 Background="{DynamicResource SurfaceSecondaryBrush}"
+                                 BorderThickness="0" />
+                    <Grid IsEnabled="{Binding MicEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding MicVolume}" VerticalAlignment="Center"
+                                ToolTip="Adjust the microphone level in the recording"
+                                AutomationProperties.Name="Microphone volume" />
+                        <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
+                                   MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Webcam picture-in-picture overlay (Phase 7) -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="Webcam" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <Grid Margin="0,0,0,10" ToolTip="Overlay your camera as a picture-in-picture box on the recording">
+                        <TextBlock x:Name="WebcamLabel" Text="Show webcam" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding WebcamEnabled, Mode=TwoWay}"
+                                      IsEnabled="{Binding HasWebcamDevices}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=WebcamLabel}" />
+                    </Grid>
+                    <TextBlock Text="No camera detected" Style="{StaticResource CaptionText}" Margin="0,0,0,10"
+                               Visibility="{Binding HasWebcamDevices, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                    <TextBlock x:Name="WebcamDeviceLabel" Text="Camera" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding WebcamEnabled}" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding WebcamDevices}" SelectedItem="{Binding SelectedWebcamDevice}"
+                              IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
+                              ToolTip="Which camera to use"
+                              AutomationProperties.LabeledBy="{Binding ElementName=WebcamDeviceLabel}" />
+
+                    <TextBlock x:Name="WebcamPositionLabel" Text="Position" Style="{StaticResource CaptionText}" Margin="0,0,0,4"
+                               IsEnabled="{Binding WebcamEnabled}" />
+                    <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              ItemsSource="{Binding WebcamPositions}" SelectedItem="{Binding WebcamPosition}"
+                              IsEnabled="{Binding WebcamEnabled}" Margin="0,0,0,10"
+                              ItemTemplate="{StaticResource EnumItemTemplate}"
+                              ToolTip="Corner of the screen for the camera overlay"
+                              AutomationProperties.LabeledBy="{Binding ElementName=WebcamPositionLabel}" />
+
+                    <Grid Margin="0,0,0,2" IsEnabled="{Binding WebcamEnabled}">
+                        <TextBlock x:Name="WebcamSizeLabel" Text="Size" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
+                    </Grid>
+                    <Slider Style="{StaticResource AppSlider}" Minimum="10" Maximum="50" Value="{Binding WebcamSizePercent}"
+                            IsEnabled="{Binding WebcamEnabled}"
+                            ToolTip="Size of the camera overlay"
+                            AutomationProperties.LabeledBy="{Binding ElementName=WebcamSizeLabel}" />
+                </StackPanel>
+            </Border>
+            </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

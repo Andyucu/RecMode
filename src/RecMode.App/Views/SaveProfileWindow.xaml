@@ -1,0 +1,28 @@
+<Window x:Class="RecMode.App.Views.SaveProfileWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:res="clr-namespace:RecMode.App.Resources"
+        xmlns:vm="clr-namespace:RecMode.App.ViewModels"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" SizeToContent="Height"
+        Width="360" WindowStartupLocation="CenterOwner">
+    <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+            BorderThickness="1" CornerRadius="8">
+        <StackPanel Margin="20">
+            <TextBlock x:Name="TitleBar" Text="{x:Static res:Strings.Profile_SaveTitle}" Style="{StaticResource SubtitleText}"
+                       Margin="0,0,0,16" />
+
+            <TextBlock x:Name="ProfileNameLabel" Text="{x:Static res:Strings.Profile_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+            <TextBox x:Name="NameBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource AppTextBox}" Margin="0,0,0,16"
+                     AutomationProperties.LabeledBy="{Binding ElementName=ProfileNameLabel}" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"
+                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" />
+                <Button Content="{x:Static res:Strings.ScheduleEdit_Save}" Click="OnSave"
+                        Style="{StaticResource AccentButton}" Width="90" Height="32" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

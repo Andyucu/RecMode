@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore RecMode.slnx
+
+      - name: Build (Release, warnings as errors)
+        run: >
+          dotnet build RecMode.slnx -c Release --no-restore
+          -p:TreatWarningsAsErrors=true -p:EnforceCodeStyleInBuild=true
+
+      - name: Format check (advisory)
+        if: always()
+        run: dotnet format RecMode.slnx --verify-no-changes --no-restore
+        continue-on-error: true
+
+      - name: Dependency vulnerability audit
+        run: dotnet list RecMode.slnx package --vulnerable --include-transitive
+
+      - name: Portable packaging smoke test
+        shell: pwsh
+        run: |
+          ./build.ps1 -Configuration Release -NoTest
+          dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/portable-smoke
+          if (-not (Test-Path artifacts/portable-smoke/RecMode.exe)) {
+            throw "Portable build did not produce RecMode.exe"
+          }

@@ -1,0 +1,16 @@
+<Window x:Class="RecMode.App.Views.AnnotationHintWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight" WindowStartupLocation="Manual">
+    <Border Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+            BorderThickness="1" CornerRadius="8" Padding="10,6">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock Text="Drawing on screen" VerticalAlignment="Center" Margin="0,0,12,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13" />
+            <Button x:Name="ExitButton" Content="Exit draw mode" Click="OnExitClick" Style="{StaticResource AccentButton}"
+                    ToolTip="Stop drawing (Esc or F12)" Height="28" Padding="12,0" FontSize="13" />
+        </StackPanel>
+    </Border>
+</Window>

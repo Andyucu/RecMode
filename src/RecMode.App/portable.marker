@@ -1,0 +1,5 @@
+RecMode portable-mode marker.
+
+Presence of this file next to RecMode.exe selects portable mode (plan §3.5):
+all state lives under .\Data and recordings default to .\Recordings.
+Delete this file to run in installed mode (%APPDATA% / %LOCALAPPDATA%).
