@@ -18,6 +18,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private Nv12Converter? _converter;
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
+    private GraphicsCaptureItem? _item;
     private DesktopDuplicationCaptureSource? _ddaSource;
     private Thread? _ddaThread;
     private volatile bool _ddaStopping;
@@ -67,23 +68,33 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             StartSoftwareFallback(target, dstW, dstH, captureCursor);
             return;
         }
-        _device = session.Device;
-        _context = session.Context;
-        _framePool = session.FramePool;
-        _session = session.CaptureSession;
+        try
+        {
+            _device = session.Device;
+            _context = session.Context;
+            _framePool = session.FramePool;
+            _session = session.CaptureSession;
+            _item = session.Item;
+            _item.Closed += OnCaptureItemClosed;
 
-        int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
-        _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
-        _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
-        _converter.SetBrightness(_brightness);
-        OutputWidth = dstW;
-        OutputHeight = dstH;
-        Nv12ByteSize = _converter.Nv12ByteSize;
-        _latest = new byte[Nv12ByteSize];
-        _scratch = new byte[Nv12ByteSize];
-        _hasLatest = false;
-        _capturedFrames = 0;
-        IsRunning = true;
+            int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
+            _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
+            _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+            _converter.SetBrightness(_brightness);
+            OutputWidth = dstW;
+            OutputHeight = dstH;
+            Nv12ByteSize = _converter.Nv12ByteSize;
+            _latest = new byte[Nv12ByteSize];
+            _scratch = new byte[Nv12ByteSize];
+            _hasLatest = false;
+            _capturedFrames = 0;
+            IsRunning = true;
+        }
+        catch
+        {
+            DisposeWgcResources();
+            throw;
+        }
     }
 
     private void StartSoftwareFallback(CaptureTarget target, int dstW, int dstH, bool captureCursor)
@@ -116,6 +127,20 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         Interlocked.Increment(ref _capturedFrames);
     }
 
+    private void OnCaptureItemClosed(GraphicsCaptureItem sender, object? args)
+    {
+        Faulted?.Invoke(this, new InvalidOperationException("The captured window or display was closed."));
+        ThreadPool.QueueUserWorkItem(_ => Stop());
+    }
+
+    private void DisposeWgcResources()
+    {
+        if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
+        if (_item is not null) _item.Closed -= OnCaptureItemClosed;
+        _session?.Dispose(); _framePool?.Dispose(); _converter?.Dispose(); _context?.Dispose(); _device?.Dispose();
+        _session = null; _framePool = null; _item = null; _converter = null; _context = null; _device = null;
+    }
+
     /// <summary>"All Displays" source: no WGC item exists for this, so <see cref="DesktopDuplicationCaptureSource"/>
     /// composites every monitor via DXGI Desktop Duplication instead, pulled from a dedicated thread (DDA has no
     /// event-driven callback like WGC's <c>FrameArrived</c> — <c>AcquireNextFrame</c> is a blocking wait, not a
@@ -123,26 +148,26 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private void StartAllDisplays(int dstW, int dstH)
     {
         IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-        _ddaSource = new DesktopDuplicationCaptureSource(monitors);
-        _device = _ddaSource.Device;
-        _context = _ddaSource.Context;
-
-        _converter = new Nv12Converter(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
-        _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
-        _converter.SetBrightness(_brightness);
-        OutputWidth = dstW;
-        OutputHeight = dstH;
-        Nv12ByteSize = _converter.Nv12ByteSize;
-        _latest = new byte[Nv12ByteSize];
-        _scratch = new byte[Nv12ByteSize];
-        _hasLatest = false;
-        _capturedFrames = 0;
-
-        _ddaStopping = false;
-        _ddaThreadExited.Reset();
-        _ddaThread = new Thread(DdaPumpLoop) { IsBackground = true, Name = "recmode-dda" };
-        _ddaThread.Start();
-        IsRunning = true;
+        try
+        {
+            _ddaSource = new DesktopDuplicationCaptureSource(monitors);
+            _device = _ddaSource.Device;
+            _context = _ddaSource.Context;
+            _converter = new Nv12Converter(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
+            _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+            _converter.SetBrightness(_brightness);
+            OutputWidth = dstW; OutputHeight = dstH; Nv12ByteSize = _converter.Nv12ByteSize;
+            _latest = new byte[Nv12ByteSize]; _scratch = new byte[Nv12ByteSize]; _hasLatest = false; _capturedFrames = 0;
+            _ddaStopping = false; _ddaThreadExited.Reset();
+            _ddaThread = new Thread(DdaPumpLoop) { IsBackground = true, Name = "recmode-dda" };
+            _ddaThread.Start(); IsRunning = true;
+        }
+        catch
+        {
+            _converter?.Dispose(); _ddaSource?.Dispose(); _context?.Dispose(); _device?.Dispose();
+            _converter = null; _ddaSource = null; _context = null; _device = null;
+            throw;
+        }
     }
 
     /// <summary>
@@ -269,18 +294,13 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             }
         }
 
-        _session?.Dispose();
-        _framePool?.Dispose();
-
         if (!wasDda)
         {
-            // The WGC path has no background thread — this call owns and disposes these directly.
-            _converter?.Dispose();
-            _context?.Dispose();
-            _device?.Dispose();
+            DisposeWgcResources();
         }
 
         _session = null;
+        _item = null;
         _framePool = null;
         _ddaSource = null;
         _ddaThread = null;

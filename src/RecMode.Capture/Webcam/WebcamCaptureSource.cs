@@ -36,31 +36,33 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
         }
 
         var mediaCapture = new MediaCapture();
-        await mediaCapture.InitializeAsync(new MediaCaptureInitializationSettings
+        MediaFrameReader? frameReader = null;
+        try
         {
-            VideoDeviceId = deviceId,
-            StreamingCaptureMode = StreamingCaptureMode.Video,
-            SharingMode = MediaCaptureSharingMode.SharedReadOnly,
-            MemoryPreference = MediaCaptureMemoryPreference.Cpu,
-        }).AsTask().ConfigureAwait(false);
+            await mediaCapture.InitializeAsync(new MediaCaptureInitializationSettings
+            {
+                VideoDeviceId = deviceId, StreamingCaptureMode = StreamingCaptureMode.Video,
+                SharingMode = MediaCaptureSharingMode.SharedReadOnly, MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+            }).AsTask().ConfigureAwait(false);
 
-        MediaFrameSource? colorSource = mediaCapture.FrameSources.Values
-            .FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
-        if (colorSource is null)
-        {
-            mediaCapture.Dispose();
-            throw new InvalidOperationException("Selected camera has no color video source.");
+            MediaFrameSource? colorSource = mediaCapture.FrameSources.Values.FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
+            if (colorSource is null) throw new InvalidOperationException("Selected camera has no color video source.");
+
+            frameReader = await mediaCapture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8).AsTask().ConfigureAwait(false);
+            frameReader.FrameArrived += OnFrameArrived;
+            await frameReader.StartAsync().AsTask().ConfigureAwait(false);
+
+            _mediaCapture = mediaCapture;
+            _frameReader = frameReader;
+            _hasFrame = false;
+            IsRunning = true;
         }
-
-        MediaFrameReader frameReader = await mediaCapture
-            .CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8).AsTask().ConfigureAwait(false);
-        frameReader.FrameArrived += OnFrameArrived;
-        await frameReader.StartAsync().AsTask().ConfigureAwait(false);
-
-        _mediaCapture = mediaCapture;
-        _frameReader = frameReader;
-        _hasFrame = false;
-        IsRunning = true;
+        catch
+        {
+            if (frameReader is not null) { frameReader.FrameArrived -= OnFrameArrived; frameReader.Dispose(); }
+            mediaCapture.Dispose();
+            throw;
+        }
     }
 
     private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
@@ -153,10 +155,10 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
         }
     }
 
-    /// <summary>Fire-and-forget teardown for synchronous call sites (mirrors the other capture engines' <c>Stop()</c>).</summary>
+    /// <summary>Best-effort synchronous teardown for legacy call sites.</summary>
     public void Stop()
     {
-        _ = StopAsync();
+        StopAsync().GetAwaiter().GetResult();
     }
 
     [ComImport, Guid("5B0D3235-4DBA-4D44-865E-8F1D0E4FD04D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

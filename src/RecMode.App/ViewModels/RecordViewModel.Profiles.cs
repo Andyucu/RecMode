@@ -114,6 +114,37 @@ public sealed partial class RecordViewModel
         _settings.RequestSave();
     }
 
+    /// <summary>Applies a schedule-bound profile only for the synchronous recording startup window. The
+    /// coordinator captures its options during Start; afterwards the user's visible/persisted defaults are
+    /// restored, so an unattended schedule never silently changes them.</summary>
+    internal IDisposable ApplyProfileForSchedule(RecordingProfile profile)
+    {
+        var previous = new ScheduledProfileState(
+            SelectedFormat, SelectedFrameRate, Quality, SystemAudioEnabled, MicEnabled,
+            _settings.Current.AudioCodec, _settings.Current.AudioBitrateKbps);
+        ApplyProfile(profile);
+        return new Restore(() =>
+        {
+            SelectedFormat = previous.Format;
+            SelectedFrameRate = previous.FrameRate;
+            Quality = previous.Quality;
+            SystemAudioEnabled = previous.SystemAudio;
+            MicEnabled = previous.Microphone;
+            _settings.Current.AudioCodec = previous.AudioCodec;
+            _settings.Current.AudioBitrateKbps = previous.AudioBitrate;
+            _settings.RequestSave();
+        });
+    }
+
+    private sealed record ScheduledProfileState(MediaContainer Format, int FrameRate, int Quality,
+        bool SystemAudio, bool Microphone, AudioCodec AudioCodec, int AudioBitrate);
+
+    private sealed class Restore(Action restore) : IDisposable
+    {
+        private Action? _restore = restore;
+        public void Dispose() => Interlocked.Exchange(ref _restore, null)?.Invoke();
+    }
+
     /// <summary>
     /// Library's "Record again": re-applies a past recording's container/frame rate/quality/audio settings
     /// (Library plan §7 feature idea — "one-click record this again"). Deliberately does <b>not</b> touch the

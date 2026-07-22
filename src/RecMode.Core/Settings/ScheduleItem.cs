@@ -29,6 +29,10 @@ public sealed class ScheduleItem
     /// <summary>Start time of day, "HH:mm" (24-hour).</summary>
     public string Time { get; set; } = "18:00";
 
+    /// <summary>Absolute local occurrence for a one-time schedule. Null identifies a legacy schedule;
+    /// it is only eligible on the day it is edited/migrated rather than repeating on later dates.</summary>
+    public DateTimeOffset? OnceAt { get; set; }
+
     public int DurationMinutes { get; set; } = 30;
     public bool Enabled { get; set; } = true;
 
@@ -38,4 +42,8 @@ public sealed class ScheduleItem
 
     /// <summary>When this schedule last fired (dedup + Once/Weekly tracking). Null = never fired.</summary>
     public DateTimeOffset? LastFiredUtc { get; set; }
+
+    /// <summary>Local occurrence identity (yyyy-MM-dd|HH:mm), preventing a daily schedule firing twice
+    /// during the repeated hour when daylight saving time ends.</summary>
+    public string? LastFiredOccurrence { get; set; }
 }

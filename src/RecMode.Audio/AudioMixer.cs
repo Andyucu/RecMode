@@ -42,38 +42,45 @@ public sealed class AudioMixer : IAudioMixer
 
         if (captureSystem)
         {
+            MixSource? system = null;
             try
             {
                 IWaveIn loopback = targetProcessId is int pid
                     ? new ProcessLoopback.ProcessLoopbackCapture(pid)
                     : new WasapiLoopbackCapture();
-                _system = new MixSource(loopback);
-                _system.Start();
+                system = new MixSource(loopback);
+                system.Start();
+                _system = system;
             }
             catch (Exception) when (targetProcessId is not null)
             {
                 // Target process gone/activation failed — fail closed (no system audio) rather than
                 // silently substituting full-system loopback, which the user didn't ask for.
+                system?.Dispose();
                 _system = null;
             }
             catch (Exception)
             {
                 // Loopback device unavailable/exclusive-mode conflict — continue without system audio.
+                system?.Dispose();
                 _system = null;
             }
         }
 
         if (captureMic)
         {
+            MixSource? micSource = null;
             try
             {
                 var mic = new WasapiCapture(); // default capture device, shared mode
-                _mic = new MixSource(mic);
-                _mic.Start();
+                micSource = new MixSource(mic);
+                micSource.Start();
+                _mic = micSource;
             }
             catch (Exception)
             {
                 // No mic / unavailable — continue with system only.
+                micSource?.Dispose();
                 _mic = null;
             }
         }
@@ -89,7 +96,7 @@ public sealed class AudioMixer : IAudioMixer
         };
     }
 
-    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> activeElapsed, CancellationToken token)
+    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token)
     {
         const int chunkFloats = 4096; // interleaved stereo floats
         float[] sysBuf = new float[chunkFloats];
@@ -101,7 +108,7 @@ public sealed class AudioMixer : IAudioMixer
 
         while (!token.IsCancellationRequested)
         {
-            double elapsed = activeElapsed().TotalSeconds;
+            double elapsed = Math.Max(0, segmentElapsed().TotalSeconds);
             long targetFloats = (long)(elapsed * Rate * Chans);
             targetFloats -= targetFloats % Chans; // keep stereo-aligned
 
@@ -110,7 +117,7 @@ public sealed class AudioMixer : IAudioMixer
                 int n = (int)Math.Min(targetFloats - floatsWritten, chunkFloats);
                 Mix(sysBuf, micBuf, mixBuf, n);
                 Buffer.BlockCopy(mixBuf, 0, outBytes, 0, n * 4);
-                pipe.Write(outBytes, 0, n * 4);
+                pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
                 floatsWritten += n;
             }
 

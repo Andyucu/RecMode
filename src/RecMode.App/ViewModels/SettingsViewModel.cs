@@ -18,7 +18,7 @@ namespace RecMode.App.ViewModels;
 /// Hotkeys (read-only until the Phase 9 remap UI), and General. Every change persists immediately via the
 /// settings service; theme/accent apply live; "Start with Windows" writes the registry Run key.
 /// </summary>
-public sealed class SettingsViewModel : ObservableObject
+public sealed class SettingsViewModel : ObservableObject, INavigationAware
 {
     private readonly ISettingsService _settings;
     private readonly ThemeManager _theme;
@@ -153,6 +153,15 @@ public sealed class SettingsViewModel : ObservableObject
             return;
         }
 
+        string? previous = _capturingHotkey switch
+        {
+            "startstop" => _settings.Current.HotkeyStartStop,
+            "pause" => _settings.Current.HotkeyPauseResume,
+            "screenshot" => _settings.Current.HotkeyScreenshot,
+            "nextprofile" => _settings.Current.HotkeyNextProfile,
+            _ => null,
+        };
+
         switch (_capturingHotkey)
         {
             case "startstop": _settings.Current.HotkeyStartStop = chordText; OnPropertyChanged(nameof(HotkeyStartStop)); break;
@@ -162,9 +171,27 @@ public sealed class SettingsViewModel : ObservableObject
             default: return;
         }
 
+        if (!_hotkeys.Rebind())
+        {
+            RestoreCapturedHotkey(previous);
+            _hotkeys.Rebind();
+            _errors.Warn("hotkey.in-use", "That shortcut is already in use.", "Your previous RecMode shortcuts were kept.");
+            return;
+        }
+
         _settings.Save();       // write immediately so a crash can't lose a remap
-        _hotkeys.Rebind();      // re-register the global hotkeys with the new chord
         CancelCapture();
+    }
+
+    private void RestoreCapturedHotkey(string? value)
+    {
+        switch (_capturingHotkey)
+        {
+            case "startstop": _settings.Current.HotkeyStartStop = value ?? "F9"; OnPropertyChanged(nameof(HotkeyStartStop)); break;
+            case "pause": _settings.Current.HotkeyPauseResume = value ?? "F10"; OnPropertyChanged(nameof(HotkeyPauseResume)); break;
+            case "screenshot": _settings.Current.HotkeyScreenshot = value ?? "F11"; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
+            case "nextprofile": _settings.Current.HotkeyNextProfile = value ?? "F8"; OnPropertyChanged(nameof(HotkeyNextProfile)); break;
+        }
     }
 
     private bool IsDuplicateHotkey(string? action, HotkeyChord captured)
@@ -208,7 +235,15 @@ public sealed class SettingsViewModel : ObservableObject
         _updateReleasesUrl = null;
         _canApplyUpdate = false;
 
-        Services.UpdateCheckResult result = await _updateChecker.CheckAsync();
+        Services.UpdateCheckResult result;
+        try
+        {
+            result = await _updateChecker.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            result = new Services.UpdateCheckResult { Status = Services.UpdateCheckStatus.Failed, Error = ex.Message };
+        }
 
         UpdateStatusText = result.Status switch
         {
@@ -231,7 +266,15 @@ public sealed class SettingsViewModel : ObservableObject
     private async Task ApplyUpdateAsync()
     {
         UpdateStatusText = "Downloading update…";
-        await _updateChecker.ApplyAndRestartAsync();
+        try
+        {
+            await _updateChecker.ApplyAndRestartAsync();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText = "Couldn't install the update. Please try again.";
+            _errors.Warn("update.apply-failed", "Couldn't install the update.", "Check your connection and install folder.", ex);
+        }
     }
 
     /// <summary>Opens the portable-mode "view release" link in the default browser.</summary>
@@ -451,5 +494,40 @@ public sealed class SettingsViewModel : ObservableObject
         {
             OutputFolder = dialog.FolderName;
         }
+    }
+
+    public void OnNavigatedTo() => RefreshFromSettings();
+    public void OnNavigatedFrom() { }
+
+    private void RefreshFromSettings()
+    {
+        RecModeSettings s = _settings.Current;
+        _selectedTheme = s.Theme;
+        _selectedAccent = s.Accent;
+        _selectedCodec = s.Codec;
+        _selectedContainer = s.Container;
+        _selectedAudioCodec = s.AudioCodec;
+        _selectedAudioBitrate = s.AudioBitrateKbps;
+        _outputFolder = s.OutputFolder ?? _paths.RecordingsDirectory;
+        _filenamePattern = s.FilenamePattern;
+        _countdownEnabled = s.CountdownSeconds > 0;
+        _captureCursor = s.CaptureCursor;
+        _highlightClicks = s.HighlightClicks;
+        _autoSplitEnabled = s.AutoSplitEnabled;
+        _autoSplitSizeMb = AutoSplitSizes.Contains(s.AutoSplitSizeMb) ? s.AutoSplitSizeMb : 3900;
+        _checkForUpdates = s.CheckForUpdatesOnLaunch;
+        _cpuThreadCap = ThreadCaps.Contains(s.CpuThreadCap) ? s.CpuThreadCap : 0;
+        _lowerEncoderPriority = s.BelowNormalEncoderPriority;
+        _bitrateGuardrailEnabled = s.BitrateGuardrailEnabled;
+        _effort = s.Effort;
+        _layout = s.Layout;
+        _startWithWindows = _startup.IsEnabled;
+        foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
+            nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate), nameof(OutputFolder),
+            nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
+            nameof(HighlightClicks), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
+            nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),
+            nameof(SelectedLayout), nameof(StartWithWindows), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
+            nameof(HotkeyScreenshot), nameof(HotkeyNextProfile) }) OnPropertyChanged(property);
     }
 }

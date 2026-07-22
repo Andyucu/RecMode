@@ -24,18 +24,31 @@ internal static class WgcSessionFactory
     public static Session Start(CaptureTarget target, bool captureCursor,
         TypedEventHandler<Direct3D11CaptureFramePool, object?> onFrameArrived)
     {
-        (ID3D11Device device, ID3D11DeviceContext context) = CaptureInterop.CreateDevice();
-        IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
-        GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
-
-        Direct3D11CaptureFramePool framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            winrt, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
-        framePool.FrameArrived += onFrameArrived;
-
-        GraphicsCaptureSession session = framePool.CreateCaptureSession(item);
-        CaptureSessionConfig.Apply(session, captureCursor);
-        session.StartCapture();
-
-        return new Session(device, context, item, framePool, session);
+        ID3D11Device? device = null;
+        ID3D11DeviceContext? context = null;
+        Direct3D11CaptureFramePool? framePool = null;
+        GraphicsCaptureSession? session = null;
+        try
+        {
+            (device, context) = CaptureInterop.CreateDevice();
+            IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
+            GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
+            framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+                winrt, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
+            framePool.FrameArrived += onFrameArrived;
+            session = framePool.CreateCaptureSession(item);
+            CaptureSessionConfig.Apply(session, captureCursor);
+            session.StartCapture();
+            return new Session(device, context, item, framePool, session);
+        }
+        catch
+        {
+            if (framePool is not null) framePool.FrameArrived -= onFrameArrived;
+            session?.Dispose();
+            framePool?.Dispose();
+            context?.Dispose();
+            device?.Dispose();
+            throw;
+        }
     }
 }

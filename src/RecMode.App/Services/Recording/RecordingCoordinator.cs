@@ -43,6 +43,7 @@ public sealed class RecordingCoordinator : IDisposable
     // path (HandleFatalPipeBreak) can both reach a finalize attempt if the encoder dies right as the user
     // clicks Stop; only the first to claim the lock actually finalizes/transitions state/raises Finished.
     private readonly Lock _finalizeLock = new();
+    private readonly ManualResetEventSlim _finalizationCompleted = new(initialState: true);
     private bool _finalizeStarted;
 
     // Safe-recording remux (record to MKV, convert to MP4 on stop).
@@ -129,7 +130,7 @@ public sealed class RecordingCoordinator : IDisposable
     }
 
     public RecordingState State => _stateMachine.State;
-    public bool IsRecording => _stateMachine.IsActive;
+    public bool IsRecording => _stateMachine.IsBusy;
 
     /// <summary>Throttled progress (≤ 4 Hz). Raised on the pacing thread — the VM marshals to the dispatcher.</summary>
     public event Action<RecordingProgress>? ProgressChanged;
@@ -145,7 +146,7 @@ public sealed class RecordingCoordinator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(encoder);
-        if (_stateMachine.IsActive)
+        if (_stateMachine.IsBusy)
         {
             return false;
         }
@@ -200,7 +201,11 @@ public sealed class RecordingCoordinator : IDisposable
 
             _stateMachine.StartRecording();
             _stopRequested = false;
-            _finalizeStarted = false;
+            lock (_finalizeLock)
+            {
+                _finalizeStarted = false;
+                _finalizationCompleted.Reset();
+            }
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
             _targetFps = fps;
@@ -594,19 +599,20 @@ public sealed class RecordingCoordinator : IDisposable
     /// <summary>Stops the current recording and finalizes the file.</summary>
     public void Stop()
     {
-        if (!_stateMachine.IsActive)
+        if (!_stateMachine.IsBusy)
         {
             return;
         }
-
-        _stopRequested = true;
-        _pacer?.Join(3000);
 
         if (!TryClaimFinalize())
         {
             // The pacer thread's own fatal-error path (HandleFatalPipeBreak) already claimed finalize —
             // e.g. the encoder died right as Stop() was called. It already drove the state machine to Idle
             // and raised Finished; nothing more to do here.
+            if (_stateMachine.IsBusy && _pacer != Thread.CurrentThread)
+            {
+                _finalizationCompleted.Wait();
+            }
             return;
         }
 
@@ -615,13 +621,30 @@ public sealed class RecordingCoordinator : IDisposable
             _stateMachine.Stop();
         }
 
-        RecordingResult result = Finalize();
-        if (_stateMachine.State == RecordingState.Finalizing)
+        // Cancel active pipe writes before waiting. Teardown must never dispose capture/session resources
+        // while the pacer or audio producer can still be using them.
+        _stopRequested = true;
+        _session?.RequestStop();
+        _audioStop?.Cancel();
+        if (_pacer is not null && _pacer != Thread.CurrentThread)
         {
-            _stateMachine.CompleteFinalization();
+            _pacer.Join();
         }
 
-        Finished?.Invoke(result);
+        try
+        {
+            RecordingResult result = Finalize();
+            if (_stateMachine.State == RecordingState.Finalizing)
+            {
+                _stateMachine.CompleteFinalization();
+            }
+
+            Finished?.Invoke(result);
+        }
+        finally
+        {
+            _finalizationCompleted.Set();
+        }
     }
 
     /// <summary>Atomically claims the single finalize attempt for the current recording — guards against
@@ -689,13 +712,19 @@ public sealed class RecordingCoordinator : IDisposable
     {
         _audioStop = new CancellationTokenSource();
         CancellationTokenSource stopSource = _audioStop;
+        TimeSpan segmentStartedAt = _stateMachine.Elapsed;
         _audioThread = new Thread(() =>
         {
             try
             {
                 audioPipe.WaitForConnection();
-                _mixer!.PumpUntil(audioPipe, () => _stateMachine.Elapsed, stopSource.Token);
+                _mixer!.PumpUntil(audioPipe, () =>
+                {
+                    TimeSpan elapsed = _stateMachine.Elapsed - segmentStartedAt;
+                    return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+                }, stopSource.Token);
             }
+            catch (OperationCanceledException) when (stopSource.IsCancellationRequested) { }
             catch (Exception ex)
             {
                 Log.Warning(ex, "Audio pump ended");
@@ -920,13 +949,20 @@ public sealed class RecordingCoordinator : IDisposable
         {
             Log.Error(teardownEx, "Teardown after pacer loop failure failed");
         }
+        finally
+        {
+            _finalizationCompleted.Set();
+        }
     }
 
     private RecordingResult Finalize()
     {
         // Stop the audio pump before the session closes the pipes.
         _audioStop?.Cancel();
-        _audioThread?.Join(3000);
+        if (_audioThread is not null && _audioThread != Thread.CurrentThread)
+        {
+            _audioThread.Join();
+        }
 
         string stderr = _session?.StandardError ?? "";
         RecordingResult result = _session?.StopAndFinalize(TimeSpan.FromSeconds(20))
@@ -1055,14 +1091,30 @@ public sealed class RecordingCoordinator : IDisposable
     private void RotateSegment(List<EncoderInfo>? forcedChain = null)
     {
         _audioStop?.Cancel();
-        _audioThread?.Join(3000);
+        if (_audioThread is not null && _audioThread != Thread.CurrentThread)
+        {
+            _audioThread.Join();
+        }
         _audioThread = null;
 
         string prevRecordingPath = _recordingPath;
         string prevFinalPath = _finalPath;
+        string segmentStderr = _session?.StandardError ?? "";
         RecordingResult segResult = _session?.StopAndFinalize(TimeSpan.FromSeconds(20)) ?? new RecordingResult(false, -1, "", 0);
         _session?.Dispose();
         _session = null;
+
+        if (!segResult.Success)
+        {
+            Log.Error("Segment finalization failed: {Path}; ffmpeg stderr:\n{Stderr}",
+                prevRecordingPath, segmentStderr);
+            _errors.Fatal("record.segment-finalize-failed",
+                "A recording segment couldn't be finalized; recording was stopped to protect the remaining file.",
+                "The partial segment was left on disk for recovery. See the log for encoder details.");
+            _stopRequested = true;
+            System.Threading.Tasks.Task.Run(Stop); // Stop joins this pacer thread, so never call it inline.
+            return;
+        }
 
         if (segResult.Success && _safeRemux)
         {

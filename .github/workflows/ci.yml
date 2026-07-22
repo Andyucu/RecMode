@@ -36,7 +36,6 @@ jobs:
       - name: Portable packaging smoke test
         shell: pwsh
         run: |
-          ./build.ps1 -Configuration Release -NoTest
           dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/portable-smoke
           if (-not (Test-Path artifacts/portable-smoke/RecMode.exe)) {
             throw "Portable build did not produce RecMode.exe"

@@ -51,9 +51,13 @@
 
         <!-- Content: list + empty state -->
         <Grid Grid.Row="1">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Items}">
-                    <ItemsControl.ItemTemplate>
+            <ListBox ItemsSource="{Binding Items}" BorderThickness="0" Background="Transparent"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Background" Value="Transparent" /></Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:LibraryItem}">
                             <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="10">
                                 <Grid>
@@ -81,23 +85,23 @@
 
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Content="{x:Static res:Strings.Library_RecordAgain}"
-                                                Command="{Binding DataContext.RecordAgainCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                Command="{Binding DataContext.RecordAgainCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
                                                 Visibility="{Binding CanRecordAgain, Converter={StaticResource BoolToVisibility}}"
                                                 ToolTip="{Binding DisplayName, StringFormat='Record again with these settings'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Record again with the settings from {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Open}"
-                                                Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 ToolTip="{Binding DisplayName, StringFormat='Open {0}'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Open {0}'}" />
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"
-                                                Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 ToolTip="{Binding DisplayName, StringFormat='Show {0} in folder'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Show {0} in folder'}" />
                                         <Button Content="{x:Static res:Strings.Library_Delete}"
-                                                Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 Foreground="{DynamicResource CriticalBrush}"
                                                 ToolTip="{Binding DisplayName, StringFormat='Delete {0} (moves to Recycle Bin)'}"
@@ -106,9 +110,8 @@
                                 </Grid>
                             </Border>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                    </ListBox.ItemTemplate>
+            </ListBox>
 
             <TextBlock Text="{Binding EmptyMessage}" Style="{StaticResource BodyText}"
                        Foreground="{DynamicResource TextSecondaryBrush}"

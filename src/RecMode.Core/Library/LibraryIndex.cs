@@ -32,6 +32,12 @@ public interface ILibraryIndex
 
     /// <summary>All entries, keyed by file name. Empty if the index is missing or unreadable.</summary>
     IReadOnlyDictionary<string, LibraryIndexEntry> ByFileName();
+
+    /// <summary>Removes the metadata when its recording is deleted.</summary>
+    void Remove(string fileName);
+
+    /// <summary>Prunes entries for recordings no longer present in the active recording folder.</summary>
+    void PruneMissing(ISet<string> fileNames);
 }
 
 /// <summary>Default <see cref="ILibraryIndex"/> — a JSON array at <see cref="IAppPaths.LibraryIndexPath"/> (portable-safe).</summary>
@@ -78,6 +84,30 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
             }
 
             return map;
+        }
+    }
+
+    public void Remove(string fileName)
+    {
+        lock (_lock)
+        {
+            List<LibraryIndexEntry> entries = Load();
+            if (entries.RemoveAll(e => string.Equals(e.FileName, fileName, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                Write(entries);
+            }
+        }
+    }
+
+    public void PruneMissing(ISet<string> fileNames)
+    {
+        lock (_lock)
+        {
+            List<LibraryIndexEntry> entries = Load();
+            if (entries.RemoveAll(e => !fileNames.Contains(e.FileName)) > 0)
+            {
+                Write(entries);
+            }
         }
     }
 

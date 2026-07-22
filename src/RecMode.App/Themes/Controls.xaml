@@ -530,6 +530,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
                     <Grid VerticalAlignment="Center">
+                        <Border x:Name="FocusRing" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2"
+                                CornerRadius="5" Margin="-3" Opacity="0" IsHitTestVisible="False" />
                         <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
                                 Background="{DynamicResource StrokeControlStrongBrush}" />
                         <Border Height="4" CornerRadius="2" VerticalAlignment="Center" HorizontalAlignment="Left"
@@ -555,6 +557,9 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="FocusRing" Property="Opacity" Value="1" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -15,6 +15,7 @@ public sealed class ShellPresenter
     private readonly ShellWindow _shell;
     private readonly Func<CompactWindow> _compactFactory;
     private CompactWindow? _compact;
+    private readonly Dictionary<Window, WindowState> _lastVisibleStates = [];
 
     /// <summary>Raised whenever <see cref="Current"/> changes to a different window instance.</summary>
     public event Action? CurrentChanged;
@@ -24,6 +25,7 @@ public sealed class ShellPresenter
         _settings = settings;
         _shell = shell;
         _compactFactory = compactFactory;
+        TrackWindow(_shell);
         Current = _settings.Current.Layout == ShellLayout.Compact ? EnsureCompact() : _shell;
         _settings.SettingsChanged += (_, _) => ApplyLayout();
     }
@@ -35,7 +37,10 @@ public sealed class ShellPresenter
     public void Show()
     {
         Current.Show();
-        Current.WindowState = WindowState.Normal;
+        if (Current.WindowState == WindowState.Minimized)
+        {
+            Current.WindowState = _lastVisibleStates.GetValueOrDefault(Current, WindowState.Normal);
+        }
         Current.Activate();
     }
 
@@ -60,5 +65,21 @@ public sealed class ShellPresenter
         }
     }
 
-    private CompactWindow EnsureCompact() => _compact ??= _compactFactory();
+    private CompactWindow EnsureCompact()
+    {
+        if (_compact is null)
+        {
+            _compact = _compactFactory();
+            TrackWindow(_compact);
+        }
+        return _compact;
+    }
+
+    private void TrackWindow(Window window) => window.StateChanged += (_, _) =>
+    {
+        if (window.WindowState != WindowState.Minimized)
+        {
+            _lastVisibleStates[window] = window.WindowState;
+        }
+    };
 }

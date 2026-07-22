@@ -67,6 +67,10 @@ public sealed record HotkeyChord(uint Modifiers, uint VirtualKey)
         vk = 0;
         key = key.ToUpperInvariant();
 
+        if (NamedKeys.TryGetValue(key, out vk)) return true;
+        if (key.StartsWith("0X", StringComparison.Ordinal) && uint.TryParse(key.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out vk) && vk is > 0 and <= 0xFE)
+            return true;
+
         // Function keys F1–F24 → 0x70–0x87.
         if (key.Length >= 2 && key[0] == 'F' && int.TryParse(key.AsSpan(1), out int f) && f is >= 1 and <= 24)
         {
@@ -97,6 +101,14 @@ public sealed record HotkeyChord(uint Modifiers, uint VirtualKey)
             return ((char)vk).ToString();
         }
 
-        return $"0x{vk:X2}";
+        return NamedKeys.FirstOrDefault(pair => pair.Value == vk).Key ?? $"0x{vk:X2}";
     }
+
+    private static readonly IReadOnlyDictionary<string, uint> NamedKeys = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Enter"] = 0x0D, ["Space"] = 0x20, ["PageUp"] = 0x21, ["PageDown"] = 0x22,
+        ["End"] = 0x23, ["Home"] = 0x24, ["Left"] = 0x25, ["Up"] = 0x26, ["Right"] = 0x27,
+        ["Down"] = 0x28, ["Insert"] = 0x2D, ["Delete"] = 0x2E, ["Tab"] = 0x09,
+        ["Backspace"] = 0x08, ["Escape"] = 0x1B,
+    };
 }

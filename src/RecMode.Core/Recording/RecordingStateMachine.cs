@@ -9,23 +9,32 @@ namespace RecMode.Core.Recording;
 public sealed class RecordingStateMachine
 {
     private readonly IMonotonicClock _clock;
+    private readonly Lock _sync = new();
 
     // Wall-clock (monotonic) anchors for the active recording timeline.
     private TimeSpan _recordingStartedAt;
     private TimeSpan _pausedAt;
     private TimeSpan _totalPaused;
+    private TimeSpan _finalizingAt;
+    private RecordingState _state = RecordingState.Idle;
 
     public RecordingStateMachine(IMonotonicClock? clock = null)
     {
         _clock = clock ?? new StopwatchClock();
     }
 
-    public RecordingState State { get; private set; } = RecordingState.Idle;
+    public RecordingState State
+    {
+        get { lock (_sync) { return _state; } }
+    }
 
     public event EventHandler<RecordingStateChangedEventArgs>? StateChanged;
 
     /// <summary>True once recording has begun and not yet finalized.</summary>
     public bool IsActive => State is RecordingState.Recording or RecordingState.Paused;
+
+    /// <summary>True while any recording resources are owned, including container finalization.</summary>
+    public bool IsBusy => State != RecordingState.Idle;
 
     /// <summary>
     /// Active recorded duration excluding paused spans — the value a timer UI should show and the basis
@@ -35,14 +44,22 @@ public sealed class RecordingStateMachine
     {
         get
         {
-            if (State is RecordingState.Idle or RecordingState.Finalizing && _recordingStartedAt == default)
+            lock (_sync)
             {
-                return TimeSpan.Zero;
-            }
+                if (_state == RecordingState.Idle)
+                {
+                    return TimeSpan.Zero;
+                }
 
-            TimeSpan reference = State == RecordingState.Paused ? _pausedAt : _clock.Elapsed;
-            TimeSpan elapsed = reference - _recordingStartedAt - _totalPaused;
-            return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+                TimeSpan reference = _state switch
+                {
+                    RecordingState.Paused => _pausedAt,
+                    RecordingState.Finalizing => _finalizingAt,
+                    _ => _clock.Elapsed,
+                };
+                TimeSpan elapsed = reference - _recordingStartedAt - _totalPaused;
+                return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+            }
         }
     }
 
@@ -53,82 +70,107 @@ public sealed class RecordingStateMachine
     /// </summary>
     public TimeSpan ToMediaPts(TimeSpan captureTimestamp)
     {
-        TimeSpan cutoff = State == RecordingState.Paused ? _pausedAt : captureTimestamp;
-        TimeSpan effective = captureTimestamp < cutoff ? captureTimestamp : cutoff;
-        TimeSpan pts = effective - _recordingStartedAt - _totalPaused;
-        return pts < TimeSpan.Zero ? TimeSpan.Zero : pts;
+        lock (_sync)
+        {
+            TimeSpan cutoff = _state switch
+            {
+                RecordingState.Paused => _pausedAt,
+                RecordingState.Finalizing => _finalizingAt,
+                _ => captureTimestamp,
+            };
+            TimeSpan effective = captureTimestamp < cutoff ? captureTimestamp : cutoff;
+            TimeSpan pts = effective - _recordingStartedAt - _totalPaused;
+            return pts < TimeSpan.Zero ? TimeSpan.Zero : pts;
+        }
     }
 
     /// <summary>Idle → Recording. Resets all timeline anchors for a fresh session and anchors the start to now.</summary>
     public void StartRecording()
     {
-        Require(RecordingState.Idle);
-        _recordingStartedAt = _clock.Elapsed;
-        _pausedAt = default;
-        _totalPaused = default;
-        Transition(RecordingState.Recording);
+        lock (_sync)
+        {
+            Require(RecordingState.Idle);
+            _recordingStartedAt = _clock.Elapsed;
+            _pausedAt = default;
+            _totalPaused = default;
+            _finalizingAt = default;
+            Transition(RecordingState.Recording);
+        }
     }
 
     /// <summary>Recording → Paused. Freezes the active-time reference.</summary>
     public void Pause()
     {
-        Require(RecordingState.Recording);
-        _pausedAt = _clock.Elapsed;
-        Transition(RecordingState.Paused);
+        lock (_sync)
+        {
+            Require(RecordingState.Recording);
+            _pausedAt = _clock.Elapsed;
+            Transition(RecordingState.Paused);
+        }
     }
 
     /// <summary>Paused → Recording. Adds the paused span to the running total so PTS stays gapless.</summary>
     public void Resume()
     {
-        Require(RecordingState.Paused);
-        _totalPaused += _clock.Elapsed - _pausedAt;
-        Transition(RecordingState.Recording);
+        lock (_sync)
+        {
+            Require(RecordingState.Paused);
+            _totalPaused += _clock.Elapsed - _pausedAt;
+            Transition(RecordingState.Recording);
+        }
     }
 
     /// <summary>Recording/Paused → Finalizing (flush, faststart/remux, library entry, toast).</summary>
     public void Stop()
     {
-        if (State is not (RecordingState.Recording or RecordingState.Paused))
+        lock (_sync)
         {
-            throw InvalidTransition(nameof(Stop));
-        }
+            if (_state is not (RecordingState.Recording or RecordingState.Paused))
+            {
+                throw InvalidTransition(nameof(Stop));
+            }
 
-        // If stopping while paused, close out the final paused span so Elapsed is stable post-stop.
-        if (State == RecordingState.Paused)
-        {
-            _totalPaused += _clock.Elapsed - _pausedAt;
-        }
+            // If stopping while paused, close out the final paused span so Elapsed is stable post-stop.
+            if (_state == RecordingState.Paused)
+            {
+                _totalPaused += _clock.Elapsed - _pausedAt;
+            }
 
-        Transition(RecordingState.Finalizing);
+            _finalizingAt = _clock.Elapsed;
+            Transition(RecordingState.Finalizing);
+        }
     }
 
     /// <summary>Finalizing → Idle (finalization complete).</summary>
     public void CompleteFinalization()
     {
-        Require(RecordingState.Finalizing);
-        Transition(RecordingState.Idle);
+        lock (_sync)
+        {
+            Require(RecordingState.Finalizing);
+            Transition(RecordingState.Idle);
+        }
     }
 
     private void Require(RecordingState expected)
     {
-        if (State != expected)
+        if (_state != expected)
         {
             throw InvalidTransition($"expected {expected}");
         }
     }
 
     private InvalidOperationException InvalidTransition(string what) =>
-        new($"Invalid recording transition from {State} ({what}).");
+        new($"Invalid recording transition from {_state} ({what}).");
 
     private void Transition(RecordingState next)
     {
-        RecordingState previous = State;
+        RecordingState previous = _state;
         if (previous == next)
         {
             return;
         }
 
-        State = next;
+        _state = next;
         StateChanged?.Invoke(this, new RecordingStateChangedEventArgs(previous, next));
     }
 }

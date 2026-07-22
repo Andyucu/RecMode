@@ -45,6 +45,10 @@ internal sealed class MixSource : IDisposable
         {
             sp = new MonoToStereoSampleProvider(sp);
         }
+        else if (f.Channels != 2)
+        {
+            sp = new StereoDownmixSampleProvider(sp, f.Channels);
+        }
         if (f.SampleRate != TargetRate)
         {
             sp = new WdlResamplingSampleProvider(sp, TargetRate);
@@ -99,5 +103,27 @@ internal sealed class MixSource : IDisposable
         _capture.DataAvailable -= OnDataAvailable;
         try { _capture.StopRecording(); } catch (Exception) { }
         _capture.Dispose();
+    }
+
+    private sealed class StereoDownmixSampleProvider(ISampleProvider source, int channels) : ISampleProvider
+    {
+        public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 2);
+        public int Read(float[] buffer, int offset, int count)
+        {
+            int frames = count / 2;
+            float[] input = new float[frames * channels];
+            int read = source.Read(input, 0, input.Length);
+            int inputFrames = read / channels;
+            for (int frame = 0; frame < inputFrames; frame++)
+            {
+                int at = frame * channels;
+                // Preserve front L/R, folding remaining channels equally into both sides at a safe gain.
+                float left = input[at], right = input[at + 1];
+                for (int channel = 2; channel < channels; channel++) { float v = input[at + channel] * 0.5f; left += v; right += v; }
+                buffer[offset + frame * 2] = left;
+                buffer[offset + frame * 2 + 1] = right;
+            }
+            return inputFrames * 2;
+        }
     }
 }

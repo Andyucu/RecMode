@@ -13,6 +13,7 @@ public sealed class ScheduleEditViewModel : ObservableObject
     private int _durationMinutes;
     private DayOfWeek _selectedWeeklyDay;
     private string _selectedProfileOption;
+    private DateTime _onceDate;
 
     public ScheduleEditViewModel(ScheduleItem source, IReadOnlyList<string> profileNames)
     {
@@ -20,6 +21,7 @@ public sealed class ScheduleEditViewModel : ObservableObject
         _recurrence = source.Recurrence;
         _time = source.Time;
         _durationMinutes = source.DurationMinutes;
+        _onceDate = (source.OnceAt ?? DateTimeOffset.Now.AddMinutes(30)).LocalDateTime.Date;
         _selectedWeeklyDay = source.WeeklyDay ?? source.LastFiredUtc?.ToLocalTime().DayOfWeek ?? DateTime.Today.DayOfWeek;
 
         ProfileOptions = [FollowRecordSettingsOption, .. profileNames];
@@ -47,6 +49,7 @@ public sealed class ScheduleEditViewModel : ObservableObject
     public int DurationMinutes { get => _durationMinutes; set => SetProperty(ref _durationMinutes, value); }
     public DayOfWeek SelectedWeeklyDay { get => _selectedWeeklyDay; set => SetProperty(ref _selectedWeeklyDay, value); }
     public string SelectedProfileOption { get => _selectedProfileOption; set => SetProperty(ref _selectedProfileOption, value); }
+    public DateTime OnceDate { get => _onceDate; set => SetProperty(ref _onceDate, value); }
 
     /// <summary>True when the time reads as a valid 24-hour "HH:mm".</summary>
     public bool IsValid =>
@@ -62,5 +65,14 @@ public sealed class ScheduleEditViewModel : ObservableObject
         target.DurationMinutes = DurationMinutes;
         target.WeeklyDay = SelectedRecurrence == ScheduleRecurrence.Weekly ? SelectedWeeklyDay : null;
         target.ProfileName = SelectedProfileOption == FollowRecordSettingsOption ? null : SelectedProfileOption;
+        if (SelectedRecurrence == ScheduleRecurrence.Once &&
+            TimeOnly.TryParseExact(target.Time, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly time))
+        {
+            target.OnceAt = new DateTimeOffset(OnceDate.Date.Add(time.ToTimeSpan()), TimeZoneInfo.Local.GetUtcOffset(OnceDate.Date.Add(time.ToTimeSpan())));
+        }
+        else
+        {
+            target.OnceAt = null;
+        }
     }
 }

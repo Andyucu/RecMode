@@ -18,6 +18,7 @@ public sealed class ProcessLoopbackCapture : IWaveIn
     private const int AUDCLNT_SHAREMODE_SHARED = 0;
     private const long DefaultBufferDurationHns = 200 * 10_000; // 200 ms, in 100-ns units
     private const uint TargetPid_Unused = 0;
+    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromSeconds(5);
 
     private static readonly Guid IID_IAudioClient = new("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2");
 
@@ -168,9 +169,14 @@ public sealed class ProcessLoopbackCapture : IWaveIn
                 Marshal.ThrowExceptionForHR(hr);
             }
 
-            IntPtr activatedPtr = handler.Task.GetAwaiter().GetResult();
-            _ = operation; // keep alive until GetActivateResult below
-            return activatedPtr;
+            if (!handler.Task.Wait(ActivationTimeout))
+            {
+                // Activation uses a system-owned async COM operation and has no cancellation API. Returning
+                // promptly lets recording fall back to video-only rather than hanging on a broken audio service.
+                throw new TimeoutException("Timed out while activating process-loopback audio.");
+            }
+
+            return handler.Task.GetAwaiter().GetResult();
         }
         finally
         {

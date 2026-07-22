@@ -29,6 +29,8 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     private readonly RecMode.Core.Library.ILibraryIndex _index;
     private readonly RecordViewModel _record;
     private bool _showVideos = true;
+    private CancellationTokenSource? _loadCancellation;
+    private bool _isLoading;
 
     public LibraryViewModel(IAppPaths paths, ISettingsService settings, IErrorReporter errors, RecMode.Core.Library.ILibraryIndex index,
         RecordViewModel record)
@@ -41,7 +43,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
         ShowVideosCommand = new RelayCommand(() => SetTab(videos: true));
         ShowScreenshotsCommand = new RelayCommand(() => SetTab(videos: false));
-        RefreshCommand = new RelayCommand(Load);
+        RefreshCommand = new AsyncRelayCommand(LoadAsync);
         OpenFolderCommand = new RelayCommand(OpenCurrentFolder);
         OpenCommand = new RelayCommand<LibraryItem>(Open);
         RevealCommand = new RelayCommand<LibraryItem>(Reveal);
@@ -57,7 +59,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
     public IRelayCommand ShowVideosCommand { get; }
     public IRelayCommand ShowScreenshotsCommand { get; }
-    public IRelayCommand RefreshCommand { get; }
+    public IAsyncRelayCommand RefreshCommand { get; }
     public IRelayCommand OpenFolderCommand { get; }
     public IRelayCommand<LibraryItem> OpenCommand { get; }
     public IRelayCommand<LibraryItem> RevealCommand { get; }
@@ -79,37 +81,50 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
     public bool ShowScreenshots => !_showVideos;
     public bool IsEmpty => Items.Count == 0;
+    public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     public string EmptyMessage => _showVideos ? Strings.Library_NoVideos : Strings.Library_NoScreenshots;
 
-    public void OnNavigatedTo() => Load();
+    public void OnNavigatedTo() => _ = LoadAsync();
 
-    public void OnNavigatedFrom() => Items.Clear();
+    public void OnNavigatedFrom()
+    {
+        _loadCancellation?.Cancel();
+        Items.Clear();
+        OnPropertyChanged(nameof(IsEmpty));
+    }
 
     private void SetTab(bool videos)
     {
         if (ShowVideos != videos)
         {
             ShowVideos = videos;
-            Load();
+            _ = LoadAsync();
         }
     }
 
-    private void Load()
+    private async Task LoadAsync()
     {
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _loadCancellation = cancellation;
         Items.Clear();
+        OnPropertyChanged(nameof(IsEmpty));
+        IsLoading = true;
 
         string dir = CurrentDirectory();
-        if (Directory.Exists(dir))
+        bool videos = _showVideos;
+        try
         {
-            string[] exts = _showVideos ? VideoExtensions : ImageExtensions;
+            var files = await Task.Run(() => ScanFiles(dir, videos, cancellation.Token), cancellation.Token);
+            if (cancellation.IsCancellationRequested || !ReferenceEquals(cancellation, _loadCancellation)) return;
+
+            if (videos)
+            {
+                _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
+            }
             IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =
-                _showVideos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();
-
-            IEnumerable<FileInfo> files = new DirectoryInfo(dir).EnumerateFiles()
-                .Where(f => exts.Contains(f.Extension.ToLowerInvariant()))
-                .Where(f => !f.Name.EndsWith(".recording.mkv", StringComparison.OrdinalIgnoreCase)) // skip in-progress temp
-                .OrderByDescending(f => f.LastWriteTime);
-
+                videos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();
             foreach (FileInfo f in files)
             {
                 RecMode.Core.Library.LibraryIndexEntry? entry = meta.GetValueOrDefault(f.Name);
@@ -118,14 +133,34 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
                     FilePath = f.FullName,
                     DisplayName = Path.GetFileNameWithoutExtension(f.Name),
                     Meta = BuildMeta(f, entry),
-                    IsImage = !_showVideos,
-                    Thumbnail = _showVideos ? null : TryLoadThumbnail(f.FullName),
+                    IsImage = !videos,
+                    Thumbnail = videos ? null : TryLoadThumbnail(f.FullName),
                     IndexEntry = entry,
                 });
             }
         }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            _errors.Warn("library.folder-unavailable", "The recording folder is unavailable.", "Reconnect the shared folder and refresh the Library.", ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(cancellation, _loadCancellation)) IsLoading = false;
+            OnPropertyChanged(nameof(IsEmpty));
+        }
+    }
 
-        OnPropertyChanged(nameof(IsEmpty));
+    private static List<FileInfo> ScanFiles(string directory, bool videos, CancellationToken ct)
+    {
+        if (!Directory.Exists(directory)) return [];
+        string[] extensions = videos ? VideoExtensions : ImageExtensions;
+        return new DirectoryInfo(directory).EnumerateFiles()
+            .TakeWhile(_ => !ct.IsCancellationRequested)
+            .Where(f => extensions.Contains(f.Extension, StringComparer.OrdinalIgnoreCase))
+            .Where(f => !f.Name.EndsWith(".recording.mkv", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWriteTime)
+            .ToList();
     }
 
     private void Open(LibraryItem? item)
@@ -161,6 +196,10 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         {
             // Recycle Bin, not permanent — a mis-click is recoverable.
             FileSystem.DeleteFile(item.FilePath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            if (item.IsImage == false)
+            {
+                _index.Remove(Path.GetFileName(item.FilePath));
+            }
             Items.Remove(item);
             OnPropertyChanged(nameof(IsEmpty));
         }
@@ -184,8 +223,11 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     private void OpenCurrentFolder()
     {
         string dir = CurrentDirectory();
-        Directory.CreateDirectory(dir);
-        Run(() => Process.Start("explorer.exe", $"\"{dir}\""),
+        Run(() =>
+        {
+            Directory.CreateDirectory(dir);
+            Process.Start("explorer.exe", $"\"{dir}\"");
+        },
             "library.folder-failed", "Couldn't open the folder.");
     }
 

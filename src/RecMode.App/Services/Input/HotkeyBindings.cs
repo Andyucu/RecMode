@@ -36,10 +36,26 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
     }
 
     /// <summary>Re-registers all hotkeys from the current settings (call after the user remaps one).</summary>
-    public void Rebind()
+    public bool Rebind()
     {
         hotkeys.UnregisterAll();
-        Register();
+        RecModeSettings s = settings.Current;
+        int next = Register(s.HotkeyNextProfile, "F8");
+        int start = Register(s.HotkeyStartStop, "F9");
+        int pause = Register(s.HotkeyPauseResume, "F10");
+        int screenshot = Register(s.HotkeyScreenshot, "F11");
+        if (next >= 0 && start >= 0 && pause >= 0 && screenshot >= 0)
+        {
+            _nextProfile = next;
+            _startStop = start;
+            _pause = pause;
+            _screenshot = screenshot;
+            return true;
+        }
+
+        hotkeys.UnregisterAll();
+        Register(); // caller restores persisted values before this second registration attempt
+        return false;
     }
 
     private int Register(string? chordText, string fallback)

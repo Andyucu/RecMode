@@ -77,26 +77,16 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
 
     private void Fire(ScheduleItem item, DateTimeOffset now)
     {
-        // Mark fired first (dedup): a failed start shouldn't hammer-retry every poll within the minute.
-        item.LastFiredUtc = now;
-        if (item.Recurrence == ScheduleRecurrence.Once)
-        {
-            item.Enabled = false;
-        }
-
-        // Save immediately (not the debounced RequestSave): if the app crashes right after this fires, the
-        // fired-state must already be durable on disk, or a restart could re-fire the same schedule again.
-        settings.Save();
-
         Log.Information("Firing schedule {Name} ({Recurrence} @ {Time}, {Dur} min)",
             item.Name, item.Recurrence, item.Time, item.DurationMinutes);
 
+        IDisposable? scheduledProfile = null;
         if (item.ProfileName is not null)
         {
             RecordingProfile? profile = record.Profiles.FirstOrDefault(p => p.Name == item.ProfileName);
             if (profile is not null)
             {
-                record.ApplyProfile(profile);
+                scheduledProfile = record.ApplyProfileForSchedule(profile);
             }
             else
             {
@@ -105,11 +95,25 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             }
         }
 
-        record.EnsureDevicesLoaded();
-        record.StartRecordingFromCli();
+        try
+        {
+            record.EnsureDevicesLoaded();
+            record.StartRecordingFromCli();
+        }
+        finally
+        {
+            scheduledProfile?.Dispose();
+        }
 
         if (coordinator.IsRecording)
         {
+            // Mark success only after a recording has actually started. A broken target/output remains visible
+            // and can be retried after the user fixes it rather than silently disabling a one-time schedule.
+            item.LastFiredUtc = now;
+            _ = TimeOnly.TryParse(item.Time, out TimeOnly scheduledTime);
+            item.LastFiredOccurrence = ScheduleEvaluator.OccurrenceKey(now, scheduledTime);
+            if (item.Recurrence == ScheduleRecurrence.Once) item.Enabled = false;
+            settings.Save();
             _scheduledRecordingActive = true;
             _scheduledStopAt = now.AddMinutes(Math.Max(1, item.DurationMinutes));
         }

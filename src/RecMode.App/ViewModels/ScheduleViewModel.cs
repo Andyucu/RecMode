@@ -55,6 +55,7 @@ public sealed class ScheduleViewModel : ObservableObject, INavigationAware
             Name = "New schedule",
             Recurrence = ScheduleRecurrence.Once,
             Time = DateTime.Now.AddMinutes(30).ToString("HH:mm"),
+            OnceAt = DateTimeOffset.Now.AddMinutes(30),
             DurationMinutes = 30,
             Enabled = true,
         };

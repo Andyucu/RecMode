@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version, for example 0.9.37-beta
+        description: Release version, for example 0.9.43-beta
         required: true
         type: string
       prerelease:
@@ -19,6 +19,12 @@ permissions:
 jobs:
   package-and-publish:
     runs-on: windows-latest
+    env:
+      # Optional. Configure these repository secrets to sign a release:
+      # RECMODE_SIGNING_PFX_BASE64, RECMODE_SIGNING_PFX_PASSWORD, RECMODE_TIMESTAMP_URL.
+      RECMODE_SIGNING_PFX_BASE64: ${{ secrets.RECMODE_SIGNING_PFX_BASE64 }}
+      RECMODE_SIGNING_PFX_PASSWORD: ${{ secrets.RECMODE_SIGNING_PFX_PASSWORD }}
+      RECMODE_TIMESTAMP_URL: ${{ secrets.RECMODE_TIMESTAMP_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,30 +32,117 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install release tools
+      - name: Install packaging tools and bundled FFmpeg
         shell: pwsh
         run: |
-          dotnet tool install --tool-path tools/vpk vpk --version 1.2.0
-          dotnet tool install --tool-path tools/wix wix --version 5.0.2
-          "${{ github.workspace }}\tools\vpk" | Out-File -FilePath $env:GITHUB_PATH -Append
+          dotnet tool install --tool-path "$env:RUNNER_TEMP\vpk" vpk --version 1.2.0
+          dotnet tool install --tool-path "$env:RUNNER_TEMP\wix" wix --version 5.0.2
+          "$env:RUNNER_TEMP\vpk" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "$env:RUNNER_TEMP\wix" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          Invoke-WebRequest 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' -OutFile $archive
+          $extract = Join-Path $env:RUNNER_TEMP 'ffmpeg'
+          Expand-Archive $archive -DestinationPath $extract
+          $bin = Get-ChildItem $extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if ($null -eq $bin) { throw 'The downloaded FFmpeg archive did not contain ffmpeg.exe.' }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ffmpeg-bin" | Out-Null
+          Copy-Item "$($bin.Directory.FullName)\*" "$env:RUNNER_TEMP\ffmpeg-bin" -Force
 
-      - name: Build portable and installer packages
+      - name: Build portable, MSI, and update feed
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $PWD 'Releases'
+          $portable = Join-Path $release "RecMode-$env:VERSION-portable-win-x64"
+          $installer = Join-Path $PWD "artifacts\RecMode-$env:VERSION-installer-stage-win-x64"
+          New-Item -ItemType Directory -Force -Path $release, $portable, $installer | Out-Null
+
+          dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:RecModePortable=true -p:Version=$env:VERSION -o $portable
+          New-Item -ItemType Directory -Force -Path (Join-Path $portable 'ffmpeg') | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\ffmpeg-bin\*" (Join-Path $portable 'ffmpeg') -Recurse -Force
+          Copy-Item LICENSE $portable -Force
+          Copy-Item licenses (Join-Path $portable 'licenses') -Recurse -Force
+          Compress-Archive -Path (Join-Path $portable '*') -DestinationPath "$portable.zip" -Force
+
+          dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:RecModePortable=false -p:Version=$env:VERSION -o $installer
+          New-Item -ItemType Directory -Force -Path (Join-Path $installer 'ffmpeg') | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\ffmpeg-bin\*" (Join-Path $installer 'ffmpeg') -Recurse -Force
+          Copy-Item LICENSE $installer -Force
+          Copy-Item licenses (Join-Path $installer 'licenses') -Recurse -Force
+
+          $vpkArgs = @('pack', '--packId', 'RecMode', '--packTitle', 'RecMode', '--packVersion', $env:VERSION, '--packDir', $installer, '--mainExe', 'RecMode.exe', '--outputDir', $release, '--icon', 'src/RecMode.App/Assets/AppIcon.ico', '--msi', '--instLocation', 'Either')
+          if ($env:RECMODE_SIGNING_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'recmode-signing.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:RECMODE_SIGNING_PFX_BASE64))
+            $timestamp = if ($env:RECMODE_TIMESTAMP_URL) { $env:RECMODE_TIMESTAMP_URL } else { 'http://timestamp.digicert.com' }
+            $vpkArgs += @('--signParams', "/fd sha256 /tr $timestamp /td sha256 /f `"$pfx`" /p `"$env:RECMODE_SIGNING_PFX_PASSWORD`"")
+          } else { Write-Warning 'No signing secrets configured; this release will be unsigned.' }
+          & vpk @vpkArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Velopack packaging failed.' }
+          Remove-Item (Join-Path $release 'RecMode-win-Setup.exe') -Force -ErrorAction SilentlyContinue
+
+      - name: Add editable MSI folder page and sign the rebuilt MSI
         shell: pwsh
         run: |
-          ./publish-portable.ps1 -Version '${{ inputs.version }}'
-          ./publish-installer.ps1 -Version '${{ inputs.version }}'
+          $ErrorActionPreference = 'Stop'
+          $msi = Join-Path $PWD 'Releases\RecMode-win.msi'
+          $work = Join-Path $env:RUNNER_TEMP ('recmode-msi-' + [guid]::NewGuid().ToString('N'))
+          $wxs = Join-Path $work 'package.wxs'; $assets = Join-Path $work 'assets'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          try {
+            wix msi decompile $msi -o $wxs -x $assets
+            if ($LASTEXITCODE -ne 0) { throw 'WiX could not decompile the MSI.' }
+            New-Item -ItemType Directory -Force -Path (Join-Path $assets 'SourceDir') | Out-Null
+            Copy-Item (Join-Path $assets 'File') (Join-Path $assets 'SourceDir\File') -Recurse
+            $source = [IO.File]::ReadAllText($wxs)
+            # WiX supplies these scope properties itself; the decompiler's copies cause duplicate symbols.
+            $source = [regex]::Replace($source, '(?m)^\s*<Property Id="ALLUSERS" Value="2" />\r?\n', '')
+            $source = [regex]::Replace($source, '(?m)^\s*<Property Id="MSIINSTALLPERUSER" Value="1" />\r?\n', '')
+            $source = [regex]::Replace($source, '(?m)^\s*<Publish Condition="NOT WIXUI_DONTVALIDATEPATH" Event="DoAction" Value="RustValidatePath" />\r?\n', '')
+            $source = [regex]::Replace($source, '(?m)^\s*<Publish Condition="NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID&lt;&gt;&quot;1&quot;" Event="SpawnDialog" Value="InvalidDirDlg" />\r?\n', '')
+            $source = [regex]::Replace($source, '(?m)^\s*<Publish Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Event="NewDialog" Value="VerifyReadyDlg" />', '          <Publish Event="NewDialog" Value="VerifyReadyDlg" />')
+            $needle = '<Publish Event="NewDialog" Value="VerifyReadyDlg" />'
+            $pos = $source.IndexOf($needle, [StringComparison]::Ordinal)
+            if ($pos -lt 0) { throw 'Expected MSI scope dialog was not found.' }
+            $source = $source.Remove($pos, $needle.Length).Insert($pos, '<Publish Event="NewDialog" Value="RecModeInstallDirDlg" />')
+            $dialog = @'
+      <Dialog Id="RecModeInstallDirDlg" X="50" Y="50" Width="370" Height="270" Title="[MsiDlgTitle]">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" Text="WixUI_Bmp_Banner" Disabled="yes" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="330" Height="15" Text="Install RecMode version [RustAppVersion]" Transparent="yes" NoPrefix="yes" />
+        <Control Id="Description" Type="Text" X="25" Y="55" Width="320" Height="32" Text="Enter the folder where this version of RecMode should be installed, or browse for one." />
+        <Control Id="FolderLabel" Type="Text" X="25" Y="100" Width="320" Height="10" Text="Installation folder:" />
+        <Control Id="Folder" Type="PathEdit" X="25" Y="114" Width="252" Height="18" Property="INSTALLFOLDER" />
+        <Control Id="Browse" Type="PushButton" X="285" Y="114" Width="60" Height="18" Text="Browse..."><Publish Property="_BrowseProperty" Value="INSTALLFOLDER" /><Publish Event="SpawnDialog" Value="BrowseDlg" /></Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="[MsiBtnBack]"><Publish Event="NewDialog" Value="InstallScopeDlg" /></Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Text="[MsiBtnNext]" Default="yes"><Publish Event="SetTargetPath" Value="INSTALLFOLDER" /><Publish Event="NewDialog" Value="VerifyReadyDlg" /></Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Text="[MsiBtnCancel]" Cancel="yes"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" Disabled="yes" /><Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" Disabled="yes" />
+      </Dialog>
+'@
+            $at = $source.IndexOf('      <Dialog Id="ExitDialog"', [StringComparison]::Ordinal)
+            if ($at -lt 0) { throw 'Expected MSI UI anchor was not found.' }
+            $source = $source.Insert($at, $dialog)
+            [IO.File]::WriteAllText($wxs, $source, [Text.UTF8Encoding]::new($false))
+            $rebuilt = Join-Path $work 'custom-ui.msi'
+            wix build $wxs -arch x64 -b $assets -out $rebuilt -intermediateFolder (Join-Path $work 'obj')
+            if ($LASTEXITCODE -ne 0) { throw 'WiX could not rebuild the MSI.' }
+            Copy-Item $rebuilt $msi -Force
+            if ($env:RECMODE_SIGNING_PFX_BASE64) {
+              $pfx = Join-Path $env:RUNNER_TEMP 'recmode-signing.pfx'
+              $timestamp = if ($env:RECMODE_TIMESTAMP_URL) { $env:RECMODE_TIMESTAMP_URL } else { 'http://timestamp.digicert.com' }
+              & signtool sign /fd sha256 /tr $timestamp /td sha256 /f $pfx /p $env:RECMODE_SIGNING_PFX_PASSWORD $msi
+              if ($LASTEXITCODE -ne 0) { throw 'Signing the rebuilt MSI failed.' }
+            }
+          } finally { Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue }
 
-      - name: Publish Velopack feed and installer assets
+      - name: Publish Velopack feed and release assets
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
         run: |
-          vpk upload github --repoUrl https://github.com/Andyucu/RecMode --token $env:GITHUB_TOKEN --publish --tag v${{ inputs.version }}
-          gh release upload v${{ inputs.version }} "Releases/RecMode-${{ inputs.version }}-portable-win-x64.zip#RecMode-win-Portable.zip" --clobber
-
-      - name: Mark prerelease when requested
-        if: ${{ inputs.prerelease }}
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: gh release edit v${{ inputs.version }} --prerelease
+          vpk upload github --repoUrl https://github.com/Andyucu/RecMode --token $env:GITHUB_TOKEN --publish --tag $env:VERSION
+          gh release upload $env:VERSION "Releases/RecMode-$env:VERSION-portable-win-x64.zip#RecMode-win-Portable.zip" "Releases/RecMode-win.msi" --clobber
+          if ('${{ inputs.prerelease }}' -eq 'true') { gh release edit $env:VERSION --prerelease }

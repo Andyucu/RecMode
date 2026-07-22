@@ -168,7 +168,8 @@
             <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24"
                     Visibility="{Binding SnackbarVisible, Converter={StaticResource BoolToVisibility}}"
                     Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,10" MaxWidth="620">
+                    BorderThickness="1" CornerRadius="8" Padding="16,10" MaxWidth="620"
+                    AutomationProperties.LiveSetting="Assertive">
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,10,0">
                         <Ellipse.Style>

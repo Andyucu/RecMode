@@ -17,10 +17,15 @@ public static class Remuxer
             return false;
         }
 
+        string? temporaryPath = null;
         try
         {
+            string directory = Path.GetDirectoryName(mp4Path) ?? ".";
+            string extension = Path.GetExtension(mp4Path);
+            string stem = Path.GetFileNameWithoutExtension(mp4Path);
+            temporaryPath = Path.Combine(directory, $".{stem}.remux-{Guid.NewGuid():N}{extension}");
             var psi = new ProcessStartInfo(ffmpegPath,
-                $"-hide_banner -loglevel error -i \"{sourcePath}\" -c copy -movflags +faststart -y \"{mp4Path}\"")
+                $"-hide_banner -loglevel error -i \"{sourcePath}\" -c copy -movflags +faststart -y \"{temporaryPath}\"")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -45,11 +50,27 @@ public static class Remuxer
                 return false;
             }
 
-            return process.ExitCode == 0 && File.Exists(mp4Path);
+            if (process.ExitCode != 0 || !File.Exists(temporaryPath))
+            {
+                return false;
+            }
+
+            // A completed remux is only made visible at its final path after it has succeeded. This keeps
+            // interrupted conversions from leaving a plausible-looking but corrupt recording beside the MKV.
+            File.Move(temporaryPath, mp4Path, overwrite: false);
+            temporaryPath = null;
+            return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             return false;
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try { File.Delete(temporaryPath); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
         }
     }
 }

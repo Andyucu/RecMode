@@ -31,7 +31,13 @@ public static class ScheduleEvaluator
             return false;
         }
 
-        // Don't double-fire inside the same minute (the poll runs more than once per minute).
+        string occurrence = OccurrenceKey(now, target);
+        if (string.Equals(item.LastFiredOccurrence, occurrence, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Backward compatibility for schedules saved before occurrence keys were introduced.
         if (item.LastFiredUtc is { } last && now - last < DedupWindow)
         {
             return false;
@@ -39,7 +45,7 @@ public static class ScheduleEvaluator
 
         return item.Recurrence switch
         {
-            ScheduleRecurrence.Once => item.LastFiredUtc is null,
+            ScheduleRecurrence.Once => IsOnceDue(item, now, target),
             ScheduleRecurrence.Daily => true,
             ScheduleRecurrence.Weekdays => now.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday,
             // WeeklyDay was added after schedules had already shipped. Keep old JSON working by retaining
@@ -49,5 +55,17 @@ public static class ScheduleEvaluator
                 : item.LastFiredUtc is not { } l || now - l >= WeeklyPeriod,
             _ => false,
         };
+    }
+
+    public static string OccurrenceKey(DateTimeOffset now, TimeOnly target) =>
+        $"{now:yyyy-MM-dd}|{target:HH\\:mm}";
+
+    private static bool IsOnceDue(ScheduleItem item, DateTimeOffset now, TimeOnly target)
+    {
+        if (item.LastFiredUtc is not null) return false;
+        // Existing files predate OnceAt; preserve their former one-shot behavior. Newly-created/edited
+        // schedules always have a date and therefore cannot run on a later day if today's minute was missed.
+        if (item.OnceAt is not { } once) return true;
+        return once.Date == now.Date && once.Hour == target.Hour && once.Minute == target.Minute;
     }
 }

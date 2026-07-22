@@ -5,7 +5,7 @@
         xmlns:vm="clr-namespace:RecMode.App.ViewModels"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" SizeToContent="Height"
-        Width="420" WindowStartupLocation="CenterOwner">
+        Width="420" WindowStartupLocation="CenterOwner" Title="{x:Static res:Strings.ScheduleEdit_Title}">
     <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
             BorderThickness="1" CornerRadius="8">
         <StackPanel Margin="20">
@@ -27,6 +27,12 @@
                 <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                           ItemsSource="{Binding Weekdays}" SelectedItem="{Binding SelectedWeeklyDay}"
                           AutomationProperties.LabeledBy="{Binding ElementName=WeeklyDayLabel}" />
+            </StackPanel>
+
+            <StackPanel Margin="0,0,0,12"
+                        Visibility="{Binding SelectedRecurrence, Converter={StaticResource EnumToVisibility}, ConverterParameter=Once}">
+                <TextBlock x:Name="OnceDateLabel" Text="Date" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                <DatePicker SelectedDate="{Binding OnceDate}" AutomationProperties.LabeledBy="{Binding ElementName=OnceDateLabel}" />
             </StackPanel>
 
             <Grid Margin="0,0,0,12">
@@ -55,9 +61,9 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="CancelButton" Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"
-                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" />
+                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" IsCancel="True" />
                 <Button x:Name="SaveButton" Content="{x:Static res:Strings.ScheduleEdit_Save}" Click="OnSave"
-                        Style="{StaticResource AccentButton}" Width="90" Height="32" />
+                        Style="{StaticResource AccentButton}" Width="90" Height="32" IsDefault="True" />
             </StackPanel>
         </StackPanel>
     </Border>

@@ -11,6 +11,7 @@ namespace RecMode.Capture;
 /// </summary>
 internal sealed class GdiCaptureEngine : ICaptureEngine
 {
+    private const int FallbackFramesPerSecond = 30;
     private readonly object _sync = new();
     private Thread? _thread;
     private volatile bool _stopping;
@@ -50,14 +51,24 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
 
     private void CaptureLoop()
     {
+        nint screen = IntPtr.Zero, dc = IntPtr.Zero, bitmap = IntPtr.Zero, old = IntPtr.Zero;
         try
         {
             int srcStride = _bounds.Width * 4;
             byte[] bgra = new byte[srcStride * _bounds.Height];
             byte[] nv12 = new byte[Nv12ByteSize];
+            screen = GetDC(IntPtr.Zero);
+            dc = CreateCompatibleDC(screen);
+            var bmi = new BITMAPINFO { Header = new BITMAPINFOHEADER { Size = Marshal.SizeOf<BITMAPINFOHEADER>(), Width = _bounds.Width, Height = -_bounds.Height, Planes = 1, BitCount = 32, Compression = 0 } };
+            bitmap = CreateDIBSection(dc, ref bmi, 0, out nint bits, IntPtr.Zero, 0);
+            if (screen == IntPtr.Zero || dc == IntPtr.Zero || bitmap == IntPtr.Zero || bits == IntPtr.Zero)
+                throw new InvalidOperationException("GDI could not allocate the desktop capture surface.");
+            old = SelectObject(dc, bitmap);
+            long intervalTicks = System.Diagnostics.Stopwatch.Frequency / FallbackFramesPerSecond;
+            long nextFrame = System.Diagnostics.Stopwatch.GetTimestamp();
             while (!_stopping)
             {
-                CaptureBgra(bgra, srcStride);
+                CaptureBgra(dc, bits, bgra, srcStride);
                 ConvertToNv12(bgra, _bounds.Width, _bounds.Height, nv12);
                 lock (_sync)
                 {
@@ -65,28 +76,29 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
                     _hasLatest = true;
                 }
                 CapturedFrameCount++;
-                Thread.Sleep(1);
+                nextFrame += intervalTicks;
+                long remaining = nextFrame - System.Diagnostics.Stopwatch.GetTimestamp();
+                if (remaining > 0) Thread.Sleep(Math.Max(1, (int)(remaining * 1000 / System.Diagnostics.Stopwatch.Frequency)));
+                else nextFrame = System.Diagnostics.Stopwatch.GetTimestamp();
             }
         }
         catch (Exception ex)
         {
             Faulted?.Invoke(this, ex);
         }
+        finally
+        {
+            if (old != IntPtr.Zero && dc != IntPtr.Zero) SelectObject(dc, old);
+            if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+            if (dc != IntPtr.Zero) DeleteDC(dc);
+            if (screen != IntPtr.Zero) _ = ReleaseDC(IntPtr.Zero, screen);
+        }
     }
 
-    private void CaptureBgra(byte[] pixels, int stride)
+    private void CaptureBgra(nint dc, nint bits, byte[] pixels, int stride)
     {
         RegionRect r = _bounds;
         nint screen = GetDC(IntPtr.Zero);
-        nint dc = CreateCompatibleDC(screen);
-        nint bits;
-        var bmi = new BITMAPINFO
-        {
-            Header = new BITMAPINFOHEADER { Size = Marshal.SizeOf<BITMAPINFOHEADER>(), Width = r.Width, Height = -r.Height,
-                Planes = 1, BitCount = 32, Compression = 0 }
-        };
-        nint bitmap = CreateDIBSection(dc, ref bmi, 0, out bits, IntPtr.Zero, 0);
-        nint old = SelectObject(dc, bitmap);
         try
         {
             // BitBlt is correct for desktop sources. CAPTUREBLT includes layered windows such as
@@ -109,9 +121,6 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
         }
         finally
         {
-            SelectObject(dc, old);
-            DeleteObject(bitmap);
-            DeleteDC(dc);
             _ = ReleaseDC(IntPtr.Zero, screen);
         }
     }

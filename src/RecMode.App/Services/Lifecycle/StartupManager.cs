@@ -27,27 +27,52 @@ public sealed class StartupManager : IStartupManager
     {
         get
         {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            return key?.GetValue(ValueName) is not null;
+            try
+            {
+                using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
+                string? command = key?.GetValue(ValueName) as string;
+                string? current = Environment.ProcessPath;
+                return command is not null && current is not null &&
+                    string.Equals(ExtractExecutable(command), current, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                return false;
+            }
         }
     }
 
     public void SetEnabled(bool enabled)
     {
-        using RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
-            ?? Registry.CurrentUser.CreateSubKey(RunKeyPath);
-
-        if (enabled)
+        try
         {
-            string exe = Environment.ProcessPath ?? "";
-            if (!string.IsNullOrEmpty(exe))
+            using RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true)
+                ?? Registry.CurrentUser.CreateSubKey(RunKeyPath);
+            if (enabled)
             {
-                key.SetValue(ValueName, $"\"{exe}\" --tray");
+                string exe = Environment.ProcessPath ?? "";
+                if (!string.IsNullOrEmpty(exe)) key.SetValue(ValueName, $"\"{exe}\" --tray");
+            }
+            else
+            {
+                key.DeleteValue(ValueName, throwOnMissingValue: false);
             }
         }
-        else
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            // Optional integration: group policy must not make a portable app crash.
         }
+    }
+
+    private static string ExtractExecutable(string command)
+    {
+        command = command.Trim();
+        if (command.StartsWith('"'))
+        {
+            int end = command.IndexOf('"', 1);
+            return end > 1 ? command[1..end] : string.Empty;
+        }
+        int space = command.IndexOf(' ');
+        return space < 0 ? command : command[..space];
     }
 }

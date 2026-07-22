@@ -25,15 +25,20 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private readonly IAppPaths _paths;
     private readonly IErrorReporter _errors;
+    private readonly SynchronizationContext? _notificationContext;
     private readonly Lock _saveLock = new();
     private Timer? _debounceTimer;
     private bool _savePending;
     private bool _disposed;
+    private string? _pendingJson;
 
     public SettingsService(IAppPaths paths, IErrorReporter errors)
     {
         _paths = paths;
         _errors = errors;
+        // Services are composed on the WPF thread.  Keeping this dependency-free lets core tests run
+        // without a dispatcher while ensuring UI subscribers never receive a timer-thread notification.
+        _notificationContext = SynchronizationContext.Current;
         Current = new RecModeSettings();
     }
 
@@ -50,7 +55,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             IsFirstRun = true;
             Current = new RecModeSettings();
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
+            RaiseSettingsChanged();
             return;
         }
 
@@ -72,7 +77,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             Current = new RecModeSettings();
         }
 
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
+        RaiseSettingsChanged();
     }
 
     public void Save()
@@ -81,10 +86,11 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             CancelDebounce();
             _savePending = false;
-            WriteToDisk();
-        }
+            _pendingJson = null;
+            WriteToDisk(CreateSnapshot());
+            }
 
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
+        RaiseSettingsChanged();
     }
 
     public void RequestSave()
@@ -97,6 +103,18 @@ public sealed class SettingsService : ISettingsService, IDisposable
             }
 
             _savePending = true;
+            try
+            {
+                // Snapshot on the caller's (normally UI) thread. The timer only writes this immutable
+                // JSON, so it never enumerates collections while a view model is changing them.
+                _pendingJson = CreateSnapshot();
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+            {
+                _savePending = false;
+                _errors.Warn("settings.snapshot-failed", "Couldn't prepare your settings for saving.", null, ex);
+                return;
+            }
             _debounceTimer ??= new Timer(_ => OnDebounceElapsed(), null, Timeout.Infinite, Timeout.Infinite);
             _debounceTimer.Change(DebounceDelay, Timeout.InfiniteTimeSpan);
         }
@@ -111,21 +129,34 @@ public sealed class SettingsService : ISettingsService, IDisposable
                 return;
             }
 
-            WriteToDisk();
+            // An immediate Save may have cancelled this callback after it was already queued.
+            if (!_savePending)
+            {
+                return;
+            }
+
+            if (_pendingJson is not null)
+            {
+                WriteToDisk(_pendingJson);
+            }
             _savePending = false;
+            _pendingJson = null;
         }
 
-        SettingsChanged?.Invoke(this, EventArgs.Empty);
+        RaiseSettingsChanged();
     }
 
-    private void WriteToDisk()
+    private string CreateSnapshot()
+    {
+        Current.SchemaVersion = RecModeSettings.CurrentSchemaVersion;
+        return JsonSerializer.Serialize(Current, JsonOptions);
+    }
+
+    private void WriteToDisk(string json)
     {
         try
         {
             Directory.CreateDirectory(_paths.DataDirectory);
-            Current.SchemaVersion = RecModeSettings.CurrentSchemaVersion;
-
-            string json = JsonSerializer.Serialize(Current, JsonOptions);
             string tempPath = _paths.SettingsFilePath + ".tmp";
             File.WriteAllText(tempPath, json);
 
@@ -147,6 +178,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
                 "Check that the app folder is writable.",
                 ex);
         }
+    }
+
+    private void RaiseSettingsChanged()
+    {
+        EventHandler? handler = SettingsChanged;
+        if (handler is null) return;
+        if (_notificationContext is null || SynchronizationContext.Current == _notificationContext)
+        {
+            handler(this, EventArgs.Empty);
+            return;
+        }
+
+        _notificationContext.Post(_ => handler(this, EventArgs.Empty), null);
     }
 
     private void RecoverCorruptFile(string path, Exception cause)
@@ -179,8 +223,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
             if (_savePending)
             {
                 CancelDebounce();
-                WriteToDisk();
+                WriteToDisk(_pendingJson ?? CreateSnapshot());
                 _savePending = false;
+                _pendingJson = null;
             }
 
             _disposed = true;

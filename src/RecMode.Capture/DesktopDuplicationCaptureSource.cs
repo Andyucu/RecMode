@@ -114,6 +114,13 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
             }
         }
 
+        if (_outputs.Count == 0)
+        {
+            Context.Dispose();
+            Device.Dispose();
+            throw new InvalidOperationException("Desktop Duplication could not open any selected display output.");
+        }
+
         var canvasDesc = new Texture2DDescription
         {
             Width = (uint)VirtualWidth,
@@ -141,16 +148,22 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
             Result hr = duplication.AcquireNextFrame((uint)timeoutMs, out OutduplFrameInfo _, out IDXGIResource resource);
             if (!hr.Success)
             {
-                continue; // timeout (DXGI_ERROR_WAIT_TIMEOUT) or transient error — keep this output's last pixels
+                // Only the documented wait timeout is harmless. Access loss means the duplication is no
+                // longer usable (lock/unlock, RDP/display-mode changes) and must restart through fallback.
+                if (hr.Code == unchecked((int)0x887A0027)) // DXGI_ERROR_WAIT_TIMEOUT
+                    continue;
+                throw new InvalidOperationException($"Desktop Duplication failed (0x{hr.Code:X8}).");
             }
 
-            using (resource)
+            try
             {
-                using ID3D11Texture2D tex = resource.QueryInterface<ID3D11Texture2D>();
-                Context.CopySubresourceRegion(_canvas, 0, (uint)offsetX, (uint)offsetY, 0, tex, 0, null);
+                using (resource)
+                using (ID3D11Texture2D tex = resource.QueryInterface<ID3D11Texture2D>())
+                {
+                    Context.CopySubresourceRegion(_canvas, 0, (uint)offsetX, (uint)offsetY, 0, tex, 0, null);
+                }
             }
-
-            duplication.ReleaseFrame();
+            finally { duplication.ReleaseFrame(); }
         }
 
         return _canvas;

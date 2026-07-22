@@ -23,6 +23,7 @@ public sealed class FfmpegRecordingSession : IDisposable
     private readonly Lock _stderrLock = new();
     private NamedPipeServerStream? _pipe;
     private Process? _ffmpeg;
+    private readonly CancellationTokenSource _writeCancellation = new();
     private long _framesWritten;
     private bool _disposed;
 
@@ -104,47 +105,57 @@ public sealed class FfmpegRecordingSession : IDisposable
 
         try
         {
-            _pipe.Write(frame, 0, length);
+            _pipe.WriteAsync(frame.AsMemory(0, length), _writeCancellation.Token).AsTask().GetAwaiter().GetResult();
             _framesWritten++;
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
         {
             throw new EncoderPipeBrokenException("The encoder pipe broke (ffmpeg exited unexpectedly).", ex);
         }
     }
 
+    /// <summary>Cancels a producer currently blocked on the video pipe without tearing down session resources.</summary>
+    public void RequestStop() => _writeCancellation.Cancel();
+
     /// <summary>Signals clean EOF, waits for ffmpeg to finalize the container, and returns the result.</summary>
     public RecordingResult StopAndFinalize(TimeSpan timeout)
     {
+        Stopwatch deadline = Stopwatch.StartNew();
+        RequestStop();
+
         if (_pipe is not null)
         {
             try
             {
-                _pipe.Flush();
-                _pipe.WaitForPipeDrain();
+                // Closing the server is the EOF signal ffmpeg needs. Do not wait for a pipe drain here:
+                // it has no timeout and can deadlock forever when ffmpeg or a network output stalls.
+                _pipe.Dispose();
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
             {
-                // ffmpeg may already be closing; EOF still propagates on dispose.
+                // ffmpeg may already be closing.
             }
-
-            _pipe.Dispose();
             _pipe = null;
         }
 
         if (AudioPipe is not null)
         {
-            try { AudioPipe.Flush(); AudioPipe.WaitForPipeDrain(); } catch (IOException) { }
-            AudioPipe.Dispose();
+            try { AudioPipe.Dispose(); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
             AudioPipe = null;
         }
 
         int exitCode = -1;
         if (_ffmpeg is not null)
         {
-            if (_ffmpeg.WaitForExit((int)timeout.TotalMilliseconds))
+            int remainingMs = Math.Max(0, (int)(timeout - deadline.Elapsed).TotalMilliseconds);
+            if (_ffmpeg.WaitForExit(remainingMs))
             {
                 exitCode = _ffmpeg.ExitCode;
+            }
+            else
+            {
+                try { _ffmpeg.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                _ffmpeg.WaitForExit(2000);
             }
         }
 
@@ -160,6 +171,7 @@ public sealed class FfmpegRecordingSession : IDisposable
         }
 
         _disposed = true;
+        _writeCancellation.Cancel();
         try { _pipe?.Dispose(); } catch (IOException) { }
         try { AudioPipe?.Dispose(); } catch (IOException) { }
 
@@ -176,5 +188,6 @@ public sealed class FfmpegRecordingSession : IDisposable
         }
 
         _ffmpeg?.Dispose();
+        _writeCancellation.Dispose();
     }
 }

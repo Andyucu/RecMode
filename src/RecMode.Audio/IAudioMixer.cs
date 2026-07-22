@@ -36,11 +36,11 @@ public interface IAudioMixer : IDisposable
     void Stop();
 
     /// <summary>
-    /// Writes mixed f32le to <paramref name="pipe"/> paced to <paramref name="activeElapsed"/> (the recording's
-    /// active time, which excludes paused spans) so audio pauses in lockstep with video and stays synced;
+    /// Writes mixed f32le to <paramref name="pipe"/> paced to <paramref name="segmentElapsed"/> (the current
+    /// segment's active time, which excludes paused spans) so audio pauses in lockstep with video and stays synced;
     /// pads silence on underflow. Returns bytes written.
     /// </summary>
-    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> activeElapsed, CancellationToken token);
+    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token);
 }
 
 /// <summary>
