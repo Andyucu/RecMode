@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.43%20Beta-blue)](#install)
+[![Version](https://img.shields.io/badge/version-0.9.45%20Beta-blue)](#install)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
