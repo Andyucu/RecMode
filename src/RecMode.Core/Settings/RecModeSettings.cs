@@ -33,6 +33,13 @@ public sealed class RecModeSettings
     public bool CaptureCursor { get; set; } = true;
     public bool HighlightClicks { get; set; }
 
+    /// <summary>Keystroke visualizer: shows hotkey combos (e.g. "Ctrl + Z") on screen while recording.</summary>
+    public bool ShowKeystrokes { get; set; }
+
+    /// <summary>Smart auto-zoom (beta): GPU pan/zoom toward each mouse click while recording, easing back out
+    /// after a short idle period. Monitor/Region sources only — see <c>RecordingCoordinator.ComputeZoomRect</c>.</summary>
+    public bool AutoZoomEnabled { get; set; }
+
     // Encoding defaults
     public VideoCodec Codec { get; set; } = VideoCodec.H264;
     public EncoderBackend Backend { get; set; } = EncoderBackend.Auto;

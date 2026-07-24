@@ -22,7 +22,7 @@ internal static class WgcSessionFactory
         GraphicsCaptureSession CaptureSession);
 
     public static Session Start(CaptureTarget target, bool captureCursor,
-        TypedEventHandler<Direct3D11CaptureFramePool, object?> onFrameArrived)
+        TypedEventHandler<Direct3D11CaptureFramePool, object?> onFrameArrived, bool preferHdr = false)
     {
         ID3D11Device? device = null;
         ID3D11DeviceContext? context = null;
@@ -33,8 +33,16 @@ internal static class WgcSessionFactory
             (device, context) = CaptureInterop.CreateDevice();
             IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
             GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
+            // HDR sources: request the frame pool's native FP16 scRGB format instead of 8-bit BGRA, so the
+            // captured texture carries the real linear HDR values DWM composited (not an already-clamped 8bpc
+            // approximation) — the VideoProcessor pipeline then does the actual tone-map down to SDR
+            // (VideoProcessorPipeline's color-space setup). Requesting BGRA8 on an HDR desktop is exactly what
+            // produces the washed-out/wrong-color recordings this feature exists to fix.
+            DirectXPixelFormat pixelFormat = preferHdr
+                ? DirectXPixelFormat.R16G16B16A16Float
+                : DirectXPixelFormat.B8G8R8A8UIntNormalized;
             framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-                winrt, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
+                winrt, pixelFormat, 2, item.Size);
             framePool.FrameArrived += onFrameArrived;
             session = framePool.CreateCaptureSession(item);
             CaptureSessionConfig.Apply(session, captureCursor);

@@ -238,10 +238,18 @@ public static class FfmpegArgsBuilder
     /// (fast motion, busy screen updates), not normal recording.</summary>
     private const double GuardrailHeadroomMultiplier = 3.0;
 
+    /// <summary>Hard ceiling on the computed guardrail maxrate. Found via a real failure: at high
+    /// resolution/frame-rate/quality combos (e.g. 1702×1260@60, near-max quality) the uncapped estimate can
+    /// exceed 100 Mbps, which SVT-AV1 rejects outright ("The maximum bit rate must be between [0, 100000]
+    /// kbps") — the encoder then fails to open at all, breaking the recording immediately (not just a
+    /// theoretical concern; this is the exact bitrate that triggered it). No real screen recording needs a
+    /// ceiling above this anyway, so clamping is a pure safety net, not a quality trade-off in practice.</summary>
+    private const int MaxRateCeilingKbps = 100_000;
+
     public static (int MaxRateKbps, int BufSizeKbps) EstimateGuardrail(int width, int height, int fps, int quality)
     {
         int typicalKbps = EstimateTypicalKbps(width, height, fps, quality);
-        int maxRateKbps = Math.Max(500, (int)Math.Round(typicalKbps * GuardrailHeadroomMultiplier));
+        int maxRateKbps = Math.Clamp((int)Math.Round(typicalKbps * GuardrailHeadroomMultiplier), 500, MaxRateCeilingKbps);
         return (maxRateKbps, maxRateKbps * 2);
     }
 
@@ -269,7 +277,15 @@ public static class FfmpegArgsBuilder
         {
             "libx264" => $"-c:v libx264 -preset {X264Preset(effort)} -crf {c}",
             "libx265" => $"-c:v libx265 -preset {X264Preset(effort)} -crf {c}",
-            "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c}",
+            // asm=avx2 caps SVT-AV1's SIMD dispatch below its default auto-detected AVX-512 kernels. Found via
+            // a real bug report: AV1 recordings on a VM came out solid black while H.264/HEVC on the same VM
+            // (and AV1 on real hardware) were fine — some hypervisors expose AVX-512 CPUID flags without
+            // correctly virtualizing every AVX-512 instruction, and SVT-AV1's AVX-512 code path silently
+            // corrupts output (to black) instead of crashing, rather than falling back. AVX2 is mature and
+            // near-universally correct under virtualization; the encode-speed cost versus AVX-512 is modest,
+            // and reliability matters more than that margin for a screen recorder. Confirmed accepted by the
+            // bundled SVT-AV1 build (logs "[asm level selected : up to avx2]" instead of "avx512icl").
+            "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c} -svtav1-params asm=avx2",
 
             "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" =>
                 $"-c:v {encoder.FfmpegId} -preset {NvencPreset(effort)} -rc vbr -cq {c}",

@@ -106,6 +106,9 @@
                 </Border>
 
                 <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16,12">
+                    <!-- Status/stats/disk-space text lives in the sidebar's recording footer instead of here
+                         (visible from any screen, and with real width instead of a squeezed middle column that
+                         used to truncate long "Saved <filename>.mp4" status text — see ShellWindow.xaml). -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -123,10 +126,6 @@
                             <Button Command="{Binding ScreenshotCommand}" Content="{x:Static res:Strings.Record_Screenshot}"
                                     ToolTip="Save a still image of the current source (F11)"
                                     Style="{StaticResource SecondaryButton}" Width="112" Height="36" Margin="8,0,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
-                            <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongText}" />
-                            <TextBlock Text="{Binding StatsText}" Style="{StaticResource CaptionText}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                             <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource MonoText}"

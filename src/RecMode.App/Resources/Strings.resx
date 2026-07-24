@@ -117,6 +117,10 @@
   <data name="Settings_CursorDesc" xml:space="preserve"><value>Include the pointer in recordings and screenshots</value></data>
   <data name="Settings_Clicks" xml:space="preserve"><value>Highlight mouse clicks</value></data>
   <data name="Settings_ClicksDesc" xml:space="preserve"><value>Draw a ripple around each click</value></data>
+  <data name="Settings_Keystrokes" xml:space="preserve"><value>Show keystrokes</value></data>
+  <data name="Settings_KeystrokesDesc" xml:space="preserve"><value>Display hotkey combinations like Ctrl + Z on screen</value></data>
+  <data name="Settings_AutoZoom" xml:space="preserve"><value>Smart auto-zoom (beta)</value></data>
+  <data name="Settings_AutoZoomDesc" xml:space="preserve"><value>While recording, each click smoothly zooms in around it, then eases back out after a few idle seconds. Screen and Region sources only.</value></data>
   <data name="Settings_BitrateGuardrail" xml:space="preserve"><value>Limit maximum bitrate</value></data>
   <data name="Settings_BitrateGuardrailDesc" xml:space="preserve"><value>Cap file size growth on unusually complex content, without changing the quality setting</value></data>
   <data name="Settings_AutoSplit" xml:space="preserve"><value>Auto-split large recordings</value></data>
@@ -137,6 +141,7 @@
   <data name="Library_Videos" xml:space="preserve"><value>Videos</value></data>
   <data name="Library_Screenshots" xml:space="preserve"><value>Screenshots</value></data>
   <data name="Library_Open" xml:space="preserve"><value>Open</value></data>
+  <data name="Library_Play" xml:space="preserve"><value>Play</value></data>
   <data name="Library_Reveal" xml:space="preserve"><value>Show in folder</value></data>
   <data name="Library_Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="Library_RecordAgain" xml:space="preserve"><value>Record again</value></data>

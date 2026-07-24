@@ -151,13 +151,13 @@ public sealed class RecordingCoordinator : IDisposable
             return false;
         }
 
-        if (RunPreflight(target, encoder, container) is not { } pf)
-        {
-            return false;
-        }
-
         try
         {
+            if (RunPreflight(target, encoder, container) is not { } pf)
+            {
+                return false;
+            }
+
             (int dstW, int dstH) = CaptureSizing.Resolve(pf.SourceWidth, pf.SourceHeight, encoder);
             _originalTarget = target;
             _dstW = dstW;
@@ -173,6 +173,17 @@ public sealed class RecordingCoordinator : IDisposable
             _capture.Faulted += OnCaptureFaulted;
             _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
             _capture.SetBrightness(_settings.Current.Brightness);
+
+            // Smart auto-zoom needs the GPU VideoProcessor pipeline to crop with; the GDI software fallback
+            // (Windows.Graphics.Capture unavailable) has no such mechanism. Rather than the setting silently
+            // doing nothing, tell the user why up front — same "best-effort, warn don't block" spirit as the
+            // webcam overlay below.
+            if (_settings.Current.AutoZoomEnabled && !_capture.SupportsZoom)
+            {
+                _errors.Warn("record.autozoom-unsupported",
+                    "Smart auto-zoom isn't available for this recording.",
+                    "Screen capture fell back to a compatibility mode on this system, which can't apply the zoom effect. The rest of the recording is unaffected.");
+            }
 
             // Webcam picture-in-picture overlay (Phase 7): best-effort — a missing/busy camera warns but
             // never blocks the recording. Runs synchronously before capture is considered "started" so the
@@ -701,6 +712,64 @@ public sealed class RecordingCoordinator : IDisposable
     /// changes on the Record screen take effect mid-recording, not just on the next session.</summary>
     public void SetBrightness(double value) => _capture?.SetBrightness(value);
 
+    /// <summary>True if the active capture is actually on the GPU VideoProcessor pipeline, so a zoom target
+    /// (auto or manual) has any effect. False when capture fell back to the GDI software path — checked before
+    /// offering manual zoom's picker so the user isn't sent through a drag-select that can't do anything.</summary>
+    public bool CaptureSupportsZoom => _capture?.SupportsZoom ?? false;
+
+    /// <summary>Smart auto-zoom: sets/clears the GPU pan-zoom target (source-local pixels; see
+    /// <see cref="ComputeZoomRect"/> to derive one from a screen-space click).</summary>
+    public void SetZoomTarget(RegionRect? rect) => _capture?.SetZoomTarget(rect);
+
+    /// <summary>
+    /// Live-retargets a Region-source recording's actual captured area (source-local pixels) — dragging the
+    /// on-screen contour to a new spot while recording, rather than a temporary zoom effect. Also updates the
+    /// coordinator's own record of the active target so it reflects reality (matters for <see cref="Stop"/>'s
+    /// bookkeeping and for <see cref="ComputeZoomRect"/> staying correct if auto/manual zoom is used afterward).
+    /// </summary>
+    public void SetBaseRect(RegionRect rect)
+    {
+        _capture?.SetBaseRect(rect);
+        if (_originalTarget is { Kind: CaptureKind.Region } target)
+        {
+            _originalTarget = target with { Region = rect };
+        }
+    }
+
+    /// <summary>
+    /// Computes the GPU crop rect for an auto-zoom centered on a screen-space (physical, virtual-desktop)
+    /// click point, or null if the click shouldn't trigger a zoom. <paramref name="zoomFactor"/> &gt; 1 shrinks
+    /// the rect (zooms in) — e.g. 2.0 halves both dimensions.
+    /// <para>Deliberately scoped to Monitor/Region sources only for v1: Window capture's rect moves/resizes
+    /// independently of monitor coordinates (and can be resized/closed mid-recording), and All-Displays has no
+    /// single fixed monitor origin to convert a click into — both would need their own coordinate-tracking
+    /// logic rather than reusing the monitor-relative math below, so a click during those sources is silently
+    /// treated as "no zoom" rather than half-implemented.</para>
+    /// </summary>
+    public RegionRect? ComputeZoomRect(int screenX, int screenY, double zoomFactor)
+    {
+        if (_originalTarget is not { } target || target.Kind is CaptureKind.Window or CaptureKind.AllDisplays)
+        {
+            return null;
+        }
+
+        MonitorInfo? mon = CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle);
+        if (mon is null)
+        {
+            return null;
+        }
+
+        RegionRect bounds = target.Region ?? new RegionRect(0, 0, mon.Width, mon.Height);
+        int localX = screenX - mon.X;
+        int localY = screenY - mon.Y;
+        if (!AutoZoomMath.Contains(bounds, localX, localY))
+        {
+            return null; // click landed outside the captured area
+        }
+
+        return AutoZoomMath.ComputeZoomRect(bounds, localX, localY, zoomFactor);
+    }
+
     /// <summary>Starts the audio-pump thread for the given pipe — shared by <see cref="Start"/> and
     /// <see cref="RotateSegment"/> (auto-split / hw→sw downgrade), which each open a fresh audio pipe per
     /// segment. Runs on a dedicated background <see cref="Thread"/> (not a <see cref="System.Threading.Tasks.Task"/>):
@@ -779,7 +848,11 @@ public sealed class RecordingCoordinator : IDisposable
 
                 long now = Stopwatch.GetTimestamp();
 
-                // Black-frame watchdog (§3.6): exclusive-fullscreen games / DRM windows capture as black.
+                // Black-frame watchdog (§3.6): exclusive-fullscreen games, DRM-protected windows, and video
+                // players/browsers rendering through a hardware overlay surface all capture as black under
+                // Windows.Graphics.Capture — the compositor never draws that surface into the frame WGC hands
+                // us, so there's no pixel data to fix in our own pipeline. The one actionable remediation for
+                // the overlay case is disabling hardware-accelerated/overlay video decode in the source app.
                 if (!blackWarned && (framesWritten & 15) == 0)
                 {
                     if (BlackFrameDetector.IsLikelyBlack(frame, lumaLength))
@@ -792,8 +865,10 @@ public sealed class RecordingCoordinator : IDisposable
                         {
                             blackWarned = true;
                             _errors.Warn("record.black-frames",
-                                "The recording looks black. Exclusive-fullscreen games and DRM-protected windows can't be captured.",
-                                "Switch the game to borderless/windowed mode.");
+                                "The recording looks black.",
+                                "Exclusive-fullscreen games and DRM-protected windows can't be captured — switch to borderless/windowed mode. " +
+                                "A video window that plays fine but records black is usually rendering through a hardware overlay; disabling " +
+                                "hardware acceleration / overlay scaling for video playback in that app fixes it.");
                         }
                     }
                     else
@@ -865,17 +940,21 @@ public sealed class RecordingCoordinator : IDisposable
                     RetargetCapture(pendingRetarget);
                 }
 
-                // Mid-recording disk guard (§3.6): stop gracefully before a full disk corrupts the finish.
+                // Auto-pause safety guard, disk half (§3.6): pause rather than stop outright before a full disk
+                // corrupts the finish — pausing writes no more frames (so it can't make the problem worse) but
+                // keeps the recording resumable once space is freed, instead of force-finalizing it. Pause()
+                // is safe to call inline (unlike Stop(), it doesn't join this thread); the next loop iteration's
+                // Paused early-continue stops re-checking until actually resumed.
                 if (now - lastDiskCheck >= 2 * Stopwatch.Frequency) // every ~2 s
                 {
                     lastDiskCheck = now;
                     if (IsDiskCriticallyLow())
                     {
                         _errors.Warn("record.disk-critical",
-                            "Stopping — the disk is nearly full.",
-                            "Free up space or choose another output folder before recording again.");
-                        System.Threading.Tasks.Task.Run(Stop); // Stop() joins this thread, so never call it inline
-                        return;
+                            "Recording paused — the disk is nearly full.",
+                            "Free up space, then resume. It'll pause again if space is still critically low.");
+                        Pause();
+                        continue;
                     }
                 }
 
@@ -919,15 +998,22 @@ public sealed class RecordingCoordinator : IDisposable
 
     private void HandleFatalPipeBreak(Exception ex, string message, string suggestion)
     {
-        Log.Error(ex, "Recording pacer loop failed. ffmpeg stderr:\n{Stderr}", _session?.StandardError);
-        _errors.Fatal("record.encoder-died", message, suggestion, ex);
-
         if (!TryClaimFinalize())
         {
-            // Stop() (UI thread) already claimed finalize concurrently — it will drive the state machine
-            // and raise Finished; nothing more to do here.
+            // Stop() (UI thread) already claimed finalize concurrently — almost always because this is the
+            // exact, entirely normal race where Stop() sets _stopRequested and cancels the pipe write
+            // (FfmpegRecordingSession.RequestStop) a moment before this thread's own in-flight WriteFrame call
+            // observes that cancellation and throws — not a real encoder failure. Since Stop() always claims
+            // finalize *before* it cancels the pipe, losing this race reliably means someone else is already
+            // driving a normal (or their own already-reported) finalize, so showing another Fatal toast here
+            // would only be redundant or actively misleading. It already drives the state machine and raises
+            // Finished; nothing more to do here.
+            Log.Debug(ex, "Pacer loop's WriteFrame was cancelled during an already-in-progress Stop() (benign race, not a real failure).");
             return;
         }
+
+        Log.Error(ex, "Recording pacer loop failed. ffmpeg stderr:\n{Stderr}", _session?.StandardError);
+        _errors.Fatal("record.encoder-died", message, suggestion, ex);
 
         // Drive the machine to a clean Idle and report whatever the session managed to finalize.
         try

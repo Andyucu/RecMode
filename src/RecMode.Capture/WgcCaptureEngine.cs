@@ -37,6 +37,14 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     public int OutputHeight { get; private set; }
     public int Nv12ByteSize { get; private set; }
     public long CapturedFrameCount => Interlocked.Read(ref _capturedFrames);
+    public bool SupportsZoom => _softwareFallback is null;
+
+    /// <summary>True once HDR-to-SDR tone mapping (§3.6) is actually active for the current recording — only
+    /// ever true for Monitor/Region sources on an HDR-active display; Window and All-Displays sources don't
+    /// attempt it in this first cut (documented scope cut, same precedent as Smart auto-zoom's Window/
+    /// All-Displays exclusion — mapping either reliably onto one monitor's HDR state needs more plumbing than
+    /// a first pass warrants).</summary>
+    public bool HdrToneMapActive => _converter?.HdrToneMapActive ?? false;
 
     public event EventHandler<Exception>? Faulted;
 
@@ -61,8 +69,14 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             return;
         }
 
+        // HDR-to-SDR tone mapping (§3.6): only attempted for Monitor/Region sources, where the target maps
+        // 1:1 onto one real monitor's HDR state — Window and All-Displays sources are a deliberate scope cut
+        // (same precedent as Smart auto-zoom's Window/All-Displays exclusion).
+        bool sourceIsHdr = target.Kind is CaptureKind.Monitor or CaptureKind.Region &&
+            CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle) is { IsHdr: true };
+
         WgcSessionFactory.Session session;
-        try { session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived); }
+        try { session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived, sourceIsHdr); }
         catch (Exception)
         {
             StartSoftwareFallback(target, dstW, dstH, captureCursor);
@@ -78,7 +92,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             _item.Closed += OnCaptureItemClosed;
 
             int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
-            _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region);
+            _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region, sourceIsHdr);
             _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
             _converter.SetBrightness(_brightness);
             OutputWidth = dstW;
@@ -253,6 +267,18 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         if (_softwareFallback is not null) return;
         _brightness = value;
         _converter?.SetBrightness(value);
+    }
+
+    public void SetZoomTarget(RegionRect? rect)
+    {
+        if (_softwareFallback is not null) return;
+        _converter?.SetZoomTarget(rect);
+    }
+
+    public void SetBaseRect(RegionRect rect)
+    {
+        if (_softwareFallback is not null) return;
+        _converter?.SetBaseRect(rect);
     }
 
     public void Stop()

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RecMode.App.Services;
 using RecMode.Capture;
+using RecMode.Core.Errors;
 using RecMode.Core.Settings;
 using RecMode.Encoding.Encoders;
 using RecMode.Encoding.Ffmpeg;
@@ -54,13 +55,14 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private readonly ICountdownController _countdown;
     private readonly IProfileNamePrompt _profilePrompt;
     private readonly RecMode.Core.Infrastructure.IAppPaths _paths;
+    private readonly IErrorReporter _errors;
     private string _diskSpaceText = "";
 
     public RecordViewModel(RecordingCoordinator coordinator, IEncoderProbe encoderProbe,
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
         IWindowPicker windowPicker, Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots,
         IScreenshotFlash screenshotFlash, ICountdownController countdown, IProfileNamePrompt profilePrompt,
-        RecMode.Core.Infrastructure.IAppPaths paths)
+        RecMode.Core.Infrastructure.IAppPaths paths, IErrorReporter errors)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
@@ -74,6 +76,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _countdown = countdown;
         _profilePrompt = profilePrompt;
         _paths = paths;
+        _errors = errors;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
         _systemVolume = settings.Current.SystemVolume;
@@ -103,6 +106,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         PauseResumeCommand = new RelayCommand(TogglePause);
         ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget(refreshFollowedWindow: false) is not null);
         ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
+        ToggleManualZoomCommand = new RelayCommand(ToggleManualZoom);
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
         SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
@@ -125,6 +129,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand PauseResumeCommand { get; }
     public IRelayCommand ScreenshotCommand { get; }
     public IRelayCommand ToggleAnnotateCommand { get; }
+    public IRelayCommand ToggleManualZoomCommand { get; }
     public IRelayCommand SaveProfileCommand { get; }
     public IRelayCommand DeleteProfileCommand { get; }
 
@@ -245,6 +250,50 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             // Cancelled with an existing region to fall back to — (re-)apply it so the preview reflects
             // Region source even if this pick was triggered by switching tiles rather than "Change…".
             RestartPreview();
+        }
+    }
+
+    /// <summary>Live-updates the pending Region selection while <see cref="Services.SourceContourService"/>'s
+    /// on-screen outline is being dragged (not recording — a recording in progress instead goes through
+    /// <see cref="RecordingCoordinator.SetBaseRect"/>, which doesn't touch this pending-selection state at
+    /// all). Deliberately doesn't persist to settings or restart the preview on every drag tick — see
+    /// <see cref="CompleteRegionDrag"/> for that, once the gesture actually ends.</summary>
+    public void UpdateRegionFromDrag(RegionRect monitorLocalRect)
+    {
+        if (IsRegionSource)
+        {
+            _region = monitorLocalRect;
+        }
+    }
+
+    /// <summary>Persists the region the contour was just dragged to and restarts the preview to match — called
+    /// once when the drag gesture ends, not on every tick (see <see cref="UpdateRegionFromDrag"/>).</summary>
+    public void CompleteRegionDrag()
+    {
+        if (_region is not { } r)
+        {
+            return;
+        }
+
+        _settings.Current.RegionX = r.X;
+        _settings.Current.RegionY = r.Y;
+        _settings.Current.RegionWidth = r.Width;
+        _settings.Current.RegionHeight = r.Height;
+        _settings.RequestSave();
+        OnPropertyChanged(nameof(RegionLabel));
+        OnPropertyChanged(nameof(QualityLabel));
+        RestartPreview();
+    }
+
+    /// <summary>Clears the current Region selection (reverts to Screen) — the global Esc hotkey while the
+    /// contour is up in its "selected, not recording" state calls this (see
+    /// <see cref="Services.SourceContourService"/>). No-ops while recording — the source is locked for the
+    /// duration of a recording regardless, same as every other Record-screen control.</summary>
+    public void ClearRegionSelection()
+    {
+        if (IsRegionSource && !IsRecording)
+        {
+            RevertToScreen();
         }
     }
 
@@ -458,6 +507,81 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// <summary>Turns annotation off (called by the overlay on Esc and when the recording ends).</summary>
     public void StopAnnotating() => IsAnnotating = false;
 
+    private bool _isManualZooming;
+    /// <summary>True while the toolbar's manual "Zoom"/"Exit Zoom" button has an area zoomed in. Distinct from
+    /// Smart auto-zoom (click-triggered) — this is a user-picked area that stays zoomed until they exit it,
+    /// rather than an eased click-follow. Both share the same GPU crop mechanism
+    /// (<see cref="RecordingCoordinator.SetZoomTarget"/>), so only one is meaningful at a time in practice.</summary>
+    public bool IsManualZooming
+    {
+        get => _isManualZooming;
+        private set { if (SetProperty(ref _isManualZooming, value)) OnPropertyChanged(nameof(ZoomButtonText)); }
+    }
+
+    public string ZoomButtonText => IsManualZooming ? "Exit Zoom" : "Zoom";
+
+    private void ToggleManualZoom()
+    {
+        if (!_coordinator.IsRecording)
+        {
+            return;
+        }
+
+        if (IsManualZooming)
+        {
+            StopManualZoom();
+            return;
+        }
+
+        // Monitor/Region sources only — same scope cut as Smart auto-zoom (RecordingCoordinator.ComputeZoomRect):
+        // Window/All-Displays sources don't have a fixed monitor origin to resolve a picked rect against.
+        if (ActiveCaptureTarget is not { } target || target.Kind is CaptureKind.Window or CaptureKind.AllDisplays)
+        {
+            _errors.Warn("record.zoom-unsupported", "Zoom isn't available for this recording.",
+                "Manual zoom only works for Screen and Region sources.");
+            return;
+        }
+
+        if (!_coordinator.CaptureSupportsZoom)
+        {
+            _errors.Warn("record.zoom-unsupported", "Zoom isn't available for this recording.",
+                "Screen capture fell back to a compatibility mode on this system, which can't apply the zoom effect.");
+            return;
+        }
+
+        MonitorInfo? mon = Monitors.FirstOrDefault(m => m.Handle == target.Handle);
+        if (mon is null)
+        {
+            return;
+        }
+
+        // Reuses the Region-source picker overlay, excluded from capture (this recording is already running)
+        // so the drag-select chrome itself never shows up in the output.
+        if (_regionPicker.Pick(mon, excludeFromCapture: true) is not { } picked)
+        {
+            return; // cancelled (Esc) — stay unzoomed
+        }
+
+        // A Region-source recording's actual bounds are a sub-rect of the monitor the picker covers; clamp
+        // the pick into those bounds rather than reject a pick made outside the recorded area outright.
+        RegionRect bounds = target.Region ?? new RegionRect(0, 0, mon.Width, mon.Height);
+        _coordinator.SetZoomTarget(AutoZoomMath.Clamp(picked, bounds));
+        IsManualZooming = true;
+    }
+
+    /// <summary>Exits manual zoom (called by the toolbar button when already zoomed, and by the global Esc
+    /// hotkey via <see cref="Services.ManualZoomService"/>).</summary>
+    public void StopManualZoom()
+    {
+        if (!IsManualZooming)
+        {
+            return;
+        }
+
+        _coordinator.SetZoomTarget(null);
+        IsManualZooming = false;
+    }
+
     /// <summary>The capture target actually being recorded, fixed at the moment recording started (not
     /// re-evaluated from the Record screen's current selection). Null when not recording. Lets the
     /// draw-on-screen overlay cover exactly what's being captured — the selected monitor/region/window —
@@ -467,6 +591,11 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
     public string ElapsedText { get => _elapsedText; private set => SetProperty(ref _elapsedText, value); }
     public string StatsText { get => _statsText; private set => SetProperty(ref _statsText, value); }
+
+    private string? _lastRecordingPath;
+    /// <summary>Full path of the most recently finished recording, or null if none yet / a new recording has
+    /// started since. Backs the title bar's "click the status to jump to that recording in the Library" link.</summary>
+    public string? LastRecordingPath { get => _lastRecordingPath; private set => SetProperty(ref _lastRecordingPath, value); }
 
     /// <summary>How much room is left on the output drive — "{used} of {total}" while recording, "{free} free of {total}" at rest.</summary>
     public string DiskSpaceText { get => _diskSpaceText; private set => SetProperty(ref _diskSpaceText, value); }
@@ -505,6 +634,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public void OnNavigatedTo()
     {
         _isActivePage = true;
+        IsActivePage = true;
         LoadDevices();
         LoadPerAppAudioTargets();
         LoadWebcamDevices();
@@ -525,6 +655,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public void OnNavigatedFrom()
     {
         _isActivePage = false;
+        IsActivePage = false;
         StopPreview();
         StopMetering();
     }
@@ -532,6 +663,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// <summary>Called by the shell on minimize/restore to honour the §3.9 "nothing runs when hidden" rule.</summary>
     public void SetWindowMinimized(bool minimized)
     {
+        IsWindowMinimized = minimized;
         if (minimized)
         {
             StopPreview();
@@ -546,6 +678,22 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             StartMetering();
         }
     }
+
+    private bool _isWindowMinimized;
+    public bool IsWindowMinimized { get => _isWindowMinimized; private set => SetProperty(ref _isWindowMinimized, value); }
+
+    private bool _isActivePageObservable;
+    /// <summary>Mirrors the private <c>_isActivePage</c> field (set in <see cref="OnNavigatedTo"/>/
+    /// <see cref="OnNavigatedFrom"/>) as a real notifying property, for <see cref="Services.SourceContourService"/>
+    /// to observe. Kept as a separate field rather than converting the existing one, so this is a pure addition
+    /// with zero risk to the established preview/metering lifecycle logic that already reads the plain field.</summary>
+    public bool IsActivePage { get => _isActivePageObservable; private set => SetProperty(ref _isActivePageObservable, value); }
+
+    /// <summary>The capture target the Record screen currently has selected (Screen/Window/Region, whichever
+    /// tile is active) — the same resolution <see cref="RecordCommand"/> itself uses to decide what a press of
+    /// Record would capture. Exposed read-only for <see cref="Services.SourceContourService"/>, which draws a
+    /// live outline around it so it's always obvious what's actually about to be/being recorded.</summary>
+    public CaptureTarget? CurrentSelectionTarget => CurrentTarget(refreshFollowedWindow: false);
 
     private CaptureTarget? CurrentTarget(bool refreshFollowedWindow = true)
     {

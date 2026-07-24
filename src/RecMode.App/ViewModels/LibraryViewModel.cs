@@ -31,6 +31,8 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     private bool _showVideos = true;
     private CancellationTokenSource? _loadCancellation;
     private bool _isLoading;
+    private LibraryItem? _selectedItem;
+    private string? _pendingSelectPath;
 
     public LibraryViewModel(IAppPaths paths, ISettingsService settings, IErrorReporter errors, RecMode.Core.Library.ILibraryIndex index,
         RecordViewModel record)
@@ -84,12 +86,28 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     public string EmptyMessage => _showVideos ? Strings.Library_NoVideos : Strings.Library_NoScreenshots;
 
+    /// <summary>The item to highlight/scroll to, driven by <see cref="RequestSelect"/> — bound two-way to the
+    /// Library's ListBox so selecting it there also updates this (harmless; nothing currently reads that
+    /// direction back).</summary>
+    public LibraryItem? SelectedItem { get => _selectedItem; set => SetProperty(ref _selectedItem, value); }
+
+    /// <summary>Jump to a specific recording next time the Library loads — the title bar's "Saved
+    /// &lt;filename&gt;" status uses this to point straight at the file that just finished (see
+    /// <see cref="ShellViewModel.OpenLastRecordingCommand"/>). Forces the Videos tab since a finished
+    /// recording is always a video.</summary>
+    public void RequestSelect(string filePath)
+    {
+        _pendingSelectPath = filePath;
+        ShowVideos = true;
+    }
+
     public void OnNavigatedTo() => _ = LoadAsync();
 
     public void OnNavigatedFrom()
     {
         _loadCancellation?.Cancel();
         Items.Clear();
+        SelectedItem = null;
         OnPropertyChanged(nameof(IsEmpty));
     }
 
@@ -109,6 +127,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         var cancellation = new CancellationTokenSource();
         _loadCancellation = cancellation;
         Items.Clear();
+        SelectedItem = null;
         OnPropertyChanged(nameof(IsEmpty));
         IsLoading = true;
 
@@ -137,6 +156,12 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
                     Thumbnail = videos ? null : TryLoadThumbnail(f.FullName),
                     IndexEntry = entry,
                 });
+            }
+
+            if (_pendingSelectPath is { } selectPath)
+            {
+                SelectedItem = Items.FirstOrDefault(i => string.Equals(i.FilePath, selectPath, StringComparison.OrdinalIgnoreCase));
+                _pendingSelectPath = null;
             }
         }
         catch (OperationCanceledException) { }

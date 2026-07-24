@@ -15,6 +15,7 @@ internal sealed class MixSource : IDisposable
     private readonly IWaveIn _capture;
     private readonly BufferedWaveProvider _buffer;
     private readonly ISampleProvider _out;
+    private readonly WaveFormat _sourceFormat;
     private readonly bool _isFloat;
     private readonly int _channels;
 
@@ -29,10 +30,20 @@ internal sealed class MixSource : IDisposable
     public MixSource(IWaveIn capture)
     {
         _capture = capture;
-        WaveFormat f = capture.WaveFormat;
+
+        // WASAPI mix formats (full-system loopback in particular — WasapiLoopbackCapture.WaveFormat reflects
+        // whatever the audio engine's actual mix format is) very commonly arrive as WaveFormatExtensible rather
+        // than a plain WaveFormat, and Extensible carries the *real* encoding (PCM vs IEEE float) in its
+        // SubFormat GUID, not in BitsPerSample. Resolving it via NAudio's own ToStandardWaveFormat() (rather
+        // than guessing "32-bit Extensible must be float", which silently bit-reinterprets 32-bit integer PCM
+        // as float garbage whenever a device's mix format actually is 32-bit PCM) is what was missing here —
+        // per-app audio never hit this because ProcessLoopbackCapture always reports a plain, unambiguous
+        // IeeeFloat WaveFormat, never Extensible.
+        WaveFormat raw = capture.WaveFormat;
+        WaveFormat f = raw is WaveFormatExtensible wfe ? wfe.ToStandardWaveFormat() : raw;
+        _sourceFormat = f;
         _channels = f.Channels;
-        _isFloat = f.Encoding == WaveFormatEncoding.IeeeFloat
-            || (f.Encoding == WaveFormatEncoding.Extensible && f.BitsPerSample == 32);
+        _isFloat = f.Encoding == WaveFormatEncoding.IeeeFloat;
 
         _buffer = new BufferedWaveProvider(WaveFormat.CreateIeeeFloatWaveFormat(f.SampleRate, f.Channels))
         {
@@ -65,7 +76,14 @@ internal sealed class MixSource : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        int bytesPerSample = _capture.WaveFormat.BitsPerSample / 8;
+        int bytesPerSample = _sourceFormat.BitsPerSample / 8;
+        if (bytesPerSample <= 0)
+        {
+            _peak = 0;
+            _rms = 0;
+            return;
+        }
+
         int totalSamples = e.BytesRecorded / bytesPerSample;
         if (totalSamples == 0)
         {
@@ -81,10 +99,11 @@ internal sealed class MixSource : IDisposable
         }
         else
         {
+            // General integer-PCM reader: the previous code only ever read 16-bit samples regardless of the
+            // source's actual bit depth, which silently misaligned/garbled anything that wasn't exactly 16-bit.
             for (int i = 0; i < totalSamples; i++)
             {
-                short s = (short)(e.Buffer[i * 2] | (e.Buffer[i * 2 + 1] << 8));
-                floats[i] = s / 32768f;
+                floats[i] = ReadPcmSample(e.Buffer, i * bytesPerSample, bytesPerSample);
             }
         }
 
@@ -103,6 +122,34 @@ internal sealed class MixSource : IDisposable
         _capture.DataAvailable -= OnDataAvailable;
         try { _capture.StopRecording(); } catch (Exception) { }
         _capture.Dispose();
+    }
+
+    /// <summary>Reads one little-endian signed-integer PCM sample (8/16/24/32-bit) starting at
+    /// <paramref name="byteOffset"/> and normalizes it to -1..1. 8-bit PCM is the one unsigned case (centered
+    /// on 128, per the WAV/WASAPI convention); everything else is signed two's-complement.</summary>
+    internal static float ReadPcmSample(byte[] buffer, int byteOffset, int bytesPerSample)
+    {
+        switch (bytesPerSample)
+        {
+            case 1:
+                return (buffer[byteOffset] - 128) / 128f;
+            case 2:
+                short s16 = (short)(buffer[byteOffset] | (buffer[byteOffset + 1] << 8));
+                return s16 / 32768f;
+            case 3:
+                int s24 = buffer[byteOffset] | (buffer[byteOffset + 1] << 8) | (buffer[byteOffset + 2] << 16);
+                if ((s24 & 0x0080_0000) != 0)
+                {
+                    s24 |= unchecked((int)0xFF00_0000); // sign-extend the 24-bit value into a 32-bit int
+                }
+                return s24 / 8_388_608f;
+            case 4:
+                int s32 = buffer[byteOffset] | (buffer[byteOffset + 1] << 8) |
+                    (buffer[byteOffset + 2] << 16) | (buffer[byteOffset + 3] << 24);
+                return s32 / 2_147_483_648f;
+            default:
+                return 0f;
+        }
     }
 
     private sealed class StereoDownmixSampleProvider(ISampleProvider source, int channels) : ISampleProvider

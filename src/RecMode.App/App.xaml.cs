@@ -148,7 +148,12 @@ public partial class App : Application
         _host.Services.GetRequiredService<Services.RecordingToolbar>().Attach();
         _host.Services.GetRequiredService<Services.SchedulerService>().Start();
         _host.Services.GetRequiredService<Services.ClickHighlightService>().Attach();
+        _host.Services.GetRequiredService<Services.KeystrokeVisualizerService>().Attach();
+        _host.Services.GetRequiredService<Services.SmartZoomService>().Attach();
+        _host.Services.GetRequiredService<Services.ManualZoomService>().Attach();
+        _host.Services.GetRequiredService<Services.SourceContourService>().Attach();
         _host.Services.GetRequiredService<Services.AnnotationService>().Attach();
+        _host.Services.GetRequiredService<Services.AutoPauseGuardService>().Attach();
 
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();

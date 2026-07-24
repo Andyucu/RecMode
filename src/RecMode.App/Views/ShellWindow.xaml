@@ -10,7 +10,8 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
-        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Fixed" UseLayoutRounding="True" SnapsToDevicePixels="True">
 
     <WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" />
@@ -50,8 +51,31 @@
                            VerticalAlignment="Center" Margin="8,0,0,0" />
             </StackPanel>
 
-            <Border Grid.Column="1" Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
-                    BorderThickness="1" CornerRadius="10" Padding="10,3" VerticalAlignment="Center" Margin="12,0,0,0">
+            <Button Grid.Column="1" Command="{Binding OpenLastRecordingCommand}" VerticalAlignment="Center" Margin="12,0,0,0"
+                    WindowChrome.IsHitTestVisibleInChrome="True"
+                    ToolTip="View this recording in the Library"
+                    AutomationProperties.Name="View this recording in the Library">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                                            BorderThickness="1" CornerRadius="10" Padding="10,3">
+                                        <ContentPresenter />
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Record.LastRecordingPath}" Value="{x:Null}">
+                                <Setter Property="Cursor" Value="Arrow" />
+                                <Setter Property="ToolTip" Value="{x:Null}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
                         <Ellipse.Style>
@@ -89,7 +113,7 @@
                     <TextBlock Text="{Binding Record.StatusText}" Style="{StaticResource CaptionText}"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                 </StackPanel>
-            </Border>
+            </Button>
 
             <!-- Theme toggle + caption buttons -->
             <Button Grid.Column="3" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="Toggle theme"
@@ -120,20 +144,41 @@
             <!-- Sidebar nav -->
             <Border Grid.Column="0" Width="204" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,1,0"
                     Visibility="{Binding Layout, Converter={StaticResource EnumToVisibility}, ConverterParameter=Sidebar}">
-                <StackPanel Margin="0,8">
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Record"
-                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Library"
-                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Schedule"
-                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
-                    <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
-                                 Command="{Binding NavigateCommand}" CommandParameter="Settings"
-                                 IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
-                </StackPanel>
+                <DockPanel>
+                    <!-- Recording status footer: visible from any screen (not just Record), with the sidebar's
+                         full width instead of the Record screen toolbar's squeezed middle column, which used
+                         to truncate longer status text like "Saved <filename>.mp4". -->
+                    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,1,0,0"
+                            Padding="14,10" Visibility="{Binding Record.IsRecording, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <Ellipse Width="8" Height="8" Fill="{DynamicResource CriticalBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding Record.ElapsedText}" Style="{StaticResource MonoText}" FontSize="16"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding Record.StatusText}" Style="{StaticResource CaptionText}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.StatusText}" Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding Record.StatsText}" Style="{StaticResource CaptionText}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.StatsText}" Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding Record.DiskSpaceText}" Style="{StaticResource CaptionText}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.DiskSpaceText}" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Margin="0,8">
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Record"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Library"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Schedule"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Settings"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
+                    </StackPanel>
+                </DockPanel>
             </Border>
 
             <!-- Content column (with optional top nav bar) -->
@@ -146,20 +191,46 @@
                 <!-- Top-bar nav -->
                 <Border Grid.Row="0" BorderBrush="{DynamicResource StrokeDividerBrush}" BorderThickness="0,0,0,1" Padding="14,7"
                         Visibility="{Binding Layout, Converter={StaticResource EnumToVisibility}, ConverterParameter=TopTab}">
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Record"
-                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
-                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Library"
-                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
-                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Schedule"
-                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
-                        <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
-                                     Command="{Binding NavigateCommand}" CommandParameter="Settings"
-                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Record}" Tag="&#xE714;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Record"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Record, Mode=OneWay}" />
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Library"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Schedule"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Settings"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
+                        </StackPanel>
+                        <!-- Recording status readout, right-aligned — the TopTab layout has no sidebar, so
+                             without this the recording status/stats/disk-space info the Sidebar layout shows
+                             in its footer was simply invisible in this layout. Same fields, laid out
+                             horizontally (two compact rows) instead of the sidebar's vertical stack. -->
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Visibility="{Binding Record.IsRecording, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Ellipse Width="8" Height="8" Fill="{DynamicResource CriticalBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding Record.ElapsedText}" Style="{StaticResource MonoText}" FontSize="14"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <TextBlock Text="{Binding Record.StatusText}" Style="{StaticResource CaptionText}"
+                                           MaxWidth="240" TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.StatusText}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding Record.StatsText}" Style="{StaticResource CaptionText}"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.StatsText}" Margin="0,0,10,0" />
+                                <TextBlock Text="{Binding Record.DiskSpaceText}" Style="{StaticResource CaptionText}"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Record.DiskSpaceText}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <ContentControl Grid.Row="1" Content="{Binding CurrentPage}" Margin="0" />

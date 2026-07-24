@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using SharpGen.Runtime;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -111,12 +112,53 @@ internal static class CaptureInterop
                     Width = w,
                     Height = h,
                     IsPrimary = primary,
+                    IsHdr = IsMonitorHdr(hMon),
                 });
             }
             return true;
         }, IntPtr.Zero);
 
         return results;
+    }
+
+    /// <summary>True if Windows currently reports Advanced Color (HDR10, PQ transfer / BT.2020 primaries) as
+    /// active on this monitor. Used to decide whether the capture pipeline needs to tone-map back to SDR
+    /// (§3.6 "HDR tone-map to SDR" — otherwise a captured HDR desktop looks washed out/wrong, since its pixel
+    /// values are encoded for a very different display curve than the SDR video the recording ends up as).
+    /// Best-effort: any DXGI failure (old driver, no IDXGIOutput6) reports "not HDR" rather than throwing, so a
+    /// probe failure just skips tone-mapping instead of blocking capture.</summary>
+    public static bool IsMonitorHdr(nint hMonitor)
+    {
+        try
+        {
+            using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+            for (uint i = 0; factory.EnumAdapters1(i, out IDXGIAdapter1 adapter).Success; i++)
+            {
+                using (adapter)
+                {
+                    for (uint j = 0; adapter.EnumOutputs(j, out IDXGIOutput output).Success; j++)
+                    {
+                        using (output)
+                        {
+                            if (output.Description.Monitor != hMonitor)
+                            {
+                                continue;
+                            }
+
+                            using IDXGIOutput6? output6 = output.QueryInterfaceOrNull<IDXGIOutput6>();
+                            return output6 is not null &&
+                                output6.Description1.ColorSpace == ColorSpaceType.RgbFullG2084NoneP2020;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort probe — an unexpected DXGI failure here should never block capture from starting.
+        }
+
+        return false;
     }
 
     /// <summary>Current on-screen bounds of a window, in absolute virtual-desktop physical pixels.</summary>
@@ -355,7 +397,7 @@ internal static class CaptureInterop
 
     public static ID3D11Texture2D GetTexture(IDirect3DSurface surface)
     {
-        var access = surface.As<IDirect3DDxgiInterfaceAccess>();
+        var access = WinRT.CastExtensions.As<IDirect3DDxgiInterfaceAccess>(surface);
         Guid iid = ID3D11Texture2D_IID;
         IntPtr texPtr = access.GetInterface(ref iid);
         return new ID3D11Texture2D(texPtr);

@@ -115,6 +115,45 @@ public static class WindowRegionProxy
     }
 }
 
+/// <summary>Pure geometry for smart auto-zoom: given the capturable area and a click point (both in the same
+/// monitor-local pixel space), computes the GPU crop rect to zoom in on. Kept separate from
+/// <see cref="RecMode.App.Services.RecordingCoordinator.ComputeZoomRect"/> (which resolves the impure bits —
+/// which monitor is active, whether the source even supports zoom) so this part is trivially unit-testable.</summary>
+public static class AutoZoomMath
+{
+    /// <summary>True if <paramref name="x"/>,<paramref name="y"/> falls inside <paramref name="bounds"/>.</summary>
+    public static bool Contains(RegionRect bounds, int x, int y) =>
+        x >= bounds.X && x < bounds.X + bounds.Width && y >= bounds.Y && y < bounds.Y + bounds.Height;
+
+    /// <summary>The <paramref name="zoomFactor"/>-shrunk rect (&gt; 1 zooms in; e.g. 2.0 halves both dimensions),
+    /// centered on <paramref name="x"/>,<paramref name="y"/> and clamped to stay fully within <paramref name="bounds"/>.
+    /// Never smaller than 16px in either dimension. Caller must have already verified the point is in bounds
+    /// (see <see cref="Contains"/>) — this method doesn't re-check.</summary>
+    public static RegionRect ComputeZoomRect(RegionRect bounds, int x, int y, double zoomFactor)
+    {
+        int zoomW = Math.Clamp((int)Math.Round(bounds.Width / zoomFactor), 16, bounds.Width);
+        int zoomH = Math.Clamp((int)Math.Round(bounds.Height / zoomFactor), 16, bounds.Height);
+        int rectX = Math.Clamp(x - zoomW / 2, bounds.X, bounds.X + bounds.Width - zoomW);
+        int rectY = Math.Clamp(y - zoomH / 2, bounds.Y, bounds.Y + bounds.Height - zoomH);
+        return new RegionRect(rectX, rectY, zoomW, zoomH);
+    }
+
+    /// <summary>Fits an arbitrary rect (e.g. a manually drag-selected zoom area) fully within
+    /// <paramref name="bounds"/> — clipping each dimension that's larger than <paramref name="bounds"/>, then
+    /// shifting (never resizing further) so the result's origin stays inside <paramref name="bounds"/>. Used for
+    /// manual zoom: the picker overlay covers the whole monitor, but a Region-source recording's actual bounds
+    /// are a sub-rect of it, so a pick outside those bounds needs to land somewhere valid rather than be
+    /// rejected outright.</summary>
+    public static RegionRect Clamp(RegionRect rect, RegionRect bounds)
+    {
+        int w = Math.Clamp(rect.Width, 1, bounds.Width);
+        int h = Math.Clamp(rect.Height, 1, bounds.Height);
+        int x = Math.Clamp(rect.X, bounds.X, bounds.X + bounds.Width - w);
+        int y = Math.Clamp(rect.Y, bounds.Y, bounds.Y + bounds.Height - h);
+        return new RegionRect(x, y, w, h);
+    }
+}
+
 /// <summary>Pure matching rules for "follow selected window" when an app recreates its top-level HWND.</summary>
 public static class WindowFollowResolver
 {

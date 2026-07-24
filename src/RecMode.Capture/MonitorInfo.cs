@@ -19,6 +19,10 @@ public sealed record MonitorInfo
     public int Height { get; init; }
     public bool IsPrimary { get; init; }
 
+    /// <summary>True if Windows currently reports Advanced Color (HDR10) active on this monitor — drives
+    /// whether the capture pipeline applies HDR-to-SDR tone mapping (§3.6).</summary>
+    public bool IsHdr { get; init; }
+
     /// <summary>True for the synthetic "All Displays" entry appended to the Record screen's display picker
     /// when more than one real monitor is present (plan §1: "Full screen (per display + all displays)").
     /// <see cref="Handle"/> is unused for this entry; X/Y/Width/Height carry the virtual-desktop bounding box.</summary>

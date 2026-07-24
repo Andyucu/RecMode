@@ -28,6 +28,8 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
     public int OutputHeight => _dstH;
     public int Nv12ByteSize => _dstW * _dstH * 3 / 2;
     public long CapturedFrameCount { get; private set; }
+    public bool SupportsZoom => false;
+    public bool HdrToneMapActive => false;
     public event EventHandler<Exception>? Faulted;
 
     public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor)
@@ -182,6 +184,8 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
     public bool TryGetLatestFrame(byte[] dest) { lock (_sync) { if (!_hasLatest) return false; Buffer.BlockCopy(_latest, 0, dest, 0, _latest.Length); return true; } }
     public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect) { }
     public void SetBrightness(double value) { }
+    public void SetZoomTarget(RegionRect? rect) { } // no VideoProcessor pass to crop in the GDI fallback path
+    public void SetBaseRect(RegionRect rect) { }
     public void Stop() { IsRunning = false; _stopping = true; _thread?.Join(2000); _thread = null; }
     public void Dispose() => Stop();
 

@@ -1,0 +1,48 @@
+<Window x:Class="RecMode.App.Views.ContourOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        Focusable="False" WindowStartupLocation="Manual">
+    <!-- The window itself is sized HandlePadding (10px) larger than the logical contour rect on every side, so
+         the corner handles (centered on the true corners) have room to render/hit-test without being clipped
+         at the window edge — see ContourOverlayWindow.HandlePadding / UpdateBounds.
+
+         Only the 4 corner zones (CornerZone, ~32px square) actually accept mouse input in interactive mode —
+         everywhere else (edges, and critically the whole interior) is click-through via a WM_NCHITTEST hook
+         (see WndProc), not just the resize handles' own small hit area. Without that, dragging from "anywhere
+         in the body" would swallow every click inside the recorded area, making it impossible to interact
+         with whatever's actually being recorded while the contour is up. -->
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <Border x:Name="ContourBorder" BorderThickness="4" Background="Transparent" Margin="10" />
+
+        <!-- Move grips: the larger, subtly-shaded corner zone behind each resize handle — grab here (not the
+             exact corner tip) to move the whole rect. Collapsed outside interactive mode, same as the handles. -->
+        <Rectangle x:Name="MoveGripTopLeft" Width="32" Height="32" Fill="#26FFFFFF"
+                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                   Cursor="SizeAll" Visibility="Collapsed" />
+        <Rectangle x:Name="MoveGripTopRight" Width="32" Height="32" Fill="#26FFFFFF"
+                   HorizontalAlignment="Right" VerticalAlignment="Top"
+                   Cursor="SizeAll" Visibility="Collapsed" />
+        <Rectangle x:Name="MoveGripBottomLeft" Width="32" Height="32" Fill="#26FFFFFF"
+                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                   Cursor="SizeAll" Visibility="Collapsed" />
+        <Rectangle x:Name="MoveGripBottomRight" Width="32" Height="32" Fill="#26FFFFFF"
+                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                   Cursor="SizeAll" Visibility="Collapsed" />
+
+        <!-- Corner resize handles — only shown/hit-testable in interactive (Region-source, not recording-locked) mode. -->
+        <Rectangle x:Name="HandleTopLeft" Width="14" Height="14" Fill="White" Stroke="Black" StrokeThickness="1.5"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" Margin="3,3,0,0"
+                   Cursor="SizeNWSE" Visibility="Collapsed" />
+        <Rectangle x:Name="HandleTopRight" Width="14" Height="14" Fill="White" Stroke="Black" StrokeThickness="1.5"
+                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0"
+                   Cursor="SizeNESW" Visibility="Collapsed" />
+        <Rectangle x:Name="HandleBottomLeft" Width="14" Height="14" Fill="White" Stroke="Black" StrokeThickness="1.5"
+                   HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="3,0,0,3"
+                   Cursor="SizeNESW" Visibility="Collapsed" />
+        <Rectangle x:Name="HandleBottomRight" Width="14" Height="14" Fill="White" Stroke="Black" StrokeThickness="1.5"
+                   HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,3,3"
+                   Cursor="SizeNWSE" Visibility="Collapsed" />
+    </Grid>
+</Window>

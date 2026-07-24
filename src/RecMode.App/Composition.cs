@@ -66,7 +66,14 @@ internal static class Composition
         services.AddSingleton<SchedulerService>();
         services.AddSingleton<GlobalMouseHook>();
         services.AddSingleton<ClickHighlightService>();
+        services.AddSingleton<GlobalKeyboardHook>();
+        services.AddSingleton<KeystrokeVisualizerService>();
+        services.AddSingleton<SmartZoomService>();
+        services.AddSingleton<ManualZoomService>();
+        services.AddSingleton<SourceContourService>();
         services.AddSingleton<AnnotationService>();
+        services.AddSingleton<SessionLockMonitor>();
+        services.AddSingleton<AutoPauseGuardService>();
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
 
         // View models (singletons — one live page instance each, held by the shell).

@@ -65,6 +65,19 @@
                     </Style>
                 </Button.Style>
             </Button>
+            <Button Command="{Binding ToggleManualZoomCommand}" Content="{Binding ZoomButtonText}"
+                    ToolTip="Drag-select an area to zoom into (Esc to exit); Screen and Region sources only"
+                    Height="28" Padding="10,0" Margin="6,0,0,0">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsManualZooming}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
 
             <Border Width="1" Height="18" Margin="8,0" Background="{DynamicResource StrokeCardBrush}" />
 

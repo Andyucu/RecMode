@@ -14,8 +14,8 @@ namespace RecMode.Capture;
 internal sealed class Nv12Converter : VideoProcessorPipeline
 {
     public Nv12Converter(ID3D11Device device, ID3D11DeviceContext context, int srcW, int srcH, int dstW, int dstH,
-        RegionRect? sourceRect = null)
-        : base(device, context, srcW, srcH, dstW, dstH, frameRate: 60, Format.NV12, sourceRect)
+        RegionRect? sourceRect = null, bool sourceIsHdr = false)
+        : base(device, context, srcW, srcH, dstW, dstH, frameRate: 60, Format.NV12, sourceRect, sourceIsHdr)
     {
     }
 

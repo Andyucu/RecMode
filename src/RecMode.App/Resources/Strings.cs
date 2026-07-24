@@ -85,6 +85,10 @@ public static class Strings
     public static string Settings_CursorDesc => Get(nameof(Settings_CursorDesc));
     public static string Settings_Clicks => Get(nameof(Settings_Clicks));
     public static string Settings_ClicksDesc => Get(nameof(Settings_ClicksDesc));
+    public static string Settings_Keystrokes => Get(nameof(Settings_Keystrokes));
+    public static string Settings_KeystrokesDesc => Get(nameof(Settings_KeystrokesDesc));
+    public static string Settings_AutoZoom => Get(nameof(Settings_AutoZoom));
+    public static string Settings_AutoZoomDesc => Get(nameof(Settings_AutoZoomDesc));
     public static string Settings_BitrateGuardrail => Get(nameof(Settings_BitrateGuardrail));
     public static string Settings_BitrateGuardrailDesc => Get(nameof(Settings_BitrateGuardrailDesc));
     public static string Settings_AutoSplit => Get(nameof(Settings_AutoSplit));
@@ -105,6 +109,7 @@ public static class Strings
     public static string Library_Videos => Get(nameof(Library_Videos));
     public static string Library_Screenshots => Get(nameof(Library_Screenshots));
     public static string Library_Open => Get(nameof(Library_Open));
+    public static string Library_Play => Get(nameof(Library_Play));
     public static string Library_Reveal => Get(nameof(Library_Reveal));
     public static string Library_Delete => Get(nameof(Library_Delete));
     public static string Library_RecordAgain => Get(nameof(Library_RecordAgain));

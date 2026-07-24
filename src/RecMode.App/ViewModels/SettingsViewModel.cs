@@ -44,6 +44,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private bool _countdownEnabled;
     private bool _captureCursor;
     private bool _highlightClicks;
+    private bool _showKeystrokes;
+    private bool _autoZoomEnabled;
     private bool _autoSplitEnabled;
     private int _autoSplitSizeMb;
     private bool _startWithWindows;
@@ -77,6 +79,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _countdownEnabled = s.CountdownSeconds > 0;
         _captureCursor = s.CaptureCursor;
         _highlightClicks = s.HighlightClicks;
+        _showKeystrokes = s.ShowKeystrokes;
+        _autoZoomEnabled = s.AutoZoomEnabled;
         _autoSplitEnabled = s.AutoSplitEnabled;
         _autoSplitSizeMb = AutoSplitSizes.Contains(s.AutoSplitSizeMb) ? s.AutoSplitSizeMb : 3900;
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
@@ -416,6 +420,18 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         set => Persist(ref _highlightClicks, value, v => _settings.Current.HighlightClicks = v);
     }
 
+    public bool ShowKeystrokes
+    {
+        get => _showKeystrokes;
+        set => Persist(ref _showKeystrokes, value, v => _settings.Current.ShowKeystrokes = v);
+    }
+
+    public bool AutoZoomEnabled
+    {
+        get => _autoZoomEnabled;
+        set => Persist(ref _autoZoomEnabled, value, v => _settings.Current.AutoZoomEnabled = v);
+    }
+
     /// <summary>Adds a generous -maxrate/-bufsize ceiling alongside CRF/CQ encoding on encoders whose
     /// rate-control mode supports it, to guard against surprise multi-GB files on unusually complex content.</summary>
     public bool BitrateGuardrailEnabled
@@ -513,6 +529,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _countdownEnabled = s.CountdownSeconds > 0;
         _captureCursor = s.CaptureCursor;
         _highlightClicks = s.HighlightClicks;
+        _showKeystrokes = s.ShowKeystrokes;
+        _autoZoomEnabled = s.AutoZoomEnabled;
         _autoSplitEnabled = s.AutoSplitEnabled;
         _autoSplitSizeMb = AutoSplitSizes.Contains(s.AutoSplitSizeMb) ? s.AutoSplitSizeMb : 3900;
         _checkForUpdates = s.CheckForUpdatesOnLaunch;
@@ -525,7 +543,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
             nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate), nameof(OutputFolder),
             nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
-            nameof(HighlightClicks), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
+            nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),
             nameof(SelectedLayout), nameof(StartWithWindows), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
             nameof(HotkeyScreenshot), nameof(HotkeyNextProfile) }) OnPropertyChanged(property);

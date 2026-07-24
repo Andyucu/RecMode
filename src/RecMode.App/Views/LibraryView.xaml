@@ -51,7 +51,8 @@
 
         <!-- Content: list + empty state -->
         <Grid Grid.Row="1">
-            <ListBox ItemsSource="{Binding Items}" BorderThickness="0" Background="Transparent"
+            <ListBox x:Name="ItemsList" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
+                     BorderThickness="0" Background="Transparent"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                     <ListBox.ItemContainerStyle>
@@ -59,7 +60,18 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:LibraryItem}">
-                            <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="10">
+                            <Border Margin="0,0,0,8" Padding="10">
+                                <Border.Style>
+                                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                        <Style.Triggers>
+                                            <!-- Highlights the item the title bar's "jump to Library" link pointed at. -->
+                                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter Property="BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -90,11 +102,11 @@
                                                 Visibility="{Binding CanRecordAgain, Converter={StaticResource BoolToVisibility}}"
                                                 ToolTip="{Binding DisplayName, StringFormat='Record again with these settings'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Record again with the settings from {0}'}" />
-                                        <Button Content="{x:Static res:Strings.Library_Open}"
+                                        <Button Content="{Binding OpenLabel}"
                                                 Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
-                                                ToolTip="{Binding DisplayName, StringFormat='Open {0}'}"
-                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Open {0}'}" />
+                                                ToolTip="{Binding OpenTooltip}"
+                                                AutomationProperties.Name="{Binding OpenTooltip}" />
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"
                                                 Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"

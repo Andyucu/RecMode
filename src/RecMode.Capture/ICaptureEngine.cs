@@ -13,6 +13,20 @@ public interface ICaptureEngine : IDisposable
     int OutputWidth { get; }
     int OutputHeight { get; }
 
+    /// <summary>True if this running capture is on the GPU VideoProcessor pipeline, so <see cref="SetZoomTarget"/>
+    /// (smart auto-zoom) actually does something. False when capture fell back to the GDI software path (e.g.
+    /// Windows.Graphics.Capture unavailable in this environment) — there's no GPU crop mechanism there at all.
+    /// Only meaningful after <see cref="Start"/>.</summary>
+    bool SupportsZoom { get; }
+
+    /// <summary>True once HDR-to-SDR tone mapping (§3.6) is actually active for this capture — a source
+    /// monitor with Advanced Color (HDR10) enabled captured in its native FP16 scRGB and tone-mapped back to
+    /// SDR by the VideoProcessor, rather than the washed-out/wrong-color result of capturing HDR content as
+    /// plain 8-bit BGRA. Only meaningful after <see cref="Start"/>; always false on the GDI software fallback
+    /// (no VideoProcessor at all) and for source kinds this first cut doesn't attempt HDR detection for
+    /// (Window, All-Displays).</summary>
+    bool HdrToneMapActive { get; }
+
     /// <summary>Tightly-packed NV12 frame size in bytes; the buffer passed to <see cref="TryGetLatestFrame"/> must be this big.</summary>
     int Nv12ByteSize { get; }
 
@@ -37,6 +51,16 @@ public interface ICaptureEngine : IDisposable
 
     /// <summary>Sets the captured-video brightness adjustment, -100..100, 0 = unchanged; call before or after <see cref="Start"/>.</summary>
     void SetBrightness(double value);
+
+    /// <summary>Smart auto-zoom: animates the GPU crop toward <paramref name="rect"/> (source-local pixels),
+    /// or back to the full un-zoomed view when null. No-ops on capture paths that don't run the VideoProcessor
+    /// (the GDI software fallback) — fails closed, not an error, same as an unsupported brightness filter.</summary>
+    void SetZoomTarget(RegionRect? rect);
+
+    /// <summary>Live-retargets the actual captured area (source-local pixels) — e.g. dragging the on-screen
+    /// contour to a new spot for a Region-source recording — immediately, no animation. See
+    /// <see cref="SupportsZoom"/> for when this can have any effect.</summary>
+    void SetBaseRect(RegionRect rect);
 
     void Stop();
 }

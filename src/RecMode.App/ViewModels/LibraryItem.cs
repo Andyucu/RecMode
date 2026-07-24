@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using RecMode.App.Resources;
 
 namespace RecMode.App.ViewModels;
 
@@ -23,4 +24,10 @@ public sealed class LibraryItem
 
     /// <summary>"Record again" only makes sense for indexed videos — there's nothing to re-apply otherwise.</summary>
     public bool CanRecordAgain => !IsImage && IndexEntry is not null;
+
+    /// <summary>"Play" for videos (matches what the action actually does), "Open" for screenshots.</summary>
+    public string OpenLabel => IsImage ? Strings.Library_Open : Strings.Library_Play;
+
+    /// <summary>Tooltip/accessible name for the open/play button, e.g. "Play MyRecording" or "Open MyShot".</summary>
+    public string OpenTooltip => $"{OpenLabel} {DisplayName}";
 }

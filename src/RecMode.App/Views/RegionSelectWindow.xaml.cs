@@ -3,7 +3,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using RecMode.App.Services;
 using RecMode.Capture;
+using RecMode.Core.Infrastructure;
 
 namespace RecMode.App.Views;
 
@@ -21,16 +23,21 @@ public partial class RegionSelectWindow : Window
     private const uint SWP_NOACTIVATE = 0x0010;
 
     private readonly MonitorInfo _monitor;
+    private readonly IOsCapabilities? _excludeFromCaptureOs;
     private Point _start;
     private bool _dragging;
     private double _dpiScale = 1.0;
 
     public RegionRect? Result { get; private set; }
 
-    public RegionSelectWindow(MonitorInfo monitor)
+    /// <param name="excludeFromCaptureOs">Non-null to hide this picker overlay itself from an in-progress
+    /// recording (manual zoom) via <see cref="CaptureExclusion"/>; null (the default caller) for the ordinary
+    /// pre-recording Region-source picker, which has nothing running yet to worry about capturing into.</param>
+    public RegionSelectWindow(MonitorInfo monitor, IOsCapabilities? excludeFromCaptureOs = null)
     {
         InitializeComponent();
         _monitor = monitor;
+        _excludeFromCaptureOs = excludeFromCaptureOs;
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         MouseLeftButtonDown += OnMouseDown;
@@ -44,6 +51,11 @@ public partial class RegionSelectWindow : Window
         // Cover the target monitor in physical pixels (bypasses DIP/DPI conversion for positioning).
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         SetWindowPos(hwnd, IntPtr.Zero, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+
+        if (_excludeFromCaptureOs is not null)
+        {
+            CaptureExclusion.Apply(this, _excludeFromCaptureOs);
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

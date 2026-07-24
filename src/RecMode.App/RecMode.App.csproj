@@ -11,7 +11,7 @@
     <WarningsAsErrors>nullable</WarningsAsErrors>
     <Company>RecMode</Company>
     <Product>RecMode</Product>
-    <Version>0.9.43-beta</Version>
+    <Version>0.9.45-beta</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>

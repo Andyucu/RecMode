@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -49,6 +50,8 @@ public sealed class ShellViewModel : ObservableObject
         NavigateCommand = new RelayCommand<string>(Navigate);
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         DismissSnackbarCommand = new RelayCommand(() => SnackbarVisible = false);
+        OpenLastRecordingCommand = new RelayCommand(OpenLastRecording, () => Record.LastRecordingPath is not null);
+        record.PropertyChanged += OnRecordPropertyChanged;
         ExpandCommand = new RelayCommand(() =>
         {
             // "Expand to full window" (compact launcher): always lands on Sidebar — the default full layout
@@ -110,6 +113,7 @@ public sealed class ShellViewModel : ObservableObject
     public ICommand NavigateCommand { get; }
     public ICommand ToggleThemeCommand { get; }
     public ICommand ExpandCommand { get; }
+    public IRelayCommand OpenLastRecordingCommand { get; }
 
     public object CurrentPage
     {
@@ -145,6 +149,28 @@ public sealed class ShellViewModel : ObservableObject
         CurrentPage = next;
         SelectedNav = page ?? "Record";
         (next as INavigationAware)?.OnNavigatedTo();
+    }
+
+    private void OnRecordPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RecordViewModel.LastRecordingPath))
+        {
+            OpenLastRecordingCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>The title bar's "Saved &lt;filename&gt;" status jumps straight to that recording in the
+    /// Library — only meaningful once a recording has actually finished (see
+    /// <see cref="RecordViewModel.LastRecordingPath"/>).</summary>
+    private void OpenLastRecording()
+    {
+        if (Record.LastRecordingPath is not { } path)
+        {
+            return;
+        }
+
+        Library.RequestSelect(path);
+        Navigate("Library");
     }
 
     private void ToggleTheme()

@@ -112,6 +112,15 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             s.Current.AutoSplitEnabled = true;
             s.Current.AutoSplitSizeMb = 100;
         }
+        // "keystroke" mode: turns on the keystroke visualizer, then injects a real Ctrl+Z key press via
+        // SendInput mid-recording — exercising the actual GlobalKeyboardHook + KeystrokeVisualizerService wiring
+        // end to end (not just the overlay window in isolation), so the recorded frames can be inspected to
+        // confirm the "Ctrl + Z" pill genuinely renders into the encoded video, not just a live desktop screenshot.
+        if (mode == "keystroke")
+        {
+            var s = host.Services.GetRequiredService<ISettingsService>();
+            s.Current.ShowKeystrokes = true;
+        }
         var coordinator = host.Services.GetRequiredService<RecordingCoordinator>();
         var probe = host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
@@ -174,6 +183,12 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                     coordinator.TestForceDowngrade();
                     Thread.Sleep(4000);
                 }
+                else if (mode == "keystroke")
+                {
+                    Thread.Sleep(1500);
+                    SendCtrlZ();
+                    Thread.Sleep(2000); // keep recording while the pill pops in/holds/fades (~1.35s cycle)
+                }
                 else
                 {
                     Thread.Sleep(6000);
@@ -187,6 +202,25 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 dispatcher.BeginInvoke(() => shutdown(3));
             }
         });
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const byte VK_CONTROL = 0x11;
+    private const byte VK_Z = 0x5A;
+
+    /// <summary>Injects a real Ctrl+Z key press via <c>keybd_event</c> — indistinguishable from hardware input
+    /// to <see cref="Services.GlobalKeyboardHook"/>'s WH_KEYBOARD_LL hook, so this exercises the actual
+    /// production input path rather than calling into the overlay/service directly.</summary>
+    private static void SendCtrlZ()
+    {
+        keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_Z, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(60);
+        keybd_event(VK_Z, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private async Task RunOverlaySelfTestAsync()

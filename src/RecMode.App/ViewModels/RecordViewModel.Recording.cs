@@ -57,6 +57,7 @@ public sealed partial class RecordViewModel
             IsRecording = true;
             StatusText = "Recording";
             StatsText = "";
+            LastRecordingPath = null; // the title-bar "jump to Library" link only points at a finished recording
         }
         else
         {
@@ -92,11 +93,13 @@ public sealed partial class RecordViewModel
         IsRecording = false;
         IsHealthy = true;
         IsAnnotating = false;
+        IsManualZooming = false; // no coordinator.SetZoomTarget call needed — capture already stopped
         ActiveCaptureTarget = null;
         ElapsedText = "00:00";
         StatusText = result.Success
             ? $"Saved {Path.GetFileName(result.OutputPath)}"
             : "Recording ended — check the log";
+        LastRecordingPath = result.Success ? result.OutputPath : null;
         StatsText = "";
         UpdateDiskSpaceText(); // back to the "free of total" idle view
         StartPreview(); // resume the live preview
