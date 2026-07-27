@@ -30,13 +30,15 @@
 - **Screen** — record a chosen monitor, or **All Displays** when you have two or more monitors.
 - **Window** — pick from a list, use **Manual Pick** to click a window on screen, or enable **Follow selected window** for apps that recreate their window handle.
 - **Region** — drag a rectangle with presets (1920×1080, 1280×720, Full); re-open the picker any time by clicking the Region tile.
+- **Webcam** — record your camera directly as the capture source (separate from the picture-in-picture overlay, below).
 - **Live preview** — see what will be recorded before you press Record (pauses while recording to save resources).
 
 ### Video and encoding
 
-- Hardware encoders probed at startup (trial-encoded, not just listed).
+- Hardware encoders probed at startup (trial-encoded, not just listed), with a first-run benchmark to recommend defaults.
 - **Quality** slider with perceptual mapping, per-encoder calibration, tier readout, and Web / Balanced / Archive snap points.
-- **Brightness** adjustment applied on the GPU in the capture pipeline (live in preview and during recording).
+- **Brightness** adjustment and **HDR-to-SDR tone mapping** applied on the GPU in the capture pipeline (live in preview and during recording).
+- **Smart auto-zoom** (beta) — smoothly zooms in around each click, easing back out after a few idle seconds (Screen and Region sources); manual zoom is also available.
 - **Safe recording** (default on) — writes a crash-safe MKV first, then remuxes to MP4/MOV on stop.
 - **Auto-split** for very large files (optional, FAT32-aware size threshold).
 - **Bitrate guardrail** (default on) to cap surprise file growth on complex content.
@@ -58,22 +60,25 @@ Built-in presets (with tooltips describing quality and frame rate):
 - Quick clip (Low quality, 15 fps, no audio)
 - Archive (Maximum quality, 60 fps, lossless audio)
 
-Save your own custom profiles, delete them, cycle presets with **F8**, or bind a profile to a scheduled recording.
+Save your own custom profiles, delete them, cycle presets with **F8**, or bind a profile to a scheduled recording. Built-in presets can also be **edited in place** — save over a preset's own name to override it, and delete the override to revert to its shipped defaults.
 
 ### While recording
 
 - Floating **recording toolbar** (timer, pause, screenshot, stats, stop) — excluded from the capture.
 - Optional **countdown** before interactive starts.
 - **Click highlights** — accent ripple at each mouse click (included in the recording).
+- **Keystroke visualizer** — shows hotkey combinations like Ctrl + Z on screen as you press them.
 - **Draw mode** — freehand ink over the capture area; exit with Esc, F12, or the on-screen button.
-- **Webcam overlay** — corner picture-in-picture with device, position, and size controls.
+- **Webcam overlay** — corner picture-in-picture with device, position, and size controls (independent of recording the webcam as its own source).
 - **Pause / resume** with gapless output timing.
+- Auto-pause on session lock, and pre-flight/mid-recording warnings for a full battery, low disk space, or a disk too slow to keep up.
 
 ### Library, schedule, and settings
 
 - **Library** — Videos and Screenshots tabs, thumbnails, metadata from `library.json`, Record again.
 - **Schedule** — recurring or one-off timed recordings; optional profile binding; fires while the app runs (including from tray).
-- **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles, remappable global hotkeys, performance controls, startup and update check.
+- **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles, remappable global hotkeys, performance controls, start with Windows, close-button behavior (exit or minimize to tray), and update check.
+- **About** — version, runtime info, privacy notes, and license/third-party notices.
 
 ### Distribution and privacy
 
@@ -174,9 +179,9 @@ RecMode/
 RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor:
 
 - NVENC and QSV encoding on real NVIDIA / Intel hardware (development machine is AMD).
-- Full-system audio recording is tracked as an open issue in project notes; **per-app audio targeting is verified**.
 - Multi-monitor **All Displays** compositing on machines with two or more physical monitors.
 - Real webcam hardware verification (synthetic test path is verified).
+- A real screen-reader (Narrator) accessibility pass, and Windows 10 (build 19041) regression testing.
 
 ## License
 
