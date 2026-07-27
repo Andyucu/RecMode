@@ -72,14 +72,19 @@ public sealed class UpdateChecker : IUpdateChecker
             using HttpResponseMessage response = await Http.GetAsync(GitHubReleasesApiUrl, ct);
             response.EnsureSuccessStatusCode();
             List<GitHubRelease>? releases = await response.Content.ReadFromJsonAsync<List<GitHubRelease>>(cancellationToken: ct);
-            GitHubRelease? release = releases?.FirstOrDefault(r => !r.Draft && r.Assets.Any(a =>
-                string.Equals(a.Name, PortableAssetName, StringComparison.OrdinalIgnoreCase)));
+
+            GitHubRelease? release = SelectNewestPortableRelease(releases);
             GitHubReleaseAsset? asset = release?.Assets.FirstOrDefault(a =>
                 string.Equals(a.Name, PortableAssetName, StringComparison.OrdinalIgnoreCase));
 
-            if (release is null) return new UpdateCheckResult { Status = UpdateCheckStatus.UpToDate };
-            if (release.TagName is null || asset?.BrowserDownloadUrl is null || !TryParseVersion(release.TagName, out Version latest))
-                return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = "The portable release metadata was invalid." };
+            if (release?.TagName is null || asset?.BrowserDownloadUrl is null ||
+                !TryParseVersion(release.TagName, out Version latest))
+            {
+                // No usable portable release found. Deliberately "up to date" rather than "failed": an empty
+                // or unparseable release list is not an error the user can act on, and reporting a failure
+                // for it would be indistinguishable from a real connectivity problem.
+                return new UpdateCheckResult { Status = UpdateCheckStatus.UpToDate };
+            }
 
             return latest > CurrentVersion
                 ? new UpdateCheckResult { Status = UpdateCheckStatus.UpdateAvailable, Version = release.TagName, ReleasesPageUrl = asset.BrowserDownloadUrl }
@@ -109,17 +114,54 @@ public sealed class UpdateChecker : IUpdateChecker
         System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0", out Version version)
         ? version : new Version(0, 0, 0);
 
-    private static bool TryParseVersion(string value, out Version version) =>
+    /// <summary>Parses an untrusted GitHub release tag (<c>v0.9.63-beta</c>, <c>0.9.63</c>, <c>V1.0.0+sha</c>,
+    /// or garbage) into a comparable <see cref="Version"/> — gates whether the update prompt appears at all,
+    /// so a parse failure here must fail closed (return false) rather than throw. Internal, not private, so
+    /// it's directly unit-testable against the actual range of tag shapes GitHub releases can produce.</summary>
+    internal static bool TryParseVersion(string value, out Version version) =>
         Version.TryParse(value.Trim().TrimStart('v', 'V').Split('+', '-')[0], out version!);
 
-    private sealed class GitHubRelease
+    /// <summary>
+    /// Picks the release with the highest <em>version</em> that actually ships the portable asset. The GitHub
+    /// releases API returns newest-<em>created</em> first, and this used to just take element [0] — so
+    /// publishing a hotfix for an older line (0.9.70.1 after 0.9.80 already shipped) put that hotfix at the
+    /// front, `0.9.70.1 &gt; 0.9.75` compared false, and every portable user was told "you're up to date"
+    /// indefinitely, because no other release was ever examined. Skips drafts, releases without the portable
+    /// asset, and unparseable tags rather than letting any one of them decide the outcome.
+    /// Internal, not private, so the selection rule is unit-testable without a live GitHub response.
+    /// </summary>
+    internal static GitHubRelease? SelectNewestPortableRelease(List<GitHubRelease>? releases)
+    {
+        GitHubRelease? best = null;
+        Version? bestVersion = null;
+
+        foreach (GitHubRelease release in releases ?? [])
+        {
+            if (release.Draft || release.TagName is null ||
+                !release.Assets.Any(a => string.Equals(a.Name, PortableAssetName, StringComparison.OrdinalIgnoreCase)) ||
+                !TryParseVersion(release.TagName, out Version version))
+            {
+                continue;
+            }
+
+            if (bestVersion is null || version > bestVersion)
+            {
+                best = release;
+                bestVersion = version;
+            }
+        }
+
+        return best;
+    }
+
+    internal sealed class GitHubRelease
     {
         [JsonPropertyName("tag_name")] public string? TagName { get; set; }
         [JsonPropertyName("draft")] public bool Draft { get; set; }
         [JsonPropertyName("assets")] public List<GitHubReleaseAsset> Assets { get; set; } = [];
     }
 
-    private sealed class GitHubReleaseAsset
+    internal sealed class GitHubReleaseAsset
     {
         [JsonPropertyName("name")] public string Name { get; set; } = "";
         [JsonPropertyName("browser_download_url")] public string? BrowserDownloadUrl { get; set; }

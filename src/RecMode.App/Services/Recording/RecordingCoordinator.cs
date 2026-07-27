@@ -132,6 +132,13 @@ public sealed class RecordingCoordinator : IDisposable
     public RecordingState State => _stateMachine.State;
     public bool IsRecording => _stateMachine.IsBusy;
 
+    /// <summary>Live levels from the recording's own audio mixer, or silence when not recording. Exposed so
+    /// the Record screen's meters can read the levels this mixer is <em>already</em> computing on its capture
+    /// callbacks, instead of opening a second, fully duplicate WASAPI graph alongside it (§3.9) — see
+    /// <c>RecordViewModel.StartMetering</c>.</summary>
+    public AudioLevel SystemAudioLevel => _mixer?.SystemLevel ?? AudioLevel.Silent;
+    public AudioLevel MicAudioLevel => _mixer?.MicLevel ?? AudioLevel.Silent;
+
     /// <summary>Throttled progress (≤ 4 Hz). Raised on the pacing thread — the VM marshals to the dispatcher.</summary>
     public event Action<RecordingProgress>? ProgressChanged;
 
@@ -164,14 +171,16 @@ public sealed class RecordingCoordinator : IDisposable
             _dstH = dstH;
             _pendingRetarget = null;
             _isAnnotating = false;
+            _zoomMonitorCache = null;
+            _zoomMonitorCacheHandle = 0;
             (_lastWindowW, _lastWindowH) = target.Kind == CaptureKind.Window &&
                 CaptureCapabilities.TryGetWindowScreenRect(target.Handle, out RegionRect windowRect0)
                     ? (windowRect0.Width, windowRect0.Height)
                     : (0, 0);
 
-            _capture = _captureFactory();
+            _capture = CreateCaptureEngine(target);
             _capture.Faulted += OnCaptureFaulted;
-            _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor);
+            _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor, fps);
             _capture.SetBrightness(_settings.Current.Brightness);
 
             // Smart auto-zoom needs the GPU VideoProcessor pipeline to crop with; the GDI software fallback
@@ -199,7 +208,10 @@ public sealed class RecordingCoordinator : IDisposable
             }
 
             // Encoder fallback chain (§3.6): selected → same-codec other backend → any hw H.264 → libx264.
-            _encoderChain = _fallbackChain.Build(encoder);
+            // Filtered by job.Container (the container actually being muxed — MKV if safe-remux substituted
+            // it, not necessarily the caller's original container) so a fallback candidate is never one the
+            // container can't hold in the first place.
+            _encoderChain = _fallbackChain.Build(encoder, job.Container);
             _jobTemplate = job;
             _session = TryStartAnyEncoder(_encoderChain, job, _capture.Nv12ByteSize);
             if (_session is null)
@@ -228,7 +240,13 @@ public sealed class RecordingCoordinator : IDisposable
             // video stream (which needs frames flowing), so we start video pacing first, then wait + pump.
             if (_mixer is not null && _session.AudioPipe is { } audioPipe)
             {
-                StartAudioPumpThread(audioPipe);
+                // The mixer has been capturing (and buffering) since StartAudioMixer(), well before this
+                // point — encoder startup above can take several seconds. Discard that backlog now, right
+                // as the segment's active-time clock starts, so the pump's first reads are live audio from
+                // this instant rather than a stale replay of whatever was captured while waiting for the
+                // encoder to connect. See IAudioMixer.ClearBuffers's doc comment.
+                _mixer.ClearBuffers();
+                StartAudioPumpThread(audioPipe, _stateMachine.Elapsed);
             }
 
             Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} audio={Audio} -> {Path}",
@@ -242,6 +260,12 @@ public sealed class RecordingCoordinator : IDisposable
             return false;
         }
     }
+
+    /// <summary>Webcam-as-source doesn't run through WGC/D3D11 at all (see <see cref="WebcamCaptureEngine"/>'s
+    /// class doc comment), so it needs its own concrete engine rather than <see cref="_captureFactory"/>'s
+    /// always-<see cref="WgcCaptureEngine"/> default.</summary>
+    private ICaptureEngine CreateCaptureEngine(CaptureTarget target) =>
+        target.Kind == CaptureKind.Webcam ? new WebcamCaptureEngine() : _captureFactory();
 
     /// <summary>§3.6 pre-flight checks, run before anything is actually started. Returns null (having already
     /// reported the specific BlockingError) on the first hard failure; warnings (disk space/speed, battery)
@@ -263,7 +287,7 @@ public sealed class RecordingCoordinator : IDisposable
             return null;
         }
 
-        string outputDir = _settings.Current.OutputFolder ?? _paths.RecordingsDirectory;
+        string outputDir = _paths.ResolveUserPath(_settings.Current.OutputFolder) ?? _paths.RecordingsDirectory;
         try
         {
             Directory.CreateDirectory(outputDir);
@@ -363,6 +387,13 @@ public sealed class RecordingCoordinator : IDisposable
     /// <see cref="_capture"/> has started, so the very first frame already carries the overlay.</summary>
     private void SetupWebcamOverlay(int dstW, int dstH)
     {
+        // Webcam-as-source already IS the webcam feed — overlaying a second webcam session onto itself would
+        // be nonsensical (and WebcamCaptureEngine.SetWebcamOverlay is a documented no-op stub anyway).
+        if (_originalTarget?.Kind == CaptureKind.Webcam)
+        {
+            return;
+        }
+
         if (_testForcedWebcamSource is { } forcedSource)
         {
             (int fx, int fy, int fw, int fh) = WebcamOverlayLayout.ComputeRect(
@@ -451,7 +482,7 @@ public sealed class RecordingCoordinator : IDisposable
         {
             next = _captureFactory();
             next.Faulted += OnCaptureFaulted;
-            next.Start(target, _dstW, _dstH, _settings.Current.CaptureCursor);
+            next.Start(target, _dstW, _dstH, _settings.Current.CaptureCursor, _targetFps);
             next.SetBrightness(_settings.Current.Brightness);
             IWebcamFrameSource? webcamSource = _testForcedWebcamSource ?? (IWebcamFrameSource?)_webcamCapture;
             if (webcamSource is not null)
@@ -535,7 +566,10 @@ public sealed class RecordingCoordinator : IDisposable
         _metaMicEnabled = _settings.Current.MicrophoneEnabled;
 
         bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
-        string? audioPipeName = audioEnabled ? $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}" : null;
+        // The pipe's DACL (FfmpegRecordingSession.CreateSecurePipe) is what actually keeps other accounts
+        // out; the GUID suffix is defense-in-depth so the name itself isn't derivable from public process
+        // info (pid + uptime), same reasoning as the old name being enumerable at \\.\pipe\.
+        string? audioPipeName = audioEnabled ? $"recmode_aud_{Guid.NewGuid():N}" : null;
 
         var job = new FfmpegJob
         {
@@ -545,7 +579,7 @@ public sealed class RecordingCoordinator : IDisposable
             Height = dstH,
             FrameRate = fps,
             Quality = quality,
-            PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
+            PipeName = $"recmode_vid_{Guid.NewGuid():N}",
             OutputPath = _recordingPath,
             AudioPipeName = audioPipeName,
             AudioCodec = _settings.Current.AudioCodec,
@@ -635,16 +669,55 @@ public sealed class RecordingCoordinator : IDisposable
         // Cancel active pipe writes before waiting. Teardown must never dispose capture/session resources
         // while the pacer or audio producer can still be using them.
         _stopRequested = true;
-        _session?.RequestStop();
-        _audioStop?.Cancel();
+        try
+        {
+            // _session and _audioStop are owned by the pacer thread, which — right up until it observes
+            // _stopRequested at the top of its next loop iteration — can still be mid-RotateSegment,
+            // disposing the very objects these two calls read a moment earlier (RotateSegment disposes the
+            // old _session before reassigning it, and StartAudioPumpThread now disposes the previous
+            // rotation's _audioStop before creating a new one). A read here can win the race against that
+            // disposal by a few instructions, turning "cancel" into an ObjectDisposedException. Since both
+            // calls are just best-effort cancellation signals — the whole point of the Join() below is to
+            // actually wait for the pacer to stop — an object that's already disposed is already being torn
+            // down by the concurrent rotation, so there's nothing left to cancel. Previously this exception
+            // escaped Stop() entirely: the Task.Run(Stop) wrapper (added when Stop() moved off the UI
+            // thread) faulted silently, _finalizeStarted stayed true forever, _finalizationCompleted was
+            // never Set, IsBusy got stuck true (no further recording possible), and App.OnExit's own Stop()
+            // call then blocked forever on _finalizationCompleted.Wait() — the app had to be killed to exit.
+            _session?.RequestStop();
+            _audioStop?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         if (_pacer is not null && _pacer != Thread.CurrentThread)
         {
             _pacer.Join();
         }
 
+        // Anything escaping Finalize() used to skip CompleteFinalization() entirely, which left the state
+        // machine parked in Finalizing forever: IsBusy stayed true, so Start()'s guard rejected every
+        // subsequent recording for the rest of the process's life, and — because Stop() runs under Task.Run —
+        // the user was never told why. Recording simply stopped working until they restarted the app.
+        // Finalize() reaches a lot of fallible surface area (remux, ffmpeg exit handling, the library index,
+        // filesystem moves), so the state transition and the Finished notification must be unconditional:
+        // whatever went wrong, this recording is over and the app has to become usable again.
         try
         {
-            RecordingResult result = Finalize();
+            RecordingResult result;
+            try
+            {
+                result = Finalize();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Finalizing the recording failed");
+                _errors.Fatal("record.finalize-failed", "The recording couldn't be finalized.",
+                    "The captured file may still be in the output folder. Check the log for details.", ex);
+                result = new RecordingResult(false, -1, _finalPath, 0);
+            }
+
             if (_stateMachine.State == RecordingState.Finalizing)
             {
                 _stateMachine.CompleteFinalization();
@@ -676,22 +749,31 @@ public sealed class RecordingCoordinator : IDisposable
         }
     }
 
-    /// <summary>Pauses the recording — the pacer stops writing; output has no gap for the paused span (§3.7).</summary>
+    /// <summary>Pauses the recording — the pacer stops writing; output has no gap for the paused span (§3.7).
+    /// Has two independent callers on two threads (the UI/hotkeys and the pacer thread's own disk-critical
+    /// guard); uses <see cref="RecordingStateMachine.TryPause"/> so losing that race is a silent no-op
+    /// instead of an unhandled exception that would otherwise force-finalize the recording.</summary>
     public void Pause()
     {
-        if (_stateMachine.State == RecordingState.Recording)
+        if (_stateMachine.TryPause())
         {
-            _stateMachine.Pause();
             RaiseProgress();
         }
     }
 
-    /// <summary>Resumes a paused recording.</summary>
+    /// <summary>Resumes a paused recording. See <see cref="Pause"/> for why this tolerates a lost race.</summary>
     public void Resume()
     {
-        if (_stateMachine.State == RecordingState.Paused)
+        // Same backlog problem as Start()'s (see IAudioMixer.ClearBuffers): WASAPI capture never actually
+        // stops while paused — only the pump's consumption does, since its segmentElapsed() callback freezes
+        // with the state machine — so the buffer quietly fills with paused-span audio for the whole pause.
+        // Without this, resuming replayed however much of that as the first "post-resume" audio in the
+        // output — including, disconcertingly, anything said while paused. Cleared *before* TryResume() so
+        // the state machine's clock (and therefore the pump's target) only starts advancing again once the
+        // buffer is already empty, rather than racing the pump thread's own poll of it.
+        _mixer?.ClearBuffers();
+        if (_stateMachine.TryResume())
         {
-            _stateMachine.Resume();
             RaiseProgress();
         }
     }
@@ -753,7 +835,7 @@ public sealed class RecordingCoordinator : IDisposable
             return null;
         }
 
-        MonitorInfo? mon = CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle);
+        MonitorInfo? mon = ResolveZoomMonitor(target.Handle);
         if (mon is null)
         {
             return null;
@@ -770,18 +852,45 @@ public sealed class RecordingCoordinator : IDisposable
         return AutoZoomMath.ComputeZoomRect(bounds, localX, localY, zoomFactor);
     }
 
+    /// <summary>Caches the resolved monitor per target handle. <see cref="CaptureCapabilities.EnumerateMonitors"/>
+    /// re-probes DXGI/HDR state for every monitor on the system on every call (a real COM/DXGI cost, not just
+    /// a Win32 EnumDisplayMonitors walk) — and the target monitor for an active Monitor/Region recording never
+    /// changes mid-recording (only its Region sub-rect can, via <see cref="SetBaseRect"/>, which doesn't touch
+    /// the monitor), so re-resolving it on every single mouse click during smart auto-zoom was pure waste.</summary>
+    private MonitorInfo? ResolveZoomMonitor(nint handle)
+    {
+        if (_zoomMonitorCache is null || _zoomMonitorCacheHandle != handle)
+        {
+            _zoomMonitorCacheHandle = handle;
+            _zoomMonitorCache = CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == handle);
+        }
+        return _zoomMonitorCache;
+    }
+
     /// <summary>Starts the audio-pump thread for the given pipe — shared by <see cref="Start"/> and
     /// <see cref="RotateSegment"/> (auto-split / hw→sw downgrade), which each open a fresh audio pipe per
     /// segment. Runs on a dedicated background <see cref="Thread"/> (not a <see cref="System.Threading.Tasks.Task"/>):
     /// anything unhandled here would otherwise be a genuinely unhandled thread exception, which terminates
     /// the whole process immediately — so the catch is deliberately broad. The video pacer is the source of
     /// truth for stopping the recording; losing audio mid-recording is degraded, not fatal, so this just logs
-    /// and stops pumping.</summary>
-    private void StartAudioPumpThread(NamedPipeServerStream audioPipe)
+    /// and stops pumping.
+    /// <para><paramref name="segmentStartedAt"/> must be the state machine's Elapsed at the moment this
+    /// segment's *video* frame-0 will land — i.e. captured before any finalize/remux delay, not after. The
+    /// pacer's Elapsed-driven catch-up (§3.3 CFR policy) means a new segment's early video frames are stamped
+    /// with PTS covering the whole rotation gap, all written back-to-back the instant the pacer resumes; the
+    /// audio pump must anchor its own PTS=0 to that same pre-gap instant, or real audio ends up shifted ahead
+    /// of the video content it was recorded alongside by the length of the gap.</para></summary>
+    private void StartAudioPumpThread(NamedPipeServerStream audioPipe, TimeSpan segmentStartedAt)
     {
+        // Disposes the previous rotation's CancellationTokenSource. By the time this runs — either from
+        // Start() the first time (where _audioStop is still null, so this is a no-op) or from RotateSegment
+        // on every later segment — any prior audio thread has already been joined (RotateSegment's own
+        // _audioThread.Join() above runs before this is called), so the old CTS is safe to dispose here
+        // instead of being orphaned until Finalize()/SafeTeardown() disposes only whichever one is current
+        // when the whole recording ends.
+        _audioStop?.Dispose();
         _audioStop = new CancellationTokenSource();
         CancellationTokenSource stopSource = _audioStop;
-        TimeSpan segmentStartedAt = _stateMachine.Elapsed;
         _audioThread = new Thread(() =>
         {
             try
@@ -810,8 +919,7 @@ public sealed class RecordingCoordinator : IDisposable
         long lastReport = Stopwatch.GetTimestamp();
         long blackSince = 0;
         bool blackWarned = false;
-        long behindSince = 0;
-        bool degradeWarned = false;
+        var health = new PacerHealthTracker(Stopwatch.Frequency);
         long lastDiskCheck = Stopwatch.GetTimestamp();
         long lastSplitCheck = Stopwatch.GetTimestamp();
         long lastWindowCheck = Stopwatch.GetTimestamp();
@@ -878,40 +986,27 @@ public sealed class RecordingCoordinator : IDisposable
                 }
 
                 // Health (§3.6 recording health): if the encoder can't keep up, WriteFrame back-pressures and
-                // we fall > 1 s behind real time. Sustained for 3 s → Degraded (see RecordingHealth).
-                double elapsedS = _stateMachine.Elapsed.TotalSeconds;
-                if (RecordingHealth.IsBehindRealtime(elapsedS, framesWritten, fps))
+                // we fall > 1 s behind real time. Sustained → Degraded, then a hw→sw downgrade. The
+                // hysteresis itself lives in PacerHealthTracker so it's independently testable — see its doc
+                // comment for why (this logic has already regressed once in a way no test could reach).
+                switch (health.Evaluate(now, _stateMachine.Elapsed.TotalSeconds, framesWritten, fps,
+                            _activeEncoder?.IsHardware ?? false))
                 {
-                    if (behindSince == 0)
-                    {
-                        behindSince = now;
-                    }
-                    else if (now - behindSince > 3 * Stopwatch.Frequency)
-                    {
-                        _encoderBehind = true;
-                        if (!degradeWarned)
-                        {
-                            degradeWarned = true;
-                            _errors.Degrade("record.encoder-slow",
-                                "The encoder can't keep up — the recording may run slow.",
-                                "Try a lower resolution or frame rate, or a hardware encoder.");
-                        }
+                    case PacerHealthAction.Degrade:
+                        _errors.Degrade("record.encoder-slow",
+                            "The encoder can't keep up — the recording may run slow.",
+                            "Try a lower resolution or frame rate, or a hardware encoder.");
+                        break;
 
-                        // Mid-stream hw→sw fallback: still behind well past the Degraded threshold → switch
-                        // the hardware encoder out for a software one on a fresh segment (once per recording).
-                        double behindSeconds = (now - behindSince) / (double)Stopwatch.Frequency;
-                        if (RecordingHealth.ShouldDowngradeToSoftware(behindSeconds, _activeEncoder?.IsHardware ?? false))
-                        {
-                            AttemptDowngrade();
-                            behindSince = 0; // fresh grace period for the new encoder
-                        }
-                    }
+                    case PacerHealthAction.DowngradeToSoftware:
+                        // Mid-stream hw→sw fallback: switch the hardware encoder out for a software one on a
+                        // fresh segment (once per recording — AttemptDowngrade enforces that itself).
+                        AttemptDowngrade();
+                        health.ResetAfterRotation(); // fresh grace period for the new encoder
+                        break;
                 }
-                else if (RecordingHealth.FramesBehind(elapsedS, framesWritten, fps) <= fps / 2)
-                {
-                    behindSince = 0;
-                    _encoderBehind = false;
-                }
+
+                _encoderBehind = health.IsBehind;
 
                 // Test-only seam (--selftest-downgrade): force the same rotation the health check would trigger.
                 if (_testForceDowngrade)
@@ -965,6 +1060,17 @@ public sealed class RecordingCoordinator : IDisposable
                     if (TryGetSegmentSize(out long segSize) && segSize >= _autoSplitThresholdBytes)
                     {
                         RotateSegment();
+
+                        // A rotation blocks this thread for however long finalize+safe-remux+encoder-restart
+                        // takes, during which framesWritten falls behind Elapsed·fps through no fault of the
+                        // encoder's actual per-frame throughput — the pacer simply wasn't running. Without
+                        // this, the health check below could immediately (mis)read that gap as 3+ seconds of
+                        // "the encoder can't keep up," firing the Degraded toast or even the hw→sw downgrade
+                        // for a perfectly healthy encoder on every large-file auto-split. Resetting here gives
+                        // it a fresh grace window measured from after the rotation, same as the mid-stream
+                        // hw→sw downgrade path already does for its own rotation just below.
+                        health.ResetAfterRotation();
+                        _encoderBehind = false;
                     }
                 }
 
@@ -1176,6 +1282,12 @@ public sealed class RecordingCoordinator : IDisposable
     /// </param>
     private void RotateSegment(List<EncoderInfo>? forcedChain = null)
     {
+        // Captured before the finalize/remux/encoder-restart gap, not after: the pacer's Elapsed-driven
+        // catch-up writes the new segment's early video frames back-to-back covering that whole gap the
+        // instant it resumes, so the audio pump (started at the bottom of this method) must anchor its own
+        // PTS=0 to this same pre-gap instant — see StartAudioPumpThread's doc comment.
+        TimeSpan segmentStartedAt = _stateMachine.Elapsed;
+
         _audioStop?.Cancel();
         if (_audioThread is not null && _audioThread != Thread.CurrentThread)
         {
@@ -1229,8 +1341,8 @@ public sealed class RecordingCoordinator : IDisposable
         var job = _jobTemplate! with
         {
             OutputPath = _recordingPath,
-            PipeName = $"recmode_vid_{Environment.ProcessId}_{Environment.TickCount}",
-            AudioPipeName = _jobTemplate.AudioPipeName is null ? null : $"recmode_aud_{Environment.ProcessId}_{Environment.TickCount}",
+            PipeName = $"recmode_vid_{Guid.NewGuid():N}",
+            AudioPipeName = _jobTemplate.AudioPipeName is null ? null : $"recmode_aud_{Guid.NewGuid():N}",
         };
 
         List<EncoderInfo> chain = forcedChain ?? _encoderChain!;
@@ -1239,6 +1351,11 @@ public sealed class RecordingCoordinator : IDisposable
         {
             _errors.Fatal("record.split-failed", "Couldn't start the next recording segment; the recording was stopped.",
                 "The previous segments are safe on disk.");
+            // Same as the segment-finalize-failure branch above: without this, PaceLoop's next iteration
+            // dereferences the now-null _session before Stop() (running on its own Task) gets a chance to
+            // join and stop this pacer thread, throwing a second, spurious "stopped unexpectedly" failure
+            // on top of this one.
+            _stopRequested = true;
             System.Threading.Tasks.Task.Run(Stop); // Stop() joins the pacer thread, so never call it inline
             return;
         }
@@ -1250,7 +1367,7 @@ public sealed class RecordingCoordinator : IDisposable
 
         if (_mixer is not null && _session.AudioPipe is { } audioPipe)
         {
-            StartAudioPumpThread(audioPipe);
+            StartAudioPumpThread(audioPipe, segmentStartedAt);
         }
 
         Log.Information("Segment rotation: started segment {Index} (encoder={Enc}) -> {Path}",
@@ -1271,7 +1388,7 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         _downgradeAttempted = true;
-        List<EncoderInfo> swChain = _fallbackChain.BuildSoftwareOnly(activeEncoder);
+        List<EncoderInfo> swChain = _fallbackChain.BuildSoftwareOnly(activeEncoder, _jobTemplate!.Container);
         if (swChain.Count == 0)
         {
             return; // no software encoder available for this codec — nothing to fall back to
@@ -1355,12 +1472,21 @@ public sealed class RecordingCoordinator : IDisposable
     private int _targetFps;
     private volatile bool _encoderBehind; // health: the encoder can't keep up with real time
     private string? _outputRoot;          // drive root for the mid-recording disk-space guard
+    private nint _zoomMonitorCacheHandle;
+    private MonitorInfo? _zoomMonitorCache;
 
     private void RaiseProgress()
     {
-        double fps = _capture is null || _stateMachine.Elapsed.TotalSeconds < 0.1
+        // Read _session into a local exactly once: this is a genuine cross-thread field (RotateSegment, on
+        // the pacer thread, nulls it out for the whole finalize+remux+restart window), and the 0.9.64 "fix"
+        // of guarding on `_session is null` still re-read the field a second time for the dereference below
+        // — with _stateMachine.Elapsed's internal lock acquisition sitting in between, nothing prevented the
+        // JIT/another thread from observing a different value on the second read. Snapshotting into `session`
+        // once makes the null-check and the use refer to the same object no matter what other threads do.
+        FfmpegRecordingSession? session = _session;
+        double fps = session is null || _stateMachine.Elapsed.TotalSeconds < 0.1
             ? 0
-            : _session!.FramesWritten / _stateMachine.Elapsed.TotalSeconds;
+            : session.FramesWritten / _stateMachine.Elapsed.TotalSeconds;
 
         long size = 0;
         double mbps = 0;
@@ -1388,19 +1514,45 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         ProgressChanged?.Invoke(new RecordingProgress(
-            _stateMachine.State, _stateMachine.Elapsed, fps, _session?.FramesWritten ?? 0, mbps, size,
+            _stateMachine.State, _stateMachine.Elapsed, fps, session?.FramesWritten ?? 0, mbps, size,
             IsHealthy: !_encoderBehind));
     }
 
     private void SafeTeardown()
     {
         try { _audioStop?.Cancel(); } catch (Exception) { }
-        try { _audioThread?.Join(1000); } catch (Exception) { }
+        bool audioThreadStopped = true;
+        try { audioThreadStopped = _audioThread is null || _audioThread.Join(1000); } catch (Exception) { }
         try { _session?.Dispose(); } catch (Exception) { }
         try { if (_capture is not null) { _capture.Faulted -= OnCaptureFaulted; } } catch (Exception) { }
         try { _capture?.Dispose(); } catch (Exception) { }
         try { _webcamCapture?.Stop(); } catch (Exception) { }
-        try { _mixer?.Dispose(); } catch (Exception) { }
+        if (audioThreadStopped)
+        {
+            try { _mixer?.Dispose(); } catch (Exception) { }
+        }
+        else if (_mixer is not null && _audioThread is not null)
+        {
+            // The audio thread didn't stop within the bounded join above — it may still be inside a
+            // blocking WASAPI read using _mixer. Disposing here would race that in-flight call (exactly the
+            // ordering bug this branch exists to avoid, since the join is deliberately bounded rather than
+            // unbounded — this runs on the UI thread during a failed Start()'s cleanup, which must not hang
+            // indefinitely). But simply leaving it undisposed (the previous behavior) orphaned it forever:
+            // the field below still gets nulled unconditionally, so nothing would ever call Dispose() on it
+            // even once the thread eventually did finish — a live WASAPI capture client (and the OS
+            // "microphone in use" indicator) leaked for the rest of the process's lifetime. Instead, hand
+            // the still-referenced thread and mixer to a background task that finishes the join (unbounded
+            // is fine off the UI thread) and disposes the mixer once that actually completes.
+            Log.Warning("SafeTeardown: audio thread didn't stop within 1s; deferring mixer disposal until it actually exits");
+            Thread orphanedThread = _audioThread;
+            RecMode.Audio.IAudioMixer orphanedMixer = _mixer;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                orphanedThread.Join();
+                try { orphanedMixer.Dispose(); }
+                catch (Exception ex) { Log.Warning(ex, "Deferred mixer disposal after a stuck audio thread failed"); }
+            });
+        }
         try { _audioStop?.Dispose(); } catch (Exception) { }
         _session = null;
         _capture = null;
@@ -1412,7 +1564,7 @@ public sealed class RecordingCoordinator : IDisposable
         _pendingRetarget = null;
     }
 
-    private static string ContainerExtension(MediaContainer c) => c switch
+    internal static string ContainerExtension(MediaContainer c) => c switch
     {
         MediaContainer.Mp4 => "mp4",
         MediaContainer.Mkv => "mkv",
@@ -1421,5 +1573,13 @@ public sealed class RecordingCoordinator : IDisposable
         _ => "mp4",
     };
 
-    public void Dispose() => SafeTeardown();
+    public void Dispose()
+    {
+        SafeTeardown();
+        // Only disposed here, in the real object-lifetime Dispose() — never inside SafeTeardown() itself,
+        // which also runs on ordinary failed-Start() cleanup paths while the coordinator (a DI singleton)
+        // is still very much alive and needs _finalizationCompleted to keep working for the rest of the
+        // session (Wait()/Set()/Reset() all throw ObjectDisposedException after this).
+        _finalizationCompleted.Dispose();
+    }
 }

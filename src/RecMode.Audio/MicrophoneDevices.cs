@@ -1,4 +1,5 @@
 using NAudio.CoreAudioApi;
+using Serilog;
 
 namespace RecMode.Audio;
 
@@ -14,10 +15,11 @@ public static class MicrophoneDevices
             MMDeviceCollection devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
             return devices.Count > 0;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // No audio subsystem / enumeration failure — treat as "no mic" (fail closed, matches the
             // existing default) rather than letting a first-run check crash startup.
+            Log.Warning(ex, "Microphone-connected probe failed; defaulting to \"no mic\"");
             return false;
         }
     }

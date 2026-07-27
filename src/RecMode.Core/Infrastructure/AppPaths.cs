@@ -9,6 +9,7 @@ public sealed class AppPaths : IAppPaths
     public const string PortableMarkerFileName = "portable.marker";
     public const string SettingsFileName = "settings.json";
     public const string LibraryIndexFileName = "library.json";
+    public const string EncoderCacheFileName = "encoder-cache.json";
 
     private const string AppFolderName = "RecMode";
 
@@ -43,6 +44,52 @@ public sealed class AppPaths : IAppPaths
         ScreenshotsDirectory = Path.Combine(RecordingsDirectory, "Screenshots");
         SettingsFilePath = Path.Combine(DataDirectory, SettingsFileName);
         LibraryIndexPath = Path.Combine(DataDirectory, LibraryIndexFileName);
+        EncoderCachePath = Path.Combine(DataDirectory, EncoderCacheFileName);
+    }
+
+    /// <inheritdoc />
+    public string? ToPortableSetting(string? absolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(absolutePath))
+        {
+            return absolutePath;
+        }
+
+        try
+        {
+            string full = Path.GetFullPath(absolutePath);
+            string appDir = Path.GetFullPath(AppDirectory).TrimEnd(Path.DirectorySeparatorChar);
+
+            bool insideAppFolder =
+                string.Equals(full, appDir, StringComparison.OrdinalIgnoreCase) ||
+                full.StartsWith(appDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+            return insideAppFolder ? Path.GetRelativePath(appDir, full) : full;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return absolutePath; // unparseable input round-trips unchanged rather than being silently dropped
+        }
+    }
+
+    /// <inheritdoc />
+    public string? ResolveUserPath(string? storedPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedPath))
+        {
+            return storedPath;
+        }
+
+        try
+        {
+            return Path.IsPathRooted(storedPath)
+                ? Path.GetFullPath(storedPath)
+                : Path.GetFullPath(Path.Combine(AppDirectory, storedPath));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return storedPath;
+        }
     }
 
     public bool IsPortable { get; }
@@ -56,6 +103,7 @@ public sealed class AppPaths : IAppPaths
     public string LicensesDirectory { get; }
     public string SettingsFilePath { get; }
     public string LibraryIndexPath { get; }
+    public string EncoderCachePath { get; }
 
     public void EnsureDirectories()
     {

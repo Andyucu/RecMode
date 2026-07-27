@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,12 +15,6 @@ namespace RecMode.App.Views;
 /// </summary>
 public partial class RegionSelectWindow : Window
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-
-    private const uint SWP_NOZORDER = 0x0004;
-    private const uint SWP_NOACTIVATE = 0x0010;
-
     private readonly MonitorInfo _monitor;
     private readonly IOsCapabilities? _excludeFromCaptureOs;
     private Point _start;
@@ -50,7 +43,7 @@ public partial class RegionSelectWindow : Window
     {
         // Cover the target monitor in physical pixels (bypasses DIP/DPI conversion for positioning).
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        SetWindowPos(hwnd, IntPtr.Zero, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+        OverlayWindowStyle.SetBounds(hwnd, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height);
 
         if (_excludeFromCaptureOs is not null)
         {

@@ -37,6 +37,7 @@ namespace RecMode.App.Services;
 public sealed class SourceContourService(
     RecordViewModel record, RecordingCoordinator coordinator, GlobalHotkeys hotkeys, IErrorReporter errors, IOsCapabilities os) : IDisposable
 {
+    private const uint EVENT_OBJECT_DESTROY = 0x8001;
     private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     private const int OBJID_WINDOW = 0;
@@ -58,6 +59,7 @@ public sealed class SourceContourService(
 
     private ContourOverlayWindow? _overlay;
     private IntPtr _winEventHook;
+    private IntPtr _destroyEventHook;
     private IntPtr _followedHandle;
     private MonitorInfo? _currentMonitor;
     private int _clearRegionHotkeyId = -1;
@@ -66,18 +68,29 @@ public sealed class SourceContourService(
 
     public void Attach()
     {
-        _winEventProc = OnLocationChanged;
+        _winEventProc = OnWindowEvent;
         record.PropertyChanged += OnPropertyChanged;
         hotkeys.Pressed += OnHotkeyPressed;
         Update();
     }
 
-    private void OnLocationChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    private void OnWindowEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
-        if (hwnd == _followedHandle && idObject == OBJID_WINDOW && idChild == CHILDID_SELF)
+        if (hwnd != _followedHandle || idObject != OBJID_WINDOW || idChild != CHILDID_SELF)
         {
-            Update();
+            return;
         }
+
+        if (eventType == EVENT_OBJECT_DESTROY)
+        {
+            // A destroyed window fires neither a location change nor any RecordViewModel property change, so
+            // nothing ever re-evaluated the bounds — the outline stayed drawn at the dead window's last
+            // position until the user happened to touch the Record screen. Hide() also unhooks.
+            Hide();
+            return;
+        }
+
+        Update();
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -94,6 +107,7 @@ public sealed class SourceContourService(
             case nameof(RecordViewModel.ActiveCaptureTarget):
             case nameof(RecordViewModel.IsActivePage):
             case nameof(RecordViewModel.IsWindowMinimized):
+            case nameof(RecordViewModel.IsWindowVisible):
                 Update();
                 break;
         }
@@ -113,7 +127,7 @@ public sealed class SourceContourService(
         // by up to one tick right after Start()/Stop(), which matters for a drag that starts the instant
         // recording begins; coordinator.IsRecording never has that delay.
         bool isRecording = coordinator.IsRecording;
-        bool visible = isRecording || (record.IsActivePage && !record.IsWindowMinimized);
+        bool visible = isRecording || (record.IsActivePage && !record.IsWindowMinimized && record.IsWindowVisible);
         CaptureTarget? target = visible
             ? (isRecording ? record.ActiveCaptureTarget : record.CurrentSelectionTarget)
             : null;
@@ -243,7 +257,7 @@ public sealed class SourceContourService(
 
     private void StartFollowing(IntPtr handle)
     {
-        if (_followedHandle == handle && _winEventHook != IntPtr.Zero)
+        if (_followedHandle == handle && _winEventHook != IntPtr.Zero && _destroyEventHook != IntPtr.Zero)
         {
             return;
         }
@@ -251,7 +265,10 @@ public sealed class SourceContourService(
         StopFollowing();
         _ = GetWindowThreadProcessId(handle, out uint pid);
         _followedHandle = handle;
+        // Two separate hooks rather than one 0x8001..0x800B range: that range also carries SHOW/HIDE/FOCUS
+        // and friends, which would deliver a stream of events this service ignores.
         _winEventHook = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _winEventProc!, pid, 0, WINEVENT_OUTOFCONTEXT);
+        _destroyEventHook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, IntPtr.Zero, _winEventProc!, pid, 0, WINEVENT_OUTOFCONTEXT);
     }
 
     private void StopFollowing()
@@ -260,6 +277,12 @@ public sealed class SourceContourService(
         {
             UnhookWinEvent(_winEventHook);
             _winEventHook = IntPtr.Zero;
+        }
+
+        if (_destroyEventHook != IntPtr.Zero)
+        {
+            UnhookWinEvent(_destroyEventHook);
+            _destroyEventHook = IntPtr.Zero;
         }
 
         _followedHandle = IntPtr.Zero;

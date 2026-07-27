@@ -18,6 +18,26 @@ public partial class CompactWindow : Window
         InitializeComponent();
         DataContext = viewModel;
         Loaded += OnLoaded;
+        IsVisibleChanged += OnIsVisibleChanged;
+    }
+
+    // Same §3.9 wiring as ShellWindow.OnIsVisibleChanged — both windows share one RecordViewModel instance
+    // (ShellPresenter swaps which is Current, but the underlying page/viewmodel is the same either way).
+    // hostsPreviewSurfaces is false here specifically: CompactWindow.xaml binds none of PreviewImage/
+    // HasPreview/SystemMeter/MicMeter (only source tiles and audio enable toggles) — starting a full WGC/
+    // D3D11 preview plus live WASAPI metering while this window is the one shown would burn §3.9's exact
+    // budget for a surface nothing here displays. See RecordViewModel.SetWindowVisible's doc comment.
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (DataContext is ShellViewModel shell)
+        {
+            if ((bool)e.NewValue)
+            {
+                shell.EnsureInitialPageLoaded();
+            }
+
+            shell.Record.SetWindowVisible((bool)e.NewValue, hostsPreviewSurfaces: false);
+        }
     }
 
     // Compact has no caption chrome to close it, but Alt+F4 (or a taskbar close, since ShowInTaskbar=True)
@@ -29,6 +49,15 @@ public partial class CompactWindow : Window
     {
         if (!AppShutdownState.InProgress)
         {
+            // Same Settings → General → "Close button minimizes to tray" behavior as ShellWindow.OnClosing —
+            // reachable here via Alt+F4/taskbar close even though Compact has no close button of its own.
+            if (DataContext is ShellViewModel { Settings.CloseToTray: true })
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+
             e.Cancel = true;
             AppShutdownState.InProgress = true;
             Application.Current.Shutdown();

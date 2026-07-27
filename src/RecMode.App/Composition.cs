@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using RecMode.App.Services;
 using RecMode.App.Themes;
 using RecMode.App.ViewModels;
@@ -20,7 +21,12 @@ internal static class Composition
     public static IServiceCollection AddRecMode(this IServiceCollection services)
     {
         // Foundation (RecMode.Core).
-        services.AddSingleton<IAppPaths>(_ => new AppPaths());
+        // TryAdd, not Add: App.xaml.cs registers the AppPaths instance it already built and used to
+        // configure Serilog *before* calling this. A plain Add here won last-registration-wins, so every
+        // consumer resolved a *different* AppPaths than the one that ran EnsureDirectories() — harmless only
+        // because the constructor happens to be fully deterministic, and directly contradicting the "reuse
+        // the already-resolved paths instance so logging and DI agree" comment at that call site.
+        services.TryAddSingleton<IAppPaths>(_ => new AppPaths());
         services.AddSingleton<IOsCapabilities>(_ => new OsCapabilities());
         services.AddSingleton<IErrorReporter, ErrorReporter>();
         services.AddSingleton<ISettingsService, SettingsService>();
@@ -81,6 +87,7 @@ internal static class Composition
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<ScheduleViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<AboutViewModel>();
         services.AddSingleton<ShellViewModel>();
 
         // Windows.

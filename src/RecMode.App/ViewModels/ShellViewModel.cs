@@ -33,6 +33,7 @@ public sealed class ShellViewModel : ObservableObject
         LibraryViewModel library,
         ScheduleViewModel schedule,
         SettingsViewModel settings,
+        AboutViewModel about,
         ISettingsService settingsService,
         ThemeManager theme,
         IErrorReporter errors)
@@ -41,11 +42,12 @@ public sealed class ShellViewModel : ObservableObject
         Library = library;
         Schedule = schedule;
         Settings = settings;
+        About = about;
         _settings = settingsService;
         _theme = theme;
 
         _currentPage = record;
-        (record as INavigationAware)?.OnNavigatedTo();
+        // Deliberately NOT calling record.OnNavigatedTo() here — see EnsureInitialPageLoaded()'s doc comment.
 
         NavigateCommand = new RelayCommand<string>(Navigate);
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
@@ -109,6 +111,7 @@ public sealed class ShellViewModel : ObservableObject
     public LibraryViewModel Library { get; }
     public ScheduleViewModel Schedule { get; }
     public SettingsViewModel Settings { get; }
+    public AboutViewModel About { get; }
 
     public ICommand NavigateCommand { get; }
     public ICommand ToggleThemeCommand { get; }
@@ -129,6 +132,29 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool IsDark => _theme.IsDark;
 
+    private bool _initialPageLoaded;
+
+    /// <summary>Record is the shell's default page, but unlike every other page it never goes through
+    /// <see cref="Navigate"/> — nothing normally fires its <c>OnNavigatedTo</c> for the initial page. This
+    /// constructor used to call it directly, which ran full device discovery
+    /// (EnumerateMonitors/GetAvailableEncoders/EnumerateAudioProcesses — see <c>RecordViewModel.LoadDevices</c>)
+    /// synchronously before the app's very first window paint, even for a bare <c>--tray</c> launch that shows
+    /// no window at all (§3.9: nothing should run before something can see it). Call this instead, once, right
+    /// as the hosting window (<c>ShellWindow</c>/<c>CompactWindow</c>) is about to become visible for the
+    /// first time — see their <c>IsVisibleChanged</c> handlers. A CLI action that needs devices before any
+    /// window is ever shown (e.g. <c>--tray --record</c>) already calls
+    /// <see cref="RecordViewModel.EnsureDevicesLoaded"/> directly, independent of this.</summary>
+    public void EnsureInitialPageLoaded()
+    {
+        if (_initialPageLoaded)
+        {
+            return;
+        }
+
+        _initialPageLoaded = true;
+        (Record as INavigationAware)?.OnNavigatedTo();
+    }
+
     private void Navigate(string? page)
     {
         object next = page switch
@@ -137,6 +163,7 @@ public sealed class ShellViewModel : ObservableObject
             "Library" => Library,
             "Schedule" => Schedule,
             "Settings" => Settings,
+            "About" => About,
             _ => Record,
         };
 

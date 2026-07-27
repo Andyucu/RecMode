@@ -28,20 +28,11 @@ namespace RecMode.App.Views;
 /// </summary>
 public partial class ContourOverlayWindow : Window
 {
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
-    [DllImport("user32.dll", SetLastError = true)] private static extern int GetWindowLongW(IntPtr h, int i);
-    [DllImport("user32.dll", SetLastError = true)] private static extern int SetWindowLongW(IntPtr h, int i, int v);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
 
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TRANSPARENT = 0x20;
-    private const int WS_EX_LAYERED = 0x80000;
-    private const int WS_EX_NOACTIVATE = 0x08000000;
-    private const int WS_EX_TOOLWINDOW = 0x80;
-    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     private const int MinSize = 40;
     private const int WM_NCHITTEST = 0x0084;
     private const int HTCLIENT = 1;
@@ -165,10 +156,10 @@ public partial class ContourOverlayWindow : Window
             return;
         }
 
-        int ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
-        ex |= WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
-        ex = _interactive ? ex & ~WS_EX_TRANSPARENT : ex | WS_EX_TRANSPARENT;
-        _ = SetWindowLongW(hwnd, GWL_EXSTYLE, ex);
+        int ex = OverlayWindowStyle.GetExStyle(hwnd);
+        ex |= OverlayWindowStyle.WS_EX_LAYERED | OverlayWindowStyle.WS_EX_NOACTIVATE | OverlayWindowStyle.WS_EX_TOOLWINDOW;
+        ex = _interactive ? ex & ~OverlayWindowStyle.WS_EX_TRANSPARENT : ex | OverlayWindowStyle.WS_EX_TRANSPARENT;
+        OverlayWindowStyle.SetExStyle(hwnd, ex);
     }
 
     /// <summary>Moves/resizes the outline to exactly cover <paramref name="bounds"/> (absolute virtual-desktop
@@ -179,8 +170,8 @@ public partial class ContourOverlayWindow : Window
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
-            SetWindowPos(hwnd, IntPtr.Zero, bounds.X - HandlePadding, bounds.Y - HandlePadding,
-                bounds.Width + HandlePadding * 2, bounds.Height + HandlePadding * 2, SWP_NOZORDER | SWP_NOACTIVATE);
+            OverlayWindowStyle.SetBounds(hwnd, bounds.X - HandlePadding, bounds.Y - HandlePadding,
+                bounds.Width + HandlePadding * 2, bounds.Height + HandlePadding * 2);
         }
     }
 

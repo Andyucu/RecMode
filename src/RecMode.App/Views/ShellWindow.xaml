@@ -22,6 +22,7 @@
         <DataTemplate DataType="{x:Type vm:LibraryViewModel}"><views:LibraryView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScheduleViewModel}"><views:ScheduleView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView /></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AboutViewModel}"><views:AboutView /></DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -47,24 +48,30 @@
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                 <Image Source="pack://application:,,,/Assets/AppIcon.ico" Width="20" Height="20"
                        RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" />
-                <TextBlock Text="RecMode" Style="{StaticResource BodyStrongText}"
+                <TextBlock Text="{x:Static res:Strings.App_Name}" Style="{StaticResource BodyStrongText}"
                            VerticalAlignment="Center" Margin="8,0,0,0" />
             </StackPanel>
 
             <Button Grid.Column="1" Command="{Binding OpenLastRecordingCommand}" VerticalAlignment="Center" Margin="12,0,0,0"
                     WindowChrome.IsHitTestVisibleInChrome="True"
-                    ToolTip="View this recording in the Library"
-                    AutomationProperties.Name="View this recording in the Library">
+                    ToolTip="{x:Static res:Strings.Shell_ViewInLibraryTooltip}"
+                    AutomationProperties.Name="{x:Static res:Strings.Shell_ViewInLibraryTooltip}">
                 <Button.Style>
                     <Style TargetType="Button">
                         <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="Button">
-                                    <Border Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                                    <Border x:Name="bd" Background="{DynamicResource SurfaceCardBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
                                             BorderThickness="1" CornerRadius="10" Padding="10,3">
                                         <ContentPresenter />
                                     </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Setter.Value>
                         </Setter>
@@ -73,6 +80,15 @@
                                 <Setter Property="Cursor" Value="Arrow" />
                                 <Setter Property="ToolTip" Value="{x:Null}" />
                             </DataTrigger>
+                            <!-- Whole-control RenderTransform on press — see SegmentedButton's comment in
+                                 Controls.xaml for why this avoids a template-internal TargetName+nested-path Setter. -->
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.96" ScaleY="0.96" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
                         </Style.Triggers>
                     </Style>
                 </Button.Style>
@@ -116,19 +132,19 @@
             </Button>
 
             <!-- Theme toggle + caption buttons -->
-            <Button Grid.Column="3" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="Toggle theme"
-                    AutomationProperties.Name="Toggle theme"
+            <Button Grid.Column="3" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="{x:Static res:Strings.Shell_ToggleThemeTooltip}"
+                    AutomationProperties.Name="{x:Static res:Strings.Shell_ToggleThemeTooltip}"
                     WindowChrome.IsHitTestVisibleInChrome="True" Width="40" Height="32" VerticalAlignment="Center"
                     Style="{StaticResource SecondaryButton}" Margin="0,0,8,0" />
 
             <StackPanel Grid.Column="4" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
-                <Button x:Name="MinButton" Click="OnMinimize" AutomationProperties.Name="Minimize" ToolTip="Minimize" Style="{StaticResource CaptionButton}">
+                <Button x:Name="MinButton" Click="OnMinimize" AutomationProperties.Name="{x:Static res:Strings.Shell_Minimize}" ToolTip="{x:Static res:Strings.Shell_Minimize}" Style="{StaticResource CaptionButton}">
                     <Path Data="{StaticResource IconMinimizeGeometry}" Style="{StaticResource CaptionButtonIcon}" />
                 </Button>
-                <Button x:Name="MaxButton" Click="OnMaximizeRestore" AutomationProperties.Name="Maximize" ToolTip="Maximize" Style="{StaticResource CaptionButton}">
+                <Button x:Name="MaxButton" Click="OnMaximizeRestore" AutomationProperties.Name="{x:Static res:Strings.Shell_Maximize}" ToolTip="{x:Static res:Strings.Shell_Maximize}" Style="{StaticResource CaptionButton}">
                     <Path x:Name="MaxButtonIcon" Data="{StaticResource IconMaximizeGeometry}" Style="{StaticResource CaptionButtonIcon}" />
                 </Button>
-                <Button x:Name="CloseButton" Click="OnClose" AutomationProperties.Name="Close" ToolTip="Close" Style="{StaticResource CaptionCloseButton}">
+                <Button x:Name="CloseButton" Click="OnClose" AutomationProperties.Name="{x:Static res:Strings.Shell_Close}" ToolTip="{x:Static res:Strings.Shell_Close}" Style="{StaticResource CaptionCloseButton}">
                     <Path Data="{StaticResource IconCloseGeometry}" Style="{StaticResource CaptionButtonIcon}" />
                 </Button>
             </StackPanel>
@@ -177,6 +193,9 @@
                         <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
                                      Command="{Binding NavigateCommand}" CommandParameter="Settings"
                                      IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_About}" Tag="&#xE946;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="About"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=About, Mode=OneWay}" />
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -208,6 +227,9 @@
                             <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Settings}" Tag="&#xE713;"
                                          Command="{Binding NavigateCommand}" CommandParameter="Settings"
                                          IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Settings, Mode=OneWay}" />
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_About}" Tag="&#xE946;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="About"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=About, Mode=OneWay}" />
                         </StackPanel>
                         <!-- Recording status readout, right-aligned — the TopTab layout has no sidebar, so
                              without this the recording status/stats/disk-space info the Sidebar layout shows
@@ -256,7 +278,7 @@
                     </Ellipse>
                     <TextBlock Text="{Binding SnackbarMessage}" VerticalAlignment="Center" TextWrapping="Wrap"
                                MaxWidth="480" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <Button Content="Dismiss" Command="{Binding DismissSnackbarCommand}"
+                    <Button Content="{x:Static res:Strings.Shell_Dismiss}" Command="{Binding DismissSnackbarCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="16,0,0,0" Height="28" />
                 </StackPanel>
             </Border>

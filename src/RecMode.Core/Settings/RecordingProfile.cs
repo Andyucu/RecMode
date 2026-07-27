@@ -19,7 +19,10 @@ public sealed class RecordingProfile
     public AudioCodec AudioCodec { get; set; } = AudioCodec.Aac;
     public int AudioBitrateKbps { get; set; } = 192;
 
-    /// <summary>True for the shipped presets (Tutorial/Gameplay/…) — can't be deleted, only copied into a new custom profile.</summary>
+    /// <summary>True for the shipped, in-memory <see cref="RecordingProfiles.BuiltIn"/> instances. Saving over a
+    /// built-in's own name (Save as… defaults to it) stores a same-named override in <c>CustomProfiles</c>
+    /// with this false — the Record screen's profile list shows the override in the built-in's slot instead of
+    /// the shipped defaults; deleting that override falls back to the shipped defaults again.</summary>
     public bool IsBuiltIn { get; set; }
 
     public override string ToString() => Name;

@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Vortice.Direct3D11"><Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">3.6.2</Version></PackageReference>
     <PackageReference Include="Vortice.DXGI"><Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">3.6.2</Version></PackageReference>
+    <PackageReference Include="Serilog"><Version Condition="'$(ManagePackageVersionsCentrally)' != 'true'">4.2.0</Version></PackageReference>
   </ItemGroup>
 
   <ItemGroup>

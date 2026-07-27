@@ -80,6 +80,12 @@ public sealed class ProcessLoopbackCapture : IWaveIn
     private void PumpLoop()
     {
         Exception? failure = null;
+        // Reused across packets (~100/s for the whole recording) rather than allocated per packet; grown,
+        // never shrunk. This is the upstream half of the MixSource per-callback-allocation fix — that side
+        // stopped allocating, but per-app audio still handed it a brand-new array every packet (§3.9's
+        // allocation-free hot paths). Safe to reuse because WaveInEventArgs is consumed synchronously by
+        // MixSource.OnDataAvailable before the next iteration overwrites it.
+        byte[] buffer = [];
         try
         {
             while (!_stopping)
@@ -95,12 +101,23 @@ public sealed class ProcessLoopbackCapture : IWaveIn
                 int bytes = (int)(framesToRead * WaveFormat.BlockAlign);
                 if (bytes > 0)
                 {
-                    byte[] buffer = new byte[bytes];
+                    if (buffer.Length < bytes)
+                    {
+                        buffer = new byte[bytes];
+                    }
+
                     const uint AUDCLNT_BUFFERFLAGS_SILENT = 0x2;
                     if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) == 0 && dataPtr != IntPtr.Zero)
                     {
                         Marshal.Copy(dataPtr, buffer, 0, bytes);
                     }
+                    else
+                    {
+                        // A silent packet leaves no data behind; with a reused buffer that would replay the
+                        // previous packet's audio, so it has to be cleared explicitly now.
+                        Array.Clear(buffer, 0, bytes);
+                    }
+
                     DataAvailable?.Invoke(this, new WaveInEventArgs(buffer, bytes));
                 }
 

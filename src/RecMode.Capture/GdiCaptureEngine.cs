@@ -32,7 +32,9 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
     public bool HdrToneMapActive => false;
     public event EventHandler<Exception>? Faulted;
 
-    public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor)
+    // targetFps is ignored: this engine already paces itself at its own fixed FallbackFramesPerSecond via
+    // the dedicated CaptureLoop thread, unlike WgcCaptureEngine's on-change WGC event source.
+    public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor, int targetFps = 0)
     {
         if (!CaptureInterop.TryGetCaptureBounds(target, out _bounds))
             throw new InvalidOperationException("The selected source has no screen bounds.");
@@ -71,7 +73,7 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
             while (!_stopping)
             {
                 CaptureBgra(dc, bits, bgra, srcStride);
-                ConvertToNv12(bgra, _bounds.Width, _bounds.Height, nv12);
+                Bgra8ToNv12Converter.Convert(bgra, _bounds.Width, _bounds.Height, _dstW, _dstH, nv12);
                 lock (_sync)
                 {
                     Buffer.BlockCopy(nv12, 0, _latest, 0, nv12.Length);
@@ -147,38 +149,6 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
             if (icon.hbmMask != IntPtr.Zero) DeleteObject(icon.hbmMask);
             if (icon.hbmColor != IntPtr.Zero) DeleteObject(icon.hbmColor);
         }
-    }
-
-    private void ConvertToNv12(byte[] bgra, int srcW, int srcH, byte[] output)
-    {
-        int ySize = _dstW * _dstH;
-        for (int y = 0; y < _dstH; y++)
-        for (int x = 0; x < _dstW; x++)
-        {
-            (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, x, y);
-            output[y * _dstW + x] = (byte)Math.Clamp((77 * r + 150 * g + 29 * b + 128) >> 8, 0, 255);
-        }
-        for (int y = 0; y < _dstH; y += 2)
-        for (int x = 0; x < _dstW; x += 2)
-        {
-            int sumU = 0, sumV = 0;
-            for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++)
-            {
-                (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, x + dx, y + dy);
-                sumU += ((-43 * r - 85 * g + 128 * b + 32768) >> 8);
-                sumV += ((128 * r - 107 * g - 21 * b + 32768) >> 8);
-            }
-            int at = ySize + (y / 2) * _dstW + x;
-            output[at] = (byte)Math.Clamp(sumU / 4, 0, 255);
-            output[at + 1] = (byte)Math.Clamp(sumV / 4, 0, 255);
-        }
-    }
-
-    private (byte B, byte G, byte R) Pixel(byte[] p, int w, int h, int x, int y)
-    {
-        int sx = Math.Min(w - 1, x * w / _dstW), sy = Math.Min(h - 1, y * h / _dstH);
-        int i = (sy * w + sx) * 4;
-        return (p[i], p[i + 1], p[i + 2]);
     }
 
     public bool TryGetLatestFrame(byte[] dest) { lock (_sync) { if (!_hasLatest) return false; Buffer.BlockCopy(_latest, 0, dest, 0, _latest.Length); return true; } }

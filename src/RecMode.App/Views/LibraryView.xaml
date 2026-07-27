@@ -20,7 +20,7 @@
                 <StackPanel Orientation="Horizontal">
                     <StackPanel Margin="0,0,8,0">
                         <Button Content="{x:Static res:Strings.Library_Videos}" Command="{Binding ShowVideosCommand}"
-                                ToolTip="Show recorded videos"
+                                ToolTip="{x:Static res:Strings.Library_VideosTooltip}"
                                 Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
@@ -28,7 +28,7 @@
                     </StackPanel>
                     <StackPanel>
                         <Button Content="{x:Static res:Strings.Library_Screenshots}" Command="{Binding ShowScreenshotsCommand}"
-                                ToolTip="Show saved screenshots"
+                                ToolTip="{x:Static res:Strings.Library_ScreenshotsTooltip}"
                                 Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                         <Border Height="3" CornerRadius="2" Margin="4,3,4,0" Background="{DynamicResource AccentBrush}"
@@ -39,11 +39,11 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                 <Button Content="{x:Static res:Strings.Library_OpenFolder}" Command="{Binding OpenFolderCommand}"
-                        ToolTip="Open this folder in File Explorer"
+                        ToolTip="{x:Static res:Strings.Library_OpenFolderTooltip}"
                         Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
                 <Button Content="{x:Static res:Strings.Library_Refresh}" Command="{Binding RefreshCommand}"
-                        ToolTip="Rescan the folder for new files"
+                        ToolTip="{x:Static res:Strings.Library_RefreshTooltip}"
                         Style="{StaticResource SecondaryButton}" FontSize="12" Height="32" Padding="16,0" Margin="8,0,0,0"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
             </StackPanel>
@@ -116,7 +116,7 @@
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 Foreground="{DynamicResource CriticalBrush}"
-                                                ToolTip="{Binding DisplayName, StringFormat='Delete {0} (moves to Recycle Bin)'}"
+                                                ToolTip="{Binding DisplayName, StringFormat='Delete {0}'}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Delete {0}'}" />
                                     </StackPanel>
                                 </Grid>

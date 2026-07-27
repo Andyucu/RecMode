@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using RecMode.Capture.Webcam;
+using Serilog;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
 
@@ -12,6 +14,8 @@ namespace RecMode.Capture;
 public sealed class WgcCaptureEngine : ICaptureEngine
 {
     private readonly Lock _sync = new();
+    private readonly Lock _stopLock = new();
+    private readonly Lock _disposeGuard = new();
 
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
@@ -27,6 +31,8 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private byte[] _scratch = [];
     private bool _hasLatest;
     private long _capturedFrames;
+    private long _minFrameIntervalTicks;
+    private long _lastConvertedTicks;
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
     private double _brightness;
@@ -48,13 +54,16 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
     public event EventHandler<Exception>? Faulted;
 
-    public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor)
+    public void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor, int targetFps = 0)
     {
         ArgumentNullException.ThrowIfNull(target);
         if (IsRunning)
         {
             throw new InvalidOperationException("Capture is already running.");
         }
+
+        _minFrameIntervalTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
+        _lastConvertedTicks = 0;
 
         if (!CaptureCapabilities.IsSupported())
         {
@@ -65,7 +74,11 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         if (target.Kind == CaptureKind.AllDisplays)
         {
             try { StartAllDisplays(dstW, dstH); }
-            catch (Exception) { StartSoftwareFallback(target, dstW, dstH, captureCursor); }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "All-Displays desktop-duplication capture failed to start; falling back to GDI");
+                StartSoftwareFallback(target, dstW, dstH, captureCursor);
+            }
             return;
         }
 
@@ -77,8 +90,11 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
         WgcSessionFactory.Session session;
         try { session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived, sourceIsHdr); }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // The one place this sandbox's own standing DXGI_ERROR_UNSUPPORTED gap (see CLAUDE.md) actually
+            // surfaces — without this log line, that fallback happens completely invisibly.
+            Log.Warning(ex, "Windows.Graphics.Capture session failed to start; falling back to GDI");
             StartSoftwareFallback(target, dstW, dstH, captureCursor);
             return;
         }
@@ -124,14 +140,49 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
     private void OnFrameArrived(Direct3D11CaptureFramePool pool, object? args)
     {
-        using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
-        if (frame is null || _converter is null)
+        // _disposeGuard (not _sync) wraps the GPU work here — it also doubles as Stop()'s barrier (an empty
+        // critical section taken after unsubscribing this callback, before disposing the converter/context/
+        // device it uses below): a call already dispatched before the unsubscribe takes effect blocks here
+        // until Stop() finishes, then sees _converter already null and returns — instead of racing GPU-object
+        // disposal (COM refcount corruption). Using a dedicated lock rather than _sync means the GPU convert
+        // (a Blt + staging readback that can take several ms) no longer contends with TryGetLatestFrame's
+        // plain memcpy — the two used to share _sync, so a slow encode-frame readback could stall the CFR
+        // pacer's read, and vice versa. _sync itself is now held only for the O(1) buffer-reference swap.
+        Nv12Converter? converter;
+        lock (_disposeGuard)
         {
-            return;
+            converter = _converter;
+            if (converter is null)
+            {
+                return;
+            }
+
+            using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
+            if (frame is null)
+            {
+                return;
+            }
+
+            // Throttle the expensive GPU convert + readback to the recording/preview's own target fps — WGC
+            // fires FrameArrived on-change, up to the source monitor's own refresh rate (e.g. 144 Hz), but the
+            // CFR pacer only ever reads TryGetLatestFrame up to targetFps times/sec, so every conversion above
+            // that rate was pure waste (e.g. up to ~84 of every 144 conversions/sec at 1440p60 on a 144 Hz
+            // display, immediately overwritten before the pacer ever consumed them). Still calls
+            // TryGetNextFrame above unconditionally so the WGC frame pool keeps cycling normally.
+            if (_minFrameIntervalTicks > 0)
+            {
+                long now = Stopwatch.GetTimestamp();
+                if (_lastConvertedTicks != 0 && now - _lastConvertedTicks < _minFrameIntervalTicks)
+                {
+                    return;
+                }
+                _lastConvertedTicks = now;
+            }
+
+            using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
+            converter.Convert(tex, _scratch);
         }
 
-        using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
-        _converter.Convert(tex, _scratch);
         lock (_sync)
         {
             (_scratch, _latest) = (_latest, _scratch);
@@ -204,6 +255,19 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             while (!_ddaStopping)
             {
                 ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16);
+
+                // Same throttle as OnFrameArrived (WGC path) — AcquireNextFrame returns as soon as the
+                // desktop changes, which can be far faster than the recording/preview's own target fps.
+                if (_minFrameIntervalTicks > 0)
+                {
+                    long now = Stopwatch.GetTimestamp();
+                    if (_lastConvertedTicks != 0 && now - _lastConvertedTicks < _minFrameIntervalTicks)
+                    {
+                        continue;
+                    }
+                    _lastConvertedTicks = now;
+                }
+
                 converter!.Convert(canvas, _scratch);
                 lock (_sync)
                 {
@@ -283,26 +347,45 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
     public void Stop()
     {
-        if (!IsRunning)
+        // Guards against re-entrant Stop() calls: the window-closed callback (OnCaptureItemClosed) queues
+        // Stop() on the thread pool, which can race a user-initiated Stop() (e.g. closing the recorded
+        // window right as the user clicks Stop). Without this, both could observe IsRunning == true and both
+        // run DisposeWgcResources(), double-releasing the same D3D11 COM objects. The second caller blocks
+        // here until the first finishes, then sees IsRunning already false and returns immediately.
+        lock (_stopLock)
         {
-            return;
+            if (!IsRunning)
+            {
+                return;
+            }
+
+            IsRunning = false;
+
+            if (_softwareFallback is not null)
+            {
+                _softwareFallback.Dispose();
+                _softwareFallback = null;
+                _hasLatest = false;
+                return;
+            }
+
+            if (_framePool is not null)
+            {
+                _framePool.FrameArrived -= OnFrameArrived;
+            }
+
+            // Barrier against an OnFrameArrived call already in flight when the unsubscribe above happened —
+            // see the comment on OnFrameArrived's own lock for why this is safe and sufficient. Must be
+            // _disposeGuard, not _sync: that's the lock OnFrameArrived now holds for the GPU work's whole
+            // duration (_sync is only ever held briefly for the buffer swap, too short a barrier to trust).
+            lock (_disposeGuard) { }
+
+            StopCore();
         }
+    }
 
-        IsRunning = false;
-
-        if (_softwareFallback is not null)
-        {
-            _softwareFallback.Dispose();
-            _softwareFallback = null;
-            _hasLatest = false;
-            return;
-        }
-
-        if (_framePool is not null)
-        {
-            _framePool.FrameArrived -= OnFrameArrived;
-        }
-
+    private void StopCore()
+    {
         bool wasDda = _ddaThread is not null;
         if (wasDda)
         {

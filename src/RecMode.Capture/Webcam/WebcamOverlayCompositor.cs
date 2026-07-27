@@ -21,6 +21,7 @@ internal sealed class WebcamOverlayCompositor : IDisposable
     private ID3D11VideoProcessorInputView? _inputView;
     private int _texWidth;
     private int _texHeight;
+    private byte[] _frameBuffer = []; // owned by this compositor; grown by TryGetLatestFrame, then reused
 
     public WebcamOverlayCompositor(ID3D11Device device, ID3D11DeviceContext context,
         ID3D11VideoDevice videoDevice, ID3D11VideoProcessorEnumerator enumerator)
@@ -34,13 +35,13 @@ internal sealed class WebcamOverlayCompositor : IDisposable
     /// <summary>Uploads the source's latest frame and returns the input view to composite, or null if no frame is available yet.</summary>
     public ID3D11VideoProcessorInputView? Update(IWebcamFrameSource source)
     {
-        if (!source.TryGetLatestFrame(out byte[] data, out int width, out int height, out int stride) || width <= 0 || height <= 0)
+        if (!source.TryGetLatestFrame(ref _frameBuffer, out int width, out int height, out int stride) || width <= 0 || height <= 0)
         {
             return null;
         }
 
         EnsureTexture(width, height);
-        UploadFrame(data, stride);
+        UploadFrame(_frameBuffer, stride);
         return _inputView;
     }
 

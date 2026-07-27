@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using RecMode.Capture.Webcam;
+using Serilog;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -149,8 +150,9 @@ internal abstract class VideoProcessorPipeline : IDisposable
             videoContext1.VideoProcessorSetOutputColorSpace1(Processor, ColorSpaceType.RgbFullG22NoneP709);
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Debug(ex, "HDR tone-map setup failed (older driver without ID3D11VideoContext1?) — continuing without it");
             return false;
         }
     }

@@ -90,6 +90,7 @@ public sealed partial class RecordViewModel
                 _settings.Current.MicrophoneEnabled = value;
                 _settings.RequestSave();
                 RestartMetering();
+                ToggleMicMuteCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -132,10 +133,37 @@ public sealed partial class RecordViewModel
     public string SystemVolumeLabel => $"{(int)Math.Round(SystemVolume)}%";
     public string MicVolumeLabel => $"{(int)Math.Round(MicVolume)}%";
 
+    private bool _isMicMuted;
+
+    /// <summary>Global-hotkey (default Ctrl+Shift+M, remappable in Settings) / floating-toolbar mic mute
+    /// toggle. A layer on top of <see cref="MicVolume"/> rather than zeroing it — the volume slider keeps
+    /// showing the user's real preferred level while muted instead of visibly jumping to 0 and back, and
+    /// muting never touches (or persists) the saved volume setting.</summary>
+    public bool IsMicMuted
+    {
+        get => _isMicMuted;
+        private set { if (SetProperty(ref _isMicMuted, value)) OnPropertyChanged(nameof(MicMuteButtonText)); }
+    }
+
+    public string MicMuteButtonText => IsMicMuted ? "Unmute mic" : "Mute mic";
+
+    /// <summary>Only acts while actually recording with the mic enabled — matches the request's "while
+    /// recording" scope and avoids a confusing "muted" indicator with nothing to mute.</summary>
+    private void ToggleMicMute()
+    {
+        if (!_coordinator.IsRecording || !MicEnabled)
+        {
+            return;
+        }
+
+        IsMicMuted = !IsMicMuted;
+        ApplyGains();
+    }
+
     private void ApplyGains()
     {
         float sysGain = (float)(SystemVolume / 100.0);
-        float micGain = (float)(MicVolume / 100.0);
+        float micGain = IsMicMuted ? 0f : (float)(MicVolume / 100.0);
         if (_meterMixer is not null)
         {
             _meterMixer.SystemGain = sysGain;
@@ -147,7 +175,8 @@ public sealed partial class RecordViewModel
 
     private void StartMetering()
     {
-        if (_meterMixer is not null || !_isActivePage)
+        // §3.9: same combined guard as StartPreview — see SetWindowVisible.
+        if (!_isActivePage || IsWindowMinimized || !IsWindowVisible || !_hostsPreviewSurfaces)
         {
             return;
         }
@@ -157,19 +186,36 @@ public sealed partial class RecordViewModel
             return;
         }
 
+        EnsureMeterTimer();
+
+        // While recording, the coordinator's mixer is already capturing and computing peak/RMS on every
+        // audio callback. Opening the meter mixer too meant two independent WASAPI graphs — each holding a
+        // loopback *and* a mic capture client, each resampling every callback, and with per-app audio
+        // selected, two process-loopback sessions on the same PID — for the entire length of every recording,
+        // to display numbers the first mixer had already computed. The timer below reads from the coordinator
+        // instead for the duration (§3.9).
+        if (_coordinator.IsRecording)
+        {
+            StopMeterMixer();
+            return;
+        }
+
+        if (_meterMixer is not null)
+        {
+            return;
+        }
+
         try
         {
             RecMode.Audio.IAudioMixer mixer = _mixerFactory();
-            mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid);
+            // Assigned before Start() rather than after: if Start() (or a gain setter) throws, the catch
+            // below calls StopMetering(), which disposes via _meterMixer — assigning only on success left
+            // _meterMixer null on a mid-Start() failure, so the mixer's already-opened WASAPI capture
+            // client(s) were never disposed (a leak repeated on every nav to Record / audio-toggle flip).
+            _meterMixer = mixer;
+            mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid, meteringOnly: true);
             mixer.SystemGain = (float)(SystemVolume / 100.0);
             mixer.MicGain = (float)(MicVolume / 100.0);
-            _meterMixer = mixer;
-            _meterTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromMilliseconds(33), // ≤ 30 Hz (§3.9)
-            };
-            _meterTimer.Tick += OnMeterTick;
-            _meterTimer.Start();
         }
         catch (Exception)
         {
@@ -177,15 +223,49 @@ public sealed partial class RecordViewModel
         }
     }
 
+    private void EnsureMeterTimer()
+    {
+        if (_meterTimer is not null)
+        {
+            return;
+        }
+
+        _meterTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(33), // ≤ 30 Hz (§3.9)
+        };
+        _meterTimer.Tick += OnMeterTick;
+        _meterTimer.Start();
+    }
+
     private void OnMeterTick(object? sender, EventArgs e)
     {
+        // Source depends on what's running: the recording's own mixer while recording, the metering-only
+        // mixer otherwise. Never both — see StartMetering.
+        if (_coordinator.IsRecording)
+        {
+            SystemMeter = _coordinator.SystemAudioLevel.Rms;
+            MicMeter = _coordinator.MicAudioLevel.Rms;
+            return;
+        }
+
         if (_meterMixer is null)
         {
+            SystemMeter = 0;
+            MicMeter = 0;
             return;
         }
 
         SystemMeter = _meterMixer.SystemLevel.Rms;
         MicMeter = _meterMixer.MicLevel.Rms;
+    }
+
+    /// <summary>Tears down the metering-only mixer, leaving the UI timer alone — used when a recording takes
+    /// over as the level source.</summary>
+    private void StopMeterMixer()
+    {
+        _meterMixer?.Dispose();
+        _meterMixer = null;
     }
 
     private void StopMetering()
@@ -197,10 +277,23 @@ public sealed partial class RecordViewModel
             _meterTimer = null;
         }
 
-        _meterMixer?.Dispose();
-        _meterMixer = null;
+        StopMeterMixer();
         SystemMeter = 0;
         MicMeter = 0;
+    }
+
+    /// <summary>Re-evaluates which mixer the meters should be reading from. Called when a recording starts or
+    /// stops, so the metering-only mixer is released for the recording's duration and re-opened afterward.</summary>
+    private void RefreshMeteringSource()
+    {
+        if (_coordinator.IsRecording)
+        {
+            StopMeterMixer();
+        }
+        else
+        {
+            StartMetering();
+        }
     }
 
     private void RestartMetering()

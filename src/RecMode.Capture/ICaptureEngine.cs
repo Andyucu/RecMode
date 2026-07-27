@@ -1,4 +1,5 @@
 using RecMode.Capture.Webcam;
+using Serilog;
 
 namespace RecMode.Capture;
 
@@ -40,8 +41,15 @@ public interface ICaptureEngine : IDisposable
     /// </summary>
     event EventHandler<Exception>? Faulted;
 
-    /// <summary>Starts capturing <paramref name="target"/>, converting to NV12 scaled to <paramref name="dstW"/>×<paramref name="dstH"/>.</summary>
-    void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor);
+    /// <summary>
+    /// Starts capturing <paramref name="target"/>, converting to NV12 scaled to <paramref name="dstW"/>×<paramref name="dstH"/>.
+    /// <paramref name="targetFps"/> is the recording/preview's own frame rate, used by implementations whose
+    /// underlying source can deliver faster than that (WGC fires on-change, up to the source monitor's own
+    /// refresh rate, e.g. 144 Hz) so they don't do a full GPU convert+readback for a frame the CFR pacer was
+    /// never going to consume anyway. Pass 0 for "no known target rate" (e.g. before a frame rate has been
+    /// chosen) to fall back to converting every delivered frame.
+    /// </summary>
+    void Start(CaptureTarget target, int dstW, int dstH, bool captureCursor, int targetFps = 0);
 
     /// <summary>Copies the most recent NV12 frame into <paramref name="dest"/>. False until the first frame arrives.</summary>
     bool TryGetLatestFrame(byte[] dest);
@@ -138,6 +146,16 @@ public static class CaptureCapabilities
     /// <summary>Resolves the current pixel size of a capture target (used to compute the encoded output size).</summary>
     public static bool TryGetSourceSize(CaptureTarget target, out int width, out int height)
     {
+        if (target.Kind == CaptureKind.Webcam)
+        {
+            if (target.WebcamDeviceId is { } id)
+            {
+                return WebcamEnumerator.TryGetNativeResolution(id, out width, out height);
+            }
+            width = height = 0;
+            return false;
+        }
+
         if (target.Kind == CaptureKind.AllDisplays)
         {
             width = target.VirtualDesktopBounds?.Width ?? 0;
@@ -159,10 +177,11 @@ public static class CaptureCapabilities
             height = item.Size.Height;
             return width > 0 && height > 0;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // WGC is unavailable on a number of VM/RDP configurations, but the GDI fallback can still
             // capture the virtual desktop. Resolve dimensions from the Win32 display/window geometry.
+            Log.Debug(ex, "WGC item creation failed while sizing {Kind}; falling back to Win32 bounds", target.Kind);
             if (CaptureInterop.TryGetCaptureBounds(target, out RegionRect bounds))
             {
                 width = bounds.Width;

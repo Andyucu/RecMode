@@ -9,9 +9,3 @@ public interface IMinidumpWriter
     /// <summary>Writes a minidump for the current process. Returns true on success. Never throws.</summary>
     bool TryWrite(string filePath);
 }
-
-/// <summary>No-op writer used when minidumps are disabled or the platform lacks support.</summary>
-public sealed class NullMinidumpWriter : IMinidumpWriter
-{
-    public bool TryWrite(string filePath) => false;
-}

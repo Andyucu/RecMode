@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace RecMode.Core.Settings;
 
 /// <summary>
@@ -11,6 +14,18 @@ public sealed class RecModeSettings
     public const int CurrentSchemaVersion = 1;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary>
+    /// Properties present in <c>settings.json</c> that this build doesn't know about — captured on load and
+    /// written back out verbatim on save. <see cref="SettingsMigrator"/> deliberately leaves a *higher*
+    /// <see cref="SchemaVersion"/> alone ("genuinely newer docs keep their higher number"), but that intent
+    /// wasn't actually implemented: deserializing into this class dropped every property it doesn't declare,
+    /// and the next save re-serialized the lossy object over the file. Running an older portable copy once
+    /// against a shared <c>Data\</c> folder therefore erased all of the newer build's settings — schedules
+    /// with new fields, profiles, any new toggle — permanently, on the first slider drag.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownProperties { get; set; }
 
     // Appearance
     public AppTheme Theme { get; set; } = AppTheme.System;
@@ -43,9 +58,8 @@ public sealed class RecModeSettings
     // Encoding defaults
     public VideoCodec Codec { get; set; } = VideoCodec.H264;
     public EncoderBackend Backend { get; set; } = EncoderBackend.Auto;
-    public MediaContainer Container { get; set; } = MediaContainer.Mp4;
-    public bool HardwareEncoding { get; set; } = true;
-    public int FrameRate { get; set; } = 60;
+    public MediaContainer Container { get; set; } = MediaContainer.Mkv;
+    public int FrameRate { get; set; } = 30;
 
     /// <summary>0–100 quality slider; mapped to CRF/CQ/QP in the encoding layer via a perceptually-curved,
     /// per-encoder-calibrated model (see <c>FfmpegArgsBuilder.EffectiveQualityValue</c>).</summary>
@@ -105,14 +119,15 @@ public sealed class RecModeSettings
     public EncoderEffort Effort { get; set; } = EncoderEffort.Balanced;
     public bool BelowNormalEncoderPriority { get; set; } = true;
 
-    // Preview
-    public int PreviewFps { get; set; } = 30;
-
     // Hotkeys (default F8/F9/F10/F11 per plan + profile-cycling feature)
     public string HotkeyNextProfile { get; set; } = "F8";
     public string HotkeyStartStop { get; set; } = "F9";
     public string HotkeyPauseResume { get; set; } = "F10";
     public string HotkeyScreenshot { get; set; } = "F11";
+
+    /// <summary>Default is a modifier chord, not a bare letter — a global hotkey with no modifier would fire
+    /// on every press of that key system-wide, including normal typing in any other app.</summary>
+    public string HotkeyMicMute { get; set; } = "Ctrl+Shift+M";
 
     /// <summary>
     /// Window source helper: when true, RecMode re-resolves the selected window by process/title before
@@ -126,6 +141,12 @@ public sealed class RecModeSettings
 
     // System integration & privacy
     public bool StartWithWindows { get; set; }
+
+    /// <summary>When true, the caption-bar close (×) button hides the window to the tray instead of quitting —
+    /// mirroring minimize, which already always hides to tray (<c>TrayIconService</c>). Off by default so
+    /// existing users' expectation that × exits is unchanged; the tray menu's own "Quit" always exits either way.</summary>
+    public bool CloseToTray { get; set; }
+
     public bool CheckForUpdatesOnLaunch { get; set; } = true;
 
     /// <summary>Opt-in local crash minidumps (§3.6). Off by default — privacy is a feature.</summary>
@@ -138,7 +159,4 @@ public sealed class RecModeSettings
     // ones. Null/unknown SelectedProfileName means "Custom" — the Record screen's settings are edited directly.
     public List<RecordingProfile> CustomProfiles { get; set; } = [];
     public string? SelectedProfileName { get; set; }
-
-    /// <summary>Deep copy for handing out immutable snapshots and detecting changes.</summary>
-    public RecModeSettings Clone() => (RecModeSettings)MemberwiseClone();
 }

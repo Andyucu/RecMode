@@ -51,11 +51,11 @@
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
 
-  <data name="AppTitle" xml:space="preserve"><value>RecMode</value></data>
   <data name="Nav_Record" xml:space="preserve"><value>Record</value></data>
   <data name="Nav_Library" xml:space="preserve"><value>Library</value></data>
   <data name="Nav_Schedule" xml:space="preserve"><value>Schedule</value></data>
   <data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Nav_About" xml:space="preserve"><value>About</value></data>
 
   <data name="Record_SourceHeader" xml:space="preserve"><value>Source</value></data>
   <data name="Source_Screen" xml:space="preserve"><value>Screen</value></data>
@@ -73,12 +73,57 @@
   <data name="Record_QualityPresetWeb" xml:space="preserve"><value>Web</value></data>
   <data name="Record_QualityPresetBalanced" xml:space="preserve"><value>Balanced</value></data>
   <data name="Record_QualityPresetArchive" xml:space="preserve"><value>Archive</value></data>
-  <data name="Record_Start" xml:space="preserve"><value>Record</value></data>
   <data name="Record_Stop" xml:space="preserve"><value>Stop</value></data>
   <data name="Record_Screenshot" xml:space="preserve"><value>Screenshot</value></data>
   <data name="Record_Annotate" xml:space="preserve"><value>Draw</value></data>
-  <data name="Status_Ready" xml:space="preserve"><value>Ready</value></data>
-  <data name="Status_Recording" xml:space="preserve"><value>Recording</value></data>
+
+  <data name="Source_ScreenTooltip" xml:space="preserve"><value>Record the entire display</value></data>
+  <data name="Source_WindowTooltip" xml:space="preserve"><value>Record a single application window</value></data>
+  <data name="Source_RegionTooltip" xml:space="preserve"><value>Record a custom rectangular area</value></data>
+  <data name="Source_WebcamTooltip" xml:space="preserve"><value>Record from a webcam as the source</value></data>
+  <data name="Record_WhichWindowTooltip" xml:space="preserve"><value>Which open window to record</value></data>
+  <data name="Record_ManualPick" xml:space="preserve"><value>Manual Pick</value></data>
+  <data name="Record_PickWindowTooltip" xml:space="preserve"><value>Pick a window by clicking it on screen</value></data>
+  <data name="Record_FollowWindow" xml:space="preserve"><value>Follow selected window</value></data>
+  <data name="Record_FollowWindowTooltip" xml:space="preserve"><value>Keep recording the same app if it recreates its window before capture starts</value></data>
+  <data name="Record_WhichCameraTooltip" xml:space="preserve"><value>Which camera to record</value></data>
+  <data name="Record_PreviewPaused" xml:space="preserve"><value>Preview paused</value></data>
+  <data name="Record_StartStopTooltip" xml:space="preserve"><value>Start or stop recording (F9)</value></data>
+  <data name="Record_PauseResumeTooltip" xml:space="preserve"><value>Pause or resume the recording (F10)</value></data>
+  <data name="Record_ScreenshotTooltip" xml:space="preserve"><value>Save a still image of the current source (F11)</value></data>
+  <data name="Record_DiskSpaceTooltip" xml:space="preserve"><value>Free space on the drive where recordings are saved</value></data>
+  <data name="Record_ProfileTooltip" xml:space="preserve"><value>Presets that set format, frame rate, quality, and audio together</value></data>
+  <data name="Record_SaveProfileTooltip" xml:space="preserve"><value>Save the current settings as a new custom profile</value></data>
+  <data name="Record_DeleteProfileTooltip" xml:space="preserve"><value>Delete this custom profile</value></data>
+  <data name="Record_DisplayTooltip" xml:space="preserve"><value>Which monitor to record</value></data>
+  <data name="Record_Change" xml:space="preserve"><value>Change…</value></data>
+  <data name="Record_ChangeRegionTooltip" xml:space="preserve"><value>Pick a new region to record</value></data>
+  <data name="Record_EncoderTooltip" xml:space="preserve"><value>Video codec and hardware/software backend used to encode</value></data>
+  <data name="Record_FormatTooltip" xml:space="preserve"><value>Container file format for the output</value></data>
+  <data name="Record_FrameRateTooltip" xml:space="preserve"><value>Frames captured per second</value></data>
+  <data name="Record_QualityTooltip" xml:space="preserve"><value>Higher quality means larger files</value></data>
+  <data name="Record_QualityWebTooltip" xml:space="preserve"><value>Smaller file, good enough for quick sharing</value></data>
+  <data name="Record_QualityBalancedTooltip" xml:space="preserve"><value>A reasonable balance of quality and file size</value></data>
+  <data name="Record_QualityArchiveTooltip" xml:space="preserve"><value>Highest quality, larger files</value></data>
+  <data name="Record_BrightnessTooltip" xml:space="preserve"><value>Adjusts the brightness of the recorded video</value></data>
+  <data name="Record_AudioHeader" xml:space="preserve"><value>Audio</value></data>
+  <data name="Record_SystemAudioTooltip" xml:space="preserve"><value>Include what your computer is playing</value></data>
+  <data name="Record_SystemAudio" xml:space="preserve"><value>System audio</value></data>
+  <data name="Record_LimitToApp" xml:space="preserve"><value>Limit to app</value></data>
+  <data name="Record_SystemVolumeTooltip" xml:space="preserve"><value>Adjust the system audio level in the recording</value></data>
+  <data name="Record_Microphone" xml:space="preserve"><value>Microphone</value></data>
+  <data name="Record_MicrophoneTooltip" xml:space="preserve"><value>Include your microphone</value></data>
+  <data name="Record_MicVolumeTooltip" xml:space="preserve"><value>Adjust the microphone level in the recording</value></data>
+  <data name="Record_WebcamHeader" xml:space="preserve"><value>Webcam</value></data>
+  <data name="Record_WebcamOverlayTooltip" xml:space="preserve"><value>Overlay your camera as a picture-in-picture box on the recording</value></data>
+  <data name="Record_ShowWebcam" xml:space="preserve"><value>Show webcam</value></data>
+  <data name="Record_NoCameraDetected" xml:space="preserve"><value>No camera detected</value></data>
+  <data name="Record_CameraLabel" xml:space="preserve"><value>Camera</value></data>
+  <data name="Record_WhichCameraOverlayTooltip" xml:space="preserve"><value>Which camera to use</value></data>
+  <data name="Record_PositionLabel" xml:space="preserve"><value>Position</value></data>
+  <data name="Record_OverlayPositionTooltip" xml:space="preserve"><value>Corner of the screen for the camera overlay</value></data>
+  <data name="Record_SizeLabel" xml:space="preserve"><value>Size</value></data>
+  <data name="Record_OverlaySizeTooltip" xml:space="preserve"><value>Size of the camera overlay</value></data>
 
   <data name="Settings_Appearance" xml:space="preserve"><value>Appearance</value></data>
   <data name="Settings_Theme" xml:space="preserve"><value>Theme</value></data>
@@ -133,11 +178,38 @@
   <data name="Settings_HkScreenshot" xml:space="preserve"><value>Screenshot</value></data>
   <data name="Settings_Startup" xml:space="preserve"><value>Start with Windows</value></data>
   <data name="Settings_StartupDesc" xml:space="preserve"><value>Launch minimized to the tray at sign-in</value></data>
+  <data name="Settings_CloseToTray" xml:space="preserve"><value>Close button minimizes to tray</value></data>
+  <data name="Settings_CloseToTrayDesc" xml:space="preserve"><value>The × button hides RecMode to the tray instead of exiting</value></data>
   <data name="Settings_Updates" xml:space="preserve"><value>Check for updates on launch</value></data>
   <data name="Settings_License" xml:space="preserve"><value>License</value></data>
-  <data name="Settings_LicenseDesc" xml:space="preserve"><value>GNU General Public License v3.0</value></data>
 
-  <data name="Library_Empty" xml:space="preserve"><value>Your recordings will appear here. Full library arrives in a later build.</value></data>
+  <data name="Settings_ThemeSystem" xml:space="preserve"><value>System</value></data>
+  <data name="Settings_ThemeLight" xml:space="preserve"><value>Light</value></data>
+  <data name="Settings_ThemeDark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Settings_AccentBlue" xml:space="preserve"><value>Blue accent</value></data>
+  <data name="Settings_AccentRed" xml:space="preserve"><value>Red accent</value></data>
+  <data name="Settings_AccentPurple" xml:space="preserve"><value>Purple accent</value></data>
+  <data name="Settings_AccentTeal" xml:space="preserve"><value>Teal accent</value></data>
+  <data name="Settings_AccentOrange" xml:space="preserve"><value>Orange accent</value></data>
+  <data name="Settings_LayoutSidebar" xml:space="preserve"><value>Sidebar</value></data>
+  <data name="Settings_LayoutTopBar" xml:space="preserve"><value>Top bar</value></data>
+  <data name="Settings_LayoutCompact" xml:space="preserve"><value>Compact</value></data>
+  <data name="Settings_LayoutCompactTooltip" xml:space="preserve"><value>A small always-on-top launcher instead of the full window</value></data>
+  <data name="Settings_OutputFolderTooltip" xml:space="preserve"><value>Choose a different folder for recordings</value></data>
+  <data name="Settings_HotkeyStartStopTooltip" xml:space="preserve"><value>Change the start/stop shortcut</value></data>
+  <data name="Settings_HotkeyPauseResumeTooltip" xml:space="preserve"><value>Change the pause/resume shortcut</value></data>
+  <data name="Settings_HotkeyScreenshotTooltip" xml:space="preserve"><value>Change the screenshot shortcut</value></data>
+  <data name="Settings_NextProfile" xml:space="preserve"><value>Next profile</value></data>
+  <data name="Settings_HotkeyNextProfileTooltip" xml:space="preserve"><value>Change the shortcut that cycles to the next recording profile</value></data>
+  <data name="Settings_MuteMic" xml:space="preserve"><value>Mute mic</value></data>
+  <data name="Settings_HotkeyMuteMicTooltip" xml:space="preserve"><value>Change the mic mute/unmute shortcut</value></data>
+  <data name="Settings_DownloadPortable" xml:space="preserve"><value>Download portable ZIP</value></data>
+  <data name="Settings_DownloadPortableTooltip" xml:space="preserve"><value>Download the latest portable package in your browser</value></data>
+  <data name="Settings_UpdateRestart" xml:space="preserve"><value>Update &amp; restart</value></data>
+  <data name="Settings_UpdateRestartTooltip" xml:space="preserve"><value>Download and install the update, then restart RecMode</value></data>
+  <data name="Settings_CheckNow" xml:space="preserve"><value>Check now</value></data>
+  <data name="Settings_CheckNowTooltip" xml:space="preserve"><value>Check for a newer version of RecMode</value></data>
+
   <data name="Library_Videos" xml:space="preserve"><value>Videos</value></data>
   <data name="Library_Screenshots" xml:space="preserve"><value>Screenshots</value></data>
   <data name="Library_Open" xml:space="preserve"><value>Open</value></data>
@@ -149,7 +221,6 @@
   <data name="Library_Refresh" xml:space="preserve"><value>Refresh</value></data>
   <data name="Library_NoVideos" xml:space="preserve"><value>No recordings yet.</value></data>
   <data name="Library_NoScreenshots" xml:space="preserve"><value>No screenshots yet.</value></data>
-  <data name="Schedule_Empty" xml:space="preserve"><value>Scheduled recordings arrive in a later build.</value></data>
   <data name="Schedule_Title" xml:space="preserve"><value>Scheduled recordings</value></data>
   <data name="Schedule_New" xml:space="preserve"><value>New schedule</value></data>
   <data name="Schedule_Subtext" xml:space="preserve"><value>Recordings start automatically, even when RecMode runs in the tray. Source and encoder always follow your current Record settings; frame rate, quality, and audio follow the schedule's chosen profile, if any.</value></data>
@@ -175,5 +246,78 @@
   <data name="Profile_SaveTitle" xml:space="preserve"><value>Save profile</value></data>
   <data name="Profile_Name" xml:space="preserve"><value>Profile name</value></data>
   <data name="Profile_InvalidName" xml:space="preserve"><value>Enter a name for the profile.</value></data>
-  <data name="Profile_NameTaken" xml:space="preserve"><value>That name is already used by a built-in profile — pick another.</value></data>
+
+  <data name="About_Description" xml:space="preserve"><value>A modern, portable-first screen recorder for Windows 11.</value></data>
+  <data name="About_PrivacyTitle" xml:space="preserve"><value>Privacy</value></data>
+  <data name="About_PrivacyBody" xml:space="preserve"><value>RecMode collects no telemetry, ever. Nothing about your recordings, your usage, or your machine is sent anywhere. All recordings, screenshots, and settings stay in this app's own folder unless you explicitly move or share them yourself.</value></data>
+  <data name="About_ViewOnGitHub" xml:space="preserve"><value>View on GitHub</value></data>
+  <data name="About_License" xml:space="preserve"><value>License</value></data>
+  <data name="About_ThirdPartyNotices" xml:space="preserve"><value>Third-party notices</value></data>
+  <data name="About_CheckForUpdates" xml:space="preserve"><value>Check for updates in Settings</value></data>
+
+  <data name="About_Links" xml:space="preserve"><value>Links</value></data>
+  <data name="About_GitHubHeader" xml:space="preserve"><value>RecMode on GitHub</value></data>
+  <data name="About_GitHubTooltip" xml:space="preserve"><value>Open the RecMode repository in your browser</value></data>
+  <data name="About_LicenseTooltip" xml:space="preserve"><value>Open the RecMode LICENSE file</value></data>
+  <data name="About_ThirdPartyNoticesTooltip" xml:space="preserve"><value>Open the folder with third-party license notices</value></data>
+
+  <data name="App_Name" xml:space="preserve"><value>RecMode</value></data>
+  <data name="Shell_ViewInLibraryTooltip" xml:space="preserve"><value>View this recording in the Library</value></data>
+  <data name="Shell_ToggleThemeTooltip" xml:space="preserve"><value>Toggle theme</value></data>
+  <data name="Shell_Minimize" xml:space="preserve"><value>Minimize</value></data>
+  <data name="Shell_Maximize" xml:space="preserve"><value>Maximize</value></data>
+  <data name="Shell_Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="Shell_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Shell_Dismiss" xml:space="preserve"><value>Dismiss</value></data>
+
+  <data name="Library_VideosTooltip" xml:space="preserve"><value>Show recorded videos</value></data>
+  <data name="Library_ScreenshotsTooltip" xml:space="preserve"><value>Show saved screenshots</value></data>
+  <data name="Library_OpenFolderTooltip" xml:space="preserve"><value>Open this folder in File Explorer</value></data>
+  <data name="Library_RefreshTooltip" xml:space="preserve"><value>Rescan the folder for new files</value></data>
+  <data name="Library_DeletePermanentTitle" xml:space="preserve"><value>Delete permanently?</value></data>
+  <data name="Library_DeletePermanentBody" xml:space="preserve"><value>This file is on a drive with no Recycle Bin (a removable or network drive), so deleting it can't be undone.</value></data>
+
+  <data name="Schedule_NewTooltip" xml:space="preserve"><value>Create a new scheduled recording</value></data>
+
+  <data name="Compact_Expand" xml:space="preserve"><value>Expand</value></data>
+  <data name="Compact_ExpandTooltip" xml:space="preserve"><value>Expand to full window</value></data>
+  <data name="Compact_WindowToRecordName" xml:space="preserve"><value>Window to record</value></data>
+  <data name="Compact_Pick" xml:space="preserve"><value>Pick…</value></data>
+  <data name="Compact_SystemLabel" xml:space="preserve"><value>System</value></data>
+  <data name="Compact_SystemAudioTooltip" xml:space="preserve"><value>Enable/disable system audio</value></data>
+  <data name="Compact_SystemAudioName" xml:space="preserve"><value>System audio enabled</value></data>
+  <data name="Compact_MicLabel" xml:space="preserve"><value>Mic</value></data>
+  <data name="Compact_MicTooltip" xml:space="preserve"><value>Enable/disable microphone</value></data>
+  <data name="Compact_MicName" xml:space="preserve"><value>Microphone enabled</value></data>
+
+  <data name="Toolbar_DrawTooltip" xml:space="preserve"><value>Draw on screen while recording (Esc or F12 to exit, right-click to clear)</value></data>
+  <data name="Toolbar_ZoomTooltip" xml:space="preserve"><value>Drag-select an area to zoom into (Esc to exit); Screen and Region sources only</value></data>
+  <data name="Toolbar_MuteMicTooltip" xml:space="preserve"><value>Mute or unmute the microphone (Ctrl+Shift+M by default, remappable in Settings)</value></data>
+  <data name="Toolbar_StopTooltip" xml:space="preserve"><value>Stop the recording (F9)</value></data>
+
+  <data name="RegionSelect_Instructions" xml:space="preserve"><value>Drag to select a region · Esc to cancel · Enter to use</value></data>
+  <data name="RegionSelect_Preset1080" xml:space="preserve"><value>1920 × 1080</value></data>
+  <data name="RegionSelect_Preset720" xml:space="preserve"><value>1280 × 720</value></data>
+  <data name="RegionSelect_Full" xml:space="preserve"><value>Full</value></data>
+  <data name="RegionSelect_UseRegion" xml:space="preserve"><value>Use region</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+
+  <data name="WindowPicker_Instructions" xml:space="preserve"><value>Click a window to record it · Esc to cancel</value></data>
+
+  <data name="Annotation_DrawingOnScreen" xml:space="preserve"><value>Drawing on screen</value></data>
+  <data name="Annotation_ExitDrawMode" xml:space="preserve"><value>Exit draw mode</value></data>
+  <data name="Annotation_ExitDrawModeTooltip" xml:space="preserve"><value>Stop drawing (Esc or F12)</value></data>
+
+  <data name="Countdown_PressEscToCancel" xml:space="preserve"><value>Press Esc to cancel</value></data>
+
+  <data name="ScheduleEdit_Date" xml:space="preserve"><value>Date</value></data>
+
+  <data name="Tray_ShowRecMode" xml:space="preserve"><value>Show RecMode</value></data>
+  <data name="Tray_StartStopRecording" xml:space="preserve"><value>Start / stop recording</value></data>
+  <data name="Tray_Recent" xml:space="preserve"><value>Recent</value></data>
+  <data name="Tray_Quit" xml:space="preserve"><value>Quit</value></data>
+
+  <data name="Record_StatusReady" xml:space="preserve"><value>Ready</value></data>
+  <data name="Record_StatusStarting" xml:space="preserve"><value>Starting…</value></data>
+  <data name="Record_StatusRecording" xml:space="preserve"><value>Recording</value></data>
 </root>

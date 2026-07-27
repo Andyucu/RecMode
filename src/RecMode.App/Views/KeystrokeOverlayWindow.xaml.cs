@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
@@ -14,17 +13,6 @@ namespace RecMode.App.Views;
 /// </summary>
 public partial class KeystrokeOverlayWindow : Window
 {
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
-    [DllImport("user32.dll", SetLastError = true)] private static extern int GetWindowLongW(IntPtr h, int i);
-    [DllImport("user32.dll", SetLastError = true)] private static extern int SetWindowLongW(IntPtr h, int i, int v);
-
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TRANSPARENT = 0x20;
-    private const int WS_EX_LAYERED = 0x80000;
-    private const int WS_EX_NOACTIVATE = 0x08000000;
-    private const int WS_EX_TOOLWINDOW = 0x80;
-    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
-
     private readonly MonitorInfo _monitor;
 
     public KeystrokeOverlayWindow()
@@ -39,9 +27,8 @@ public partial class KeystrokeOverlayWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        int ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
-        _ = SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
-        SetWindowPos(hwnd, IntPtr.Zero, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+        OverlayWindowStyle.ApplyClickThrough(hwnd);
+        OverlayWindowStyle.SetBounds(hwnd, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height);
     }
 
     /// <summary>Shows (or replaces) the current combo, restarting the pop-in/hold/fade-out cycle.</summary>

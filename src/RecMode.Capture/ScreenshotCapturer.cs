@@ -18,6 +18,12 @@ public static class ScreenshotCapturer
     public static ScreenshotImage? Capture(CaptureTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
+
+        if (target.Kind == CaptureKind.Webcam)
+        {
+            return CaptureWebcam(target);
+        }
+
         if (!CaptureCapabilities.IsSupported())
         {
             return null;
@@ -64,6 +70,43 @@ public static class ScreenshotCapturer
             session.StartCapture();
             got.Wait(2000);
             return result;
+        }
+    }
+
+    /// <summary>Webcam-as-source: no WGC item exists for a camera either, so grab one BGRA frame directly
+    /// from <see cref="Webcam.WebcamCaptureSource"/> (same primitive <see cref="Webcam.WebcamCaptureEngine"/>
+    /// uses for recording) instead of routing through D3D11 at all.</summary>
+    private static ScreenshotImage? CaptureWebcam(CaptureTarget target)
+    {
+        if (target.WebcamDeviceId is not { } deviceId)
+        {
+            return null;
+        }
+
+        var source = new Webcam.WebcamCaptureSource();
+        try
+        {
+            source.StartAsync(deviceId).GetAwaiter().GetResult();
+            byte[] bgra = [];
+            for (int i = 0; i < 50; i++) // up to ~1s for the first real frame to arrive
+            {
+                // TryGetLatestFrame copies into (and sizes) bgra under the source's own lock, so this is
+                // already a private, tear-free snapshot — no second copy needed.
+                if (source.TryGetLatestFrame(ref bgra, out int w, out int h, out int stride) && w > 0 && h > 0)
+                {
+                    return new ScreenshotImage(w, h, stride, bgra);
+                }
+                Thread.Sleep(20);
+            }
+            return null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+        finally
+        {
+            source.Stop();
         }
     }
 

@@ -16,9 +16,6 @@ namespace RecMode.App.Views;
 /// </summary>
 public partial class AnnotationOverlay : Window
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
-
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
 
@@ -31,7 +28,6 @@ public partial class AnnotationOverlay : Window
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
 
-    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     private const int RGN_DIFF = 4;
 
     private readonly RegionRect _bounds;
@@ -74,7 +70,7 @@ public partial class AnnotationOverlay : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        SetWindowPos(hwnd, IntPtr.Zero, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height, SWP_NOZORDER | SWP_NOACTIVATE);
+        OverlayWindowStyle.SetBounds(hwnd, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height);
     }
 
     /// <summary>

@@ -30,6 +30,14 @@ public sealed record CaptureTarget
     public static CaptureTarget FromRegion(MonitorInfo m, RegionRect region) =>
         new() { Kind = CaptureKind.Region, Handle = m.Handle, DisplayName = $"Region {region.Width}×{region.Height}", Region = region };
 
+    /// <summary>Set for <see cref="CaptureKind.Webcam"/>: the Windows.Media.Capture device id to record directly
+    /// as the video source (distinct from the picture-in-picture overlay, which composites a webcam onto
+    /// another source instead of replacing it).</summary>
+    public string? WebcamDeviceId { get; init; }
+
+    public static CaptureTarget FromWebcam(string deviceId, string displayName) =>
+        new() { Kind = CaptureKind.Webcam, Handle = nint.Zero, DisplayName = displayName, WebcamDeviceId = deviceId };
+
     public static CaptureTarget FromAllDisplays(IReadOnlyList<MonitorInfo> monitors)
     {
         int minX = monitors.Min(m => m.X);
@@ -52,6 +60,7 @@ public enum CaptureKind
     Window,
     Region,
     AllDisplays,
+    Webcam,
 }
 
 /// <summary>A capturable top-level window (Record screen's window picker).</summary>

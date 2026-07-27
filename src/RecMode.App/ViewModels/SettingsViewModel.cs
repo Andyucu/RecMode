@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Windows.Input;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -28,6 +29,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private readonly Services.IUpdateChecker _updateChecker;
     private readonly IErrorReporter _errors;
     private string? _capturingHotkey;
+    private readonly DispatcherTimer _captureTimeoutTimer;
     private string _updateStatusText = "";
     private string? _updateReleasesUrl;
     private bool _canApplyUpdate;
@@ -49,6 +51,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private bool _autoSplitEnabled;
     private int _autoSplitSizeMb;
     private bool _startWithWindows;
+    private bool _closeToTray;
     private bool _checkForUpdates;
     private int _cpuThreadCap;
     private bool _lowerEncoderPriority;
@@ -74,7 +77,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedContainer = s.Container;
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
-        _outputFolder = s.OutputFolder ?? paths.RecordingsDirectory;
+        _outputFolder = paths.ResolveUserPath(s.OutputFolder) ?? paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
         _captureCursor = s.CaptureCursor;
@@ -90,6 +93,17 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _effort = s.Effort;
         _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
+        _closeToTray = s.CloseToTray;
+
+        // Capturing a hotkey suspends every global hotkey for the duration (see HotkeyBindings.Suspend) —
+        // if the user abandons the capture without going through CancelCapture/CompleteCapture (Alt-Tab
+        // away and never comes back; or, worse, clicks the Compact layout radio on this same page, which
+        // swaps the shell window via ShellPresenter without ever navigating away from Settings, so
+        // OnNavigatedFrom never fires either), every hotkey stayed dead for the rest of the session with no
+        // visible cue why. A timeout is the one recovery path that doesn't depend on guessing every possible
+        // abandonment route — it fires regardless of how capture was left hanging.
+        _captureTimeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        _captureTimeoutTimer.Tick += (_, _) => CancelCapture();
 
         BrowseCommand = new RelayCommand(BrowseFolder);
         ChangeHotkeyCommand = new RelayCommand<string>(BeginCapture);
@@ -98,10 +112,6 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         ApplyUpdateCommand = new AsyncRelayCommand(ApplyUpdateAsync, () => _canApplyUpdate);
     }
 
-    public IReadOnlyList<ShellLayout> Layouts { get; } = [ShellLayout.Sidebar, ShellLayout.TopTab, ShellLayout.Compact];
-    public IReadOnlyList<AppTheme> Themes { get; } = [AppTheme.System, AppTheme.Light, AppTheme.Dark];
-    public IReadOnlyList<AccentColor> Accents { get; } =
-        [AccentColor.Blue, AccentColor.Red, AccentColor.Purple, AccentColor.Teal, AccentColor.Orange];
     public IReadOnlyList<VideoCodec> Codecs { get; } = [VideoCodec.H264, VideoCodec.Hevc, VideoCodec.Av1];
     public IReadOnlyList<MediaContainer> Containers { get; } =
         [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
@@ -120,6 +130,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     public string HotkeyPauseResume => _settings.Current.HotkeyPauseResume;
     public string HotkeyScreenshot => _settings.Current.HotkeyScreenshot;
     public string HotkeyNextProfile => _settings.Current.HotkeyNextProfile;
+    public string HotkeyMicMute => _settings.Current.HotkeyMicMute;
 
     /// <summary>Non-null while listening for a new chord for one hotkey ("startstop" / "pause" / "screenshot").</summary>
     public bool IsCapturingHotkey => _capturingHotkey is not null;
@@ -130,14 +141,31 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         "pause" => "Press a shortcut for Pause / resume…  (Esc to cancel)",
         "screenshot" => "Press a shortcut for Screenshot…  (Esc to cancel)",
         "nextprofile" => "Press a shortcut for Next profile…  (Esc to cancel)",
+        "micmute" => "Press a shortcut for Mute mic…  (Esc to cancel)",
         _ => "",
     };
 
     private void BeginCapture(string? action)
     {
+        bool wasCapturing = _capturingHotkey is not null;
         _capturingHotkey = action;
         OnPropertyChanged(nameof(IsCapturingHotkey));
         OnPropertyChanged(nameof(HotkeyCaptureHint));
+
+        // Suspend/resume RecMode's own global hotkeys around the capture session — see
+        // HotkeyBindings.Suspend's doc comment for why a bound chord would otherwise never reach this UI.
+        // Guarded by wasCapturing so switching from capturing one action straight to another (clicking a
+        // different row's "Change" button mid-capture) doesn't redundantly suspend/resume in between.
+        if (action is not null && !wasCapturing)
+        {
+            _hotkeys.Suspend();
+            _captureTimeoutTimer.Start();
+        }
+        else if (action is null && wasCapturing)
+        {
+            _hotkeys.Resume();
+            _captureTimeoutTimer.Stop();
+        }
     }
 
     private void CancelCapture() => BeginCapture(null);
@@ -157,14 +185,16 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             return;
         }
 
-        string? previous = _capturingHotkey switch
+        // Validate the specific chord the user is trying to set BEFORE committing it to settings — decoupled
+        // from whether any of RecMode's *other* hotkeys can currently register. HotkeyBindings.Rebind()
+        // re-registers all five independently and tolerates any one of them being taken by an unrelated app
+        // (e.g. Teams holding Ctrl+Shift+M for its own mute toggle); without this pre-check that unrelated
+        // collision used to fail the whole rebind and silently revert whatever the user actually just changed.
+        if (!_hotkeys.CanRegister(captured))
         {
-            "startstop" => _settings.Current.HotkeyStartStop,
-            "pause" => _settings.Current.HotkeyPauseResume,
-            "screenshot" => _settings.Current.HotkeyScreenshot,
-            "nextprofile" => _settings.Current.HotkeyNextProfile,
-            _ => null,
-        };
+            _errors.Warn("hotkey.in-use", "That shortcut is already in use.", "Choose a different shortcut.");
+            return;
+        }
 
         switch (_capturingHotkey)
         {
@@ -172,30 +202,12 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             case "pause": _settings.Current.HotkeyPauseResume = chordText; OnPropertyChanged(nameof(HotkeyPauseResume)); break;
             case "screenshot": _settings.Current.HotkeyScreenshot = chordText; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
             case "nextprofile": _settings.Current.HotkeyNextProfile = chordText; OnPropertyChanged(nameof(HotkeyNextProfile)); break;
+            case "micmute": _settings.Current.HotkeyMicMute = chordText; OnPropertyChanged(nameof(HotkeyMicMute)); break;
             default: return;
         }
 
-        if (!_hotkeys.Rebind())
-        {
-            RestoreCapturedHotkey(previous);
-            _hotkeys.Rebind();
-            _errors.Warn("hotkey.in-use", "That shortcut is already in use.", "Your previous RecMode shortcuts were kept.");
-            return;
-        }
-
         _settings.Save();       // write immediately so a crash can't lose a remap
-        CancelCapture();
-    }
-
-    private void RestoreCapturedHotkey(string? value)
-    {
-        switch (_capturingHotkey)
-        {
-            case "startstop": _settings.Current.HotkeyStartStop = value ?? "F9"; OnPropertyChanged(nameof(HotkeyStartStop)); break;
-            case "pause": _settings.Current.HotkeyPauseResume = value ?? "F10"; OnPropertyChanged(nameof(HotkeyPauseResume)); break;
-            case "screenshot": _settings.Current.HotkeyScreenshot = value ?? "F11"; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
-            case "nextprofile": _settings.Current.HotkeyNextProfile = value ?? "F8"; OnPropertyChanged(nameof(HotkeyNextProfile)); break;
-        }
+        CancelCapture();        // also resumes the (still-suspended-for-capture) global hotkeys from the new settings
     }
 
     private bool IsDuplicateHotkey(string? action, HotkeyChord captured)
@@ -206,6 +218,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             ("pause", _settings.Current.HotkeyPauseResume),
             ("screenshot", _settings.Current.HotkeyScreenshot),
             ("nextprofile", _settings.Current.HotkeyNextProfile),
+            ("micmute", _settings.Current.HotkeyMicMute),
         ];
 
         return configured.Any(item => item.Action != action &&
@@ -284,28 +297,27 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     /// <summary>Opens the portable-mode "view release" link in the default browser.</summary>
     public void OpenUpdateLink()
     {
-        if (_updateReleasesUrl is { } url)
+        // _updateReleasesUrl is deserialized verbatim from the GitHub API response, and UseShellExecute=true
+        // will happily launch a local path or any registered protocol handler, not just a browser. The
+        // transport is TLS to a fixed repo, so this is defense-in-depth rather than a live hole — but it's the
+        // one place in the app where a network-sourced string reaches a shell execute, so require http(s).
+        if (_updateReleasesUrl is not { } url ||
+            !Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) ||
+            (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            return;
         }
-    }
 
-    /// <summary>Opens the RecMode LICENSE file (shipped next to the executable) in the default viewer.</summary>
-    public void OpenLicense()
-    {
-        string path = Path.Combine(_paths.AppDirectory, "LICENSE");
-        if (File.Exists(path))
+        try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(parsed.AbsoluteUri) { UseShellExecute = true });
         }
-    }
-
-    /// <summary>Opens the folder with third-party license notices (<see cref="IAppPaths.LicensesDirectory"/>).</summary>
-    public void OpenThirdPartyNotices()
-    {
-        if (Directory.Exists(_paths.LicensesDirectory))
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_paths.LicensesDirectory) { UseShellExecute = true });
+            // No default browser / no http association — a locked-down or stripped Windows image. Warn
+            // rather than letting it reach the global handler's "unexpected error" crash modal.
+            _errors.Warn("update.open-link-failed", "Couldn't open the download page.",
+                "Copy the link from the RecMode releases page in your browser instead.", ex);
         }
     }
 
@@ -375,10 +387,13 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         set => Persist(ref _selectedAudioBitrate, value, v => _settings.Current.AudioBitrateKbps = v);
     }
 
+    /// <summary>Displayed and picked as an absolute path, but <em>persisted</em> via
+    /// <see cref="IAppPaths.ToPortableSetting"/> — relative when it lives inside the app folder, so moving a
+    /// portable install doesn't leave it pointing at the old machine's absolute path. See that method for why.</summary>
     public string OutputFolder
     {
         get => _outputFolder;
-        set => Persist(ref _outputFolder, value, v => _settings.Current.OutputFolder = v);
+        set => Persist(ref _outputFolder, value, v => _settings.Current.OutputFolder = _paths.ToPortableSetting(v));
     }
 
     public string FilenamePattern
@@ -490,6 +505,16 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         }
     }
 
+    /// <summary>When enabled, the caption-bar close (×) button hides the window to the tray instead of
+    /// quitting — the same fate minimize already gets unconditionally (<see cref="TrayIconService"/>). The
+    /// tray menu's own "Quit" always exits regardless of this setting, since it doesn't go through the
+    /// window's Close() at all.</summary>
+    public bool CloseToTray
+    {
+        get => _closeToTray;
+        set => Persist(ref _closeToTray, value, v => _settings.Current.CloseToTray = v);
+    }
+
     private void Persist<T>(ref T field, T value, Action<T> apply)
     {
         if (SetProperty(ref field, value))
@@ -513,7 +538,12 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     }
 
     public void OnNavigatedTo() => RefreshFromSettings();
-    public void OnNavigatedFrom() { }
+
+    /// <summary>Cancels any in-progress hotkey capture on leaving the page — otherwise navigating away
+    /// mid-capture (e.g. clicking Library) would leave every global hotkey suspended (see
+    /// <see cref="HotkeyBindings.Suspend"/>) for the rest of the session, since nothing else would ever
+    /// call <see cref="CancelCapture"/> to resume them.</summary>
+    public void OnNavigatedFrom() => CancelCapture();
 
     private void RefreshFromSettings()
     {
@@ -524,7 +554,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedContainer = s.Container;
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
-        _outputFolder = s.OutputFolder ?? _paths.RecordingsDirectory;
+        _outputFolder = _paths.ResolveUserPath(s.OutputFolder) ?? _paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
         _captureCursor = s.CaptureCursor;
@@ -540,12 +570,13 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _effort = s.Effort;
         _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled;
+        _closeToTray = s.CloseToTray;
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
             nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate), nameof(OutputFolder),
             nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
             nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),
-            nameof(SelectedLayout), nameof(StartWithWindows), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
-            nameof(HotkeyScreenshot), nameof(HotkeyNextProfile) }) OnPropertyChanged(property);
+            nameof(SelectedLayout), nameof(StartWithWindows), nameof(CloseToTray), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
+            nameof(HotkeyScreenshot), nameof(HotkeyNextProfile), nameof(HotkeyMicMute) }) OnPropertyChanged(property);
     }
 }

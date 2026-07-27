@@ -27,6 +27,18 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
 
     public bool IsRunning { get; private set; }
 
+    /// <summary>The camera's negotiated native resolution, known synchronously right after <see cref="StartAsync"/>
+    /// returns (from the frame source's own <c>CurrentFormat</c>) — used by <see cref="WebcamPreviewEngine"/>,
+    /// which needs a valid size immediately, before any actual frame has arrived.</summary>
+    public int NativeWidth { get; private set; }
+    public int NativeHeight { get; private set; }
+
+    /// <summary>Raised (on the WinRT frame-reader thread) each time a new frame lands in the latest-frame
+    /// buffer. Lets consumers block until there is genuinely something new instead of polling — the camera
+    /// delivers at its own rate (typically 30 fps), which is usually well below the rate a recording's CFR
+    /// pacer or a preview's refresh would otherwise re-read and re-convert the same unchanged pixels at.</summary>
+    public event Action? FrameArrived;
+
     public async Task StartAsync(string deviceId)
     {
         ArgumentException.ThrowIfNullOrEmpty(deviceId);
@@ -47,6 +59,9 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
 
             MediaFrameSource? colorSource = mediaCapture.FrameSources.Values.FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
             if (colorSource is null) throw new InvalidOperationException("Selected camera has no color video source.");
+
+            NativeWidth = (int)colorSource.CurrentFormat.VideoFormat.Width;
+            NativeHeight = (int)colorSource.CurrentFormat.VideoFormat.Height;
 
             frameReader = await mediaCapture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8).AsTask().ConfigureAwait(false);
             frameReader.FrameArrived += OnFrameArrived;
@@ -106,23 +121,32 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
                 _hasFrame = true;
             }
         }
+
+        // Raised outside the lock: a subscriber that immediately calls TryGetLatestFrame would otherwise
+        // re-enter _sync from this same thread, and any slow handler would stall the frame reader.
+        FrameArrived?.Invoke();
     }
 
-    public bool TryGetLatestFrame(out byte[] data, out int width, out int height, out int stride)
+    public bool TryGetLatestFrame(ref byte[] destination, out int width, out int height, out int stride)
     {
         lock (_sync)
         {
             if (!_hasFrame || _latest is null)
             {
-                data = [];
                 width = height = stride = 0;
                 return false;
             }
 
-            data = _latest;
             width = _width;
             height = _height;
             stride = _width * 4;
+
+            // Copy under the lock — see IWebcamFrameSource for why the caller must not get _latest itself.
+            if (destination.Length < _latest.Length)
+            {
+                destination = new byte[_latest.Length];
+            }
+            Buffer.BlockCopy(_latest, 0, destination, 0, _latest.Length);
             return true;
         }
     }

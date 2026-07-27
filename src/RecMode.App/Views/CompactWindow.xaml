@@ -26,13 +26,13 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Image Grid.Column="0" Source="pack://application:,,,/Assets/AppIcon.ico" Width="18" Height="18" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="RecMode" Style="{StaticResource BodyStrongText}"
+                <TextBlock Grid.Column="1" Text="{x:Static res:Strings.App_Name}" Style="{StaticResource BodyStrongText}"
                            VerticalAlignment="Center" Margin="8,0,0,0" />
-                <Button Grid.Column="2" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="Toggle theme"
-                        AutomationProperties.Name="Toggle theme"
+                <Button Grid.Column="2" Content="◐" Command="{Binding ToggleThemeCommand}" ToolTip="{x:Static res:Strings.Shell_ToggleThemeTooltip}"
+                        AutomationProperties.Name="{x:Static res:Strings.Shell_ToggleThemeTooltip}"
                         Style="{StaticResource SecondaryButton}" Width="32" Height="32" Padding="0" />
-                <Button Grid.Column="3" Content="Expand" Command="{Binding ExpandCommand}"
-                        ToolTip="Expand to full window" AutomationProperties.Name="Expand to full window"
+                <Button Grid.Column="3" Content="{x:Static res:Strings.Compact_Expand}" Command="{Binding ExpandCommand}"
+                        ToolTip="{x:Static res:Strings.Compact_ExpandTooltip}" AutomationProperties.Name="{x:Static res:Strings.Compact_ExpandTooltip}"
                         Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="6,0,0,0" />
             </Grid>
 
@@ -59,8 +59,13 @@
                              IsChecked="{Binding Record.IsRegionSource, Mode=TwoWay}"
                              ToolTip="{x:Static res:Strings.Source_Region}"
                              AutomationProperties.Name="{x:Static res:Strings.Source_Region}" />
+                <!-- Binds IsWebcamSource (record the camera), NOT WebcamEnabled (the picture-in-picture
+                     overlay). It sits in the same radio group as the three tiles above, so binding it to the
+                     overlay flag meant clicking it unchecked all three real sources while leaving every
+                     source-kind flag false — CurrentTarget() then fell through to the monitor branch and
+                     recorded the *screen* while the UI showed "Webcam" selected. -->
                 <RadioButton Grid.Column="6" Style="{StaticResource CompactSourceTile}" GroupName="compact-src" Tag="&#xE960;"
-                             IsChecked="{Binding Record.WebcamEnabled, Mode=TwoWay}"
+                             IsChecked="{Binding Record.IsWebcamSource, Mode=TwoWay}"
                              IsEnabled="{Binding Record.HasWebcamDevices}"
                              ToolTip="{x:Static res:Strings.Source_Webcam}"
                              AutomationProperties.Name="{x:Static res:Strings.Source_Webcam}" />
@@ -76,9 +81,9 @@
                 </Grid.ColumnDefinitions>
                 <ComboBox Grid.Column="0" Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                           ItemsSource="{Binding Record.Windows}" SelectedItem="{Binding Record.SelectedWindow}" Margin="0,0,8,0"
-                          ToolTip="Which open window to record" AutomationProperties.Name="Window to record" />
-                <Button Grid.Column="1" Content="Pick…" Command="{Binding Record.PickWindowCommand}"
-                        ToolTip="Pick a window by clicking it on screen"
+                          ToolTip="{x:Static res:Strings.Record_WhichWindowTooltip}" AutomationProperties.Name="{x:Static res:Strings.Compact_WindowToRecordName}" />
+                <Button Grid.Column="1" Content="{x:Static res:Strings.Compact_Pick}" Command="{Binding Record.PickWindowCommand}"
+                        ToolTip="{x:Static res:Strings.Record_PickWindowTooltip}"
                         AutomationProperties.Name="Pick a window with the mouse"
                         Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
             </Grid>
@@ -90,7 +95,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="System" Style="{StaticResource CaptionText}"
+                <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Compact_SystemLabel}" Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center" Width="40" />
                 <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                         Value="{Binding Record.SystemVolume, Mode=TwoWay}" Margin="6,0"
@@ -98,7 +103,7 @@
                         AutomationProperties.Name="System audio volume" />
                 <ToggleButton Grid.Column="2" IsChecked="{Binding Record.SystemAudioEnabled, Mode=TwoWay}"
                               Style="{StaticResource CompactAudioToggle}"
-                              ToolTip="Enable/disable system audio" AutomationProperties.Name="System audio enabled" />
+                              ToolTip="{x:Static res:Strings.Compact_SystemAudioTooltip}" AutomationProperties.Name="{x:Static res:Strings.Compact_SystemAudioName}" />
             </Grid>
             <Grid Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
@@ -106,7 +111,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Mic" Style="{StaticResource CaptionText}"
+                <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Compact_MicLabel}" Style="{StaticResource CaptionText}"
                            VerticalAlignment="Center" Width="40" />
                 <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                         Value="{Binding Record.MicVolume, Mode=TwoWay}" Margin="6,0"
@@ -114,7 +119,7 @@
                         AutomationProperties.Name="Microphone volume" />
                 <ToggleButton Grid.Column="2" IsChecked="{Binding Record.MicEnabled, Mode=TwoWay}"
                               Style="{StaticResource CompactAudioToggle}"
-                              ToolTip="Enable/disable microphone" AutomationProperties.Name="Microphone enabled" />
+                              ToolTip="{x:Static res:Strings.Compact_MicTooltip}" AutomationProperties.Name="{x:Static res:Strings.Compact_MicName}" />
             </Grid>
 
             <!-- Record / Screenshot + summary -->

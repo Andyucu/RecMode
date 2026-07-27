@@ -60,6 +60,12 @@ public sealed partial class RecordViewModel
                 StopWebcamPreview();
                 StartWebcamPreview();
             }
+
+            if (IsWebcamSource)
+            {
+                RestartPreview();
+                RecordCommand.NotifyCanExecuteChanged();
+            }
         }
     }
 
@@ -132,13 +138,23 @@ public sealed partial class RecordViewModel
         }
     }
 
+    // Set synchronously the moment activation is kicked off, not after — _previewWebcam alone isn't a
+    // sufficient re-entrancy guard because it's only assigned once StartWebcamPreviewAsync's await
+    // completes. Without this, toggling the webcam off/on (or switching devices) again while a first
+    // activation is still in flight passes the "_previewWebcam is not null" check a second time (still
+    // null), starts a second WebcamCaptureSource, and whichever one's await finishes last silently
+    // overwrites _previewWebcam without ever stopping the other — a leaked live camera session (LED stays
+    // on) for the process's remaining lifetime.
+    private bool _webcamStarting;
+
     private void StartWebcamPreview()
     {
-        if (_previewWebcam is not null || _preview is null || !_webcamEnabled || SelectedWebcamDevice is null)
+        if (_previewWebcam is not null || _webcamStarting || _preview is null || !_webcamEnabled || SelectedWebcamDevice is null)
         {
             return;
         }
 
+        _webcamStarting = true;
         StartWebcamPreviewAsync(SelectedWebcamDevice);
     }
 
@@ -148,20 +164,32 @@ public sealed partial class RecordViewModel
         try
         {
             await webcam.StartAsync(device.Id);
+
+            if (!_webcamEnabled || _preview is null || !Equals(SelectedWebcamDevice, device))
+            {
+                webcam.Stop(); // state changed while awaiting activation — discard
+                return;
+            }
+
+            _previewWebcam = webcam;
+            ApplyWebcamOverlayToPreview();
         }
         catch (Exception)
         {
-            return; // camera unavailable/busy — preview still works without the overlay
+            // Camera unavailable/busy, or a failure applying the overlay — preview still works without it.
+            // Broad catch is deliberate: this method is `async void` (StartWebcamPreview can't await it
+            // without becoming async itself), so anything escaping here would otherwise be a genuinely
+            // unhandled exception with no one able to observe it.
+            webcam.Stop();
+            if (ReferenceEquals(_previewWebcam, webcam))
+            {
+                _previewWebcam = null;
+            }
         }
-
-        if (!_webcamEnabled || _preview is null || !Equals(SelectedWebcamDevice, device))
+        finally
         {
-            webcam.Stop(); // state changed while awaiting activation — discard
-            return;
+            _webcamStarting = false;
         }
-
-        _previewWebcam = webcam;
-        ApplyWebcamOverlayToPreview();
     }
 
     private void StopWebcamPreview()

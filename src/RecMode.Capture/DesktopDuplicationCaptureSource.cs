@@ -1,3 +1,4 @@
+using Serilog;
 using SharpGen.Runtime;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -90,10 +91,21 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
         {
             FeatureLevel[] levels = [FeatureLevel.Level_11_1, FeatureLevel.Level_11_0];
             DeviceCreationFlags flags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport;
-            D3D11.D3D11CreateDevice(chosenAdapter, DriverType.Unknown, flags, levels,
-                out ID3D11Device device, out ID3D11DeviceContext context).CheckError();
-            Device = device;
-            Context = context;
+            try
+            {
+                D3D11.D3D11CreateDevice(chosenAdapter, DriverType.Unknown, flags, levels,
+                    out ID3D11Device device, out ID3D11DeviceContext context).CheckError();
+                Device = device;
+                Context = context;
+            }
+            catch
+            {
+                // CheckError() throws before the loop below, which is what would otherwise have disposed
+                // these — so every matched IDXGIOutput COM object leaked. Only reachable on the failure path,
+                // but that's exactly the path that then falls back to GDI and may be retried.
+                foreach ((IDXGIOutput output, MonitorInfo _) in chosenOutputs) { output.Dispose(); }
+                throw;
+            }
 
             foreach ((IDXGIOutput output, MonitorInfo match) in chosenOutputs)
             {
@@ -105,10 +117,12 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
                         IDXGIOutputDuplication duplication = output1.DuplicateOutput(Device);
                         _outputs.Add((duplication, match.X - minX, match.Y - minY));
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
                         // Already duplicated by another process, or no desktop attached right now — that
                         // monitor's region just won't update (documented scope cut above).
+                        Log.Warning(ex, "Desktop Duplication failed for monitor at ({X},{Y}); that region won't update",
+                            match.X, match.Y);
                     }
                 }
             }

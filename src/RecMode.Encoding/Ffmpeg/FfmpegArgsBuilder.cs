@@ -222,14 +222,34 @@ public static class FfmpegArgsBuilder
     private const double BppAtQuality0 = 0.02;
     private const double BppAtQuality100 = 0.35;
 
-    /// <summary>Typical (expected) bitrate in kbps for the given resolution/frame rate/quality — the same
-    /// bits-per-pixel model the guardrail's ceiling is built from, without the ceiling's headroom multiplier.
-    /// Used for the Record screen's "~N MB/min" estimate.</summary>
-    public static int EstimateTypicalKbps(int width, int height, int fps, int quality)
+    /// <summary>Per-codec bitrate-efficiency factor (the design's own numbers — <c>RecMode.dc.html</c>'s
+    /// <c>ENCODERS</c> table in the <c>bitrate()</c> model): AV1 and HEVC need meaningfully less bitrate than
+    /// H.264 for comparable perceived quality. Without this, <see cref="EstimateTypicalKbps"/> showed the
+    /// identical "~N MB/min" estimate for AV1 and H.264 even though switching codecs visibly changes real
+    /// file size — the same codec-blind spot is also why the bitrate guardrail's ceiling needed its own
+    /// separate SVT-AV1 100 Mbps clamp (0.9.59) instead of a codec-aware model naturally staying under it.
+    /// The design only tabulates HEVC/AV1 on NVENC specifically; AMD/Intel hardware AV1 is extrapolated to
+    /// the same hardware factor as NVENC AV1 (no data point of its own, but architecturally closer to
+    /// hardware AV1 than to software SVT-AV1's cost), and HEVC is applied uniformly across backends (the
+    /// design has only the one HEVC data point, on NVENC).</summary>
+    private static double CodecFactor(VideoCodec codec, bool isHardware) => codec switch
+    {
+        VideoCodec.Hevc => 0.62,
+        VideoCodec.Av1 => isHardware ? 0.5 : 0.45,
+        _ => 1.0, // H.264 (all backends) — the design's own baseline
+    };
+
+    /// <summary>Typical (expected) bitrate in kbps for the given resolution/frame rate/quality/codec — the
+    /// same bits-per-pixel model the guardrail's ceiling is built from, without the ceiling's headroom
+    /// multiplier. Used for the Record screen's "~N MB/min" estimate. <paramref name="codec"/>/
+    /// <paramref name="isHardware"/> default to H.264/software (factor 1.0, this method's original behavior)
+    /// for callers that don't yet know the selected encoder.</summary>
+    public static int EstimateTypicalKbps(int width, int height, int fps, int quality,
+        VideoCodec codec = VideoCodec.H264, bool isHardware = false)
     {
         double t = Math.Clamp(quality, 0, 100) / 100.0;
         double bpp = BppAtQuality0 + t * (BppAtQuality100 - BppAtQuality0);
-        double bps = bpp * width * height * fps;
+        double bps = bpp * width * height * fps * CodecFactor(codec, isHardware);
         return Math.Max(200, (int)Math.Round(bps / 1000.0));
     }
 
@@ -246,9 +266,10 @@ public static class FfmpegArgsBuilder
     /// ceiling above this anyway, so clamping is a pure safety net, not a quality trade-off in practice.</summary>
     private const int MaxRateCeilingKbps = 100_000;
 
-    public static (int MaxRateKbps, int BufSizeKbps) EstimateGuardrail(int width, int height, int fps, int quality)
+    public static (int MaxRateKbps, int BufSizeKbps) EstimateGuardrail(int width, int height, int fps, int quality,
+        VideoCodec codec = VideoCodec.H264, bool isHardware = false)
     {
-        int typicalKbps = EstimateTypicalKbps(width, height, fps, quality);
+        int typicalKbps = EstimateTypicalKbps(width, height, fps, quality, codec, isHardware);
         int maxRateKbps = Math.Clamp((int)Math.Round(typicalKbps * GuardrailHeadroomMultiplier), 500, MaxRateCeilingKbps);
         return (maxRateKbps, maxRateKbps * 2);
     }
@@ -302,7 +323,8 @@ public static class FfmpegArgsBuilder
 
         if (job.BitrateGuardrailEnabled && SupportsBitrateGuardrail(encoder.Backend))
         {
-            (int maxRateKbps, int bufSizeKbps) = EstimateGuardrail(job.Width, job.Height, job.FrameRate, job.Quality);
+            (int maxRateKbps, int bufSizeKbps) = EstimateGuardrail(
+                job.Width, job.Height, job.FrameRate, job.Quality, encoder.Codec, encoder.IsHardware);
             args += $" -maxrate {maxRateKbps}k -bufsize {bufSizeKbps}k";
         }
 

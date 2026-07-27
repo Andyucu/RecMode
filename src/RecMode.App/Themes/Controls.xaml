@@ -78,6 +78,27 @@
     <!-- Implicit default TextBlock -->
     <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}" />
 
+    <!-- Implicit ToolTip: without this, WPF falls back to the system tooltip chrome (light background), while
+         the implicit TextBlock style above still forces near-white text onto it — invisible white-on-white
+         text, i.e. what looks like a blank white bar. Every ToolTip="..." string in the app auto-wraps in a
+         plain TextBlock via WPF's default template, so this one style fixes every tooltip in the app at once. -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                            BorderThickness="1" CornerRadius="6" Padding="8,5">
+                        <ContentPresenter TextElement.Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Controls inherit the same high-quality text settings for generated button, menu, and combo content. -->
     <Style TargetType="Control">
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
@@ -130,6 +151,7 @@
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -148,6 +170,18 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <!-- Whole-control RenderTransform on press (not a template-internal TargetName+nested-path Setter,
+             which some ControlTemplate.Triggers configurations in this file fail to compile — see the other
+             button styles' identical pattern for the ones that do; this avoids the fragility entirely). -->
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.94" ScaleY="0.94" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Accent colour swatch (design: 22px circle, ring when selected). Background = the swatch colour. -->
@@ -156,10 +190,11 @@
         <Setter Property="Height" Value="26" />
         <Setter Property="Margin" Value="0,0,8,0" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Grid>
+                    <Grid x:Name="root">
                         <Ellipse x:Name="ring" Stroke="Transparent" StrokeThickness="2" />
                         <Ellipse Margin="3" Fill="{TemplateBinding Background}" />
                     </Grid>
@@ -174,6 +209,15 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.88" ScaleY="0.88" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Buttons ===================== -->
@@ -186,6 +230,7 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceInputBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource StrokeControlBrush}" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -204,8 +249,19 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.96" ScaleY="0.96" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
+    <!-- BasedOn SecondaryButton: inherits its Style.Triggers (the press-scale), so only the accent-specific
+         background swap needs its own ControlTemplate trigger here. -->
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
         <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
@@ -240,6 +296,7 @@
         <Setter Property="Height" Value="36" />
         <Setter Property="Margin" Value="8,1" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -268,6 +325,15 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Top-bar nav item (horizontal) ===================== -->
@@ -278,6 +344,7 @@
         <Setter Property="Height" Value="32" />
         <Setter Property="Margin" Value="2,0" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -305,6 +372,15 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Source tile (RadioButton) ===================== -->
@@ -312,6 +388,7 @@
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -339,11 +416,21 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.96" ScaleY="0.96" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Compact launcher (CompactWindow) ===================== -->
     <Style x:Key="CompactSourceTile" TargetType="RadioButton">
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -368,12 +455,22 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.96" ScaleY="0.96" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="CompactAudioToggle" TargetType="ToggleButton">
         <Setter Property="Width" Value="48" />
         <Setter Property="Height" Value="28" />
         <Setter Property="Content" Value="On" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -395,11 +492,19 @@
             <Trigger Property="IsChecked" Value="False">
                 <Setter Property="Content" Value="Off" />
             </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.94" ScaleY="0.94" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
         </Style.Triggers>
     </Style>
 
     <!-- ===================== ComboBox (compact retemplate) ===================== -->
     <Style x:Key="ComboToggle" TargetType="ToggleButton">
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -422,6 +527,15 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.98" ScaleY="0.98" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style x:Key="AppTextBox" TargetType="TextBox">
@@ -503,6 +617,65 @@
         </Setter>
     </Style>
 
+    <!-- ===================== Tray context menu — matches the app's own popup-surface look (AppComboBox's
+         acrylic + rounded-border pattern) instead of the plain system ContextMenu default. ===================== -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                            BorderThickness="1" CornerRadius="6" Padding="4">
+                        <StackPanel IsItemsHost="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Grid>
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="4">
+                            <ContentPresenter ContentSource="Header" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" />
+                        </Border>
+                        <Popup x:Name="sub" Placement="Right" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
+                               IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                            <Border Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                                    BorderThickness="1" CornerRadius="6" Padding="4">
+                                <StackPanel IsItemsHost="True" />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Separator">
+        <Setter Property="Background" Value="{DynamicResource StrokeDividerBrush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="6,4" />
+    </Style>
+
     <!-- ===================== Slider (design: components.css .mr-slider/__track/__fill/__thumb) =====================
          4px pill track, accent fill from the left edge to the thumb, 20x20 thumb = accent dot inside a
          surface-base ring (a 12x12 inner circle, growing to 14x14 on hover — the CSS achieves this via a
@@ -528,7 +701,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
                     <Grid Width="20" Height="20" Cursor="Hand">
-                        <Ellipse Fill="{DynamicResource SurfaceBaseBrush}"
+                        <Ellipse x:Name="Ring" Fill="{DynamicResource SurfaceBaseBrush}"
                                  Stroke="{DynamicResource StrokeControlStrongBrush}" StrokeThickness="1" />
                         <Ellipse x:Name="InnerDot" Width="12" Height="12" Fill="{DynamicResource AccentBrush}" />
                     </Grid>
@@ -536,6 +709,13 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="InnerDot" Property="Width" Value="14" />
                             <Setter TargetName="InnerDot" Property="Height" Value="14" />
+                        </Trigger>
+                        <!-- Thumb has no IsPressed property; IsDragging is the equivalent "actively held" state. -->
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Ring" Property="Width" Value="22" />
+                            <Setter TargetName="Ring" Property="Height" Value="22" />
+                            <Setter TargetName="InnerDot" Property="Width" Value="10" />
+                            <Setter TargetName="InnerDot" Property="Height" Value="10" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -591,6 +771,7 @@
     <!-- ===================== Toggle switch (ToggleButton) ===================== -->
     <Style x:Key="ToggleSwitch" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -611,6 +792,15 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.93" ScaleY="0.93" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ===================== Title-bar caption buttons =====================
@@ -626,6 +816,7 @@
         <Setter Property="Height" Value="48" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -640,8 +831,19 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform">
+                    <Setter.Value>
+                        <ScaleTransform ScaleX="0.9" ScaleY="0.9" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
+    <!-- BasedOn CaptionButton: inherits its Style.Triggers (the press-scale), so only the close-specific
+         red background swap needs its own ControlTemplate trigger here. -->
     <Style x:Key="CaptionCloseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
         <Setter Property="Template">
             <Setter.Value>
@@ -652,6 +854,10 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="#C42B1C" />
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="#8C1F14" />
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -754,5 +960,249 @@
                 </Setter>
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- Themed DatePicker (used by Schedule's "once" date). The stock DatePicker/Calendar templates are
+         drawn by the classic Windows theme regardless of app theme (no ThemeMode is set — see App.xaml),
+         so left alone it renders a plain white/black calendar even in Dark mode. Retemplated to match
+         AppTextBox/AppComboBox; the popup's child must be exactly a Calendar instance (not wrapped in a
+         Border) because DatePicker finds it via a direct cast rather than a named part. -->
+    <Style x:Key="AppCalendarDayButton" TargetType="CalendarDayButton">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarDayButton">
+                    <Border x:Name="bd" Margin="1" CornerRadius="4" Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsToday" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsBlackedOut" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                            <Setter Property="IsEnabled" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppCalendarButton" TargetType="CalendarButton">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarButton">
+                    <Border x:Name="bd" Margin="2" CornerRadius="4" Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,8" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsInactive" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="HasSelectedDays" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Hand-drawn chevron rather than a "Segoe Fluent Icons, Segoe MDL2 Assets" glyph: this dev machine's
+         installed font revision renders ChevronLeft/ChevronRight (E76B/E76C — verified correct per Microsoft's
+         own glyph table) as tofu boxes, the same font-availability problem the caption buttons already hit and
+         solved the same way (see ShellWindow.xaml's IconMinimizeGeometry/IconCloseGeometry). -->
+    <Style x:Key="AppCalendarNavButton" TargetType="Button">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd" CornerRadius="4" Background="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppCalendarHeaderButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd" CornerRadius="4" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppCalendarItem" TargetType="CalendarItem">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CalendarItem">
+                    <Grid>
+                        <Border Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                                BorderThickness="1" CornerRadius="6">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="2,2,2,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="PART_PreviousButton" Grid.Column="0" Style="{StaticResource AppCalendarNavButton}">
+                                        <Path Data="M6,1 L2,5 L6,9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.4" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Button>
+                                    <Button x:Name="PART_HeaderButton" Grid.Column="1"
+                                            Style="{StaticResource AppCalendarHeaderButton}" />
+                                    <Button x:Name="PART_NextButton" Grid.Column="2" Style="{StaticResource AppCalendarNavButton}">
+                                        <Path Data="M2,1 L6,5 L2,9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.4" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Button>
+                                </Grid>
+                                <!-- CalendarItem's code-behind populates these Grids by index (Grid.SetRow/SetColumn
+                                     on each day/month button) but does NOT add the Row/ColumnDefinitions itself —
+                                     the template must declare exactly 7 columns and 7 rows (1 day-of-week header +
+                                     6 week rows) or every button silently fails to place and only whichever one
+                                     happens to land in the Grid's single implicit row/column is visible (seen live:
+                                     the whole month rendered as one stray highlighted day). -->
+                                <Grid Grid.Row="1" x:Name="PART_MonthView" Width="182" Height="156" Margin="0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                        <RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                                        <ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                </Grid>
+                                <Grid Grid.Row="1" x:Name="PART_YearView" Width="182" Height="156" Margin="0" Visibility="Hidden">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <Rectangle x:Name="PART_DisabledVisual" Fill="{DynamicResource SurfaceAcrylicBrush}" Opacity="0.6"
+                                   RadiusX="6" RadiusY="6" Visibility="Collapsed" IsHitTestVisible="False" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="PART_DisabledVisual" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AppCalendar" TargetType="Calendar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CalendarItemStyle" Value="{StaticResource AppCalendarItem}" />
+        <Setter Property="CalendarButtonStyle" Value="{StaticResource AppCalendarButton}" />
+        <Setter Property="CalendarDayButtonStyle" Value="{StaticResource AppCalendarDayButton}" />
+    </Style>
+
+    <Style x:Key="AppDatePicker" TargetType="DatePicker">
+        <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <!-- DatePicker.OnApplyTemplate always overwrites PART_Popup's Child with its own internal Calendar
+             instance (`_popUp.Child = this._calendar`) — a Calendar declared directly in the template below
+             would just be discarded unused. CalendarStyle is the property DatePicker actually applies to that
+             internal instance. -->
+        <Setter Property="CalendarStyle" Value="{StaticResource AppCalendar}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DatePicker">
+                    <Grid>
+                        <Border x:Name="bd" Background="{DynamicResource SurfaceInputBrush}" BorderBrush="{DynamicResource StrokeControlBrush}"
+                                BorderThickness="1" CornerRadius="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="8,0"
+                                           Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, StringFormat=\{0:d\}}" />
+                                <Button x:Name="PART_Button" Grid.Column="1" Width="30" Content="&#xE787;"
+                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                        Foreground="{DynamicResource TextSecondaryBrush}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="btnBd" Background="Transparent" CornerRadius="0,4,4,0">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="btnBd" Property="Background" Value="{DynamicResource SubtleHoverBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Grid>
+                        </Border>
+                        <!-- Content is a placeholder only — DatePicker replaces it with its own internal
+                             Calendar (styled via the CalendarStyle setter above) as soon as the template applies. -->
+                        <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" PopupAnimation="Fade" StaysOpen="False">
+                            <Calendar Margin="0,4,0,0" />
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 </ResourceDictionary>

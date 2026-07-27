@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Windows;
 using RecMode.Core.Settings;
 
 namespace RecMode.App.ViewModels;
@@ -73,13 +72,22 @@ public sealed partial class RecordViewModel
         {
             Profiles.Clear();
             Profiles.Add(_customSentinel);
-            foreach (RecordingProfile p in RecordingProfiles.BuiltIn)
+
+            // A saved profile whose name matches a built-in is an edit of that built-in (see SaveProfile) —
+            // show the edited version in the built-in's usual slot rather than duplicating it further down
+            // the list, so "editing a default profile" reads as editing it in place, not creating a copy.
+            foreach (RecordingProfile builtIn in RecordingProfiles.BuiltIn)
             {
-                Profiles.Add(p);
+                RecordingProfile? overriding = _settings.Current.CustomProfiles
+                    .FirstOrDefault(p => string.Equals(p.Name, builtIn.Name, StringComparison.OrdinalIgnoreCase));
+                Profiles.Add(overriding ?? builtIn);
             }
             foreach (RecordingProfile p in _settings.Current.CustomProfiles)
             {
-                Profiles.Add(p);
+                if (!RecordingProfiles.BuiltIn.Any(b => string.Equals(b.Name, p.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Profiles.Add(p);
+                }
             }
 
             string? savedName = _settings.Current.SelectedProfileName;
@@ -178,17 +186,14 @@ public sealed partial class RecordViewModel
 
     private void SaveProfile()
     {
-        string defaultName = SelectedProfile is { IsBuiltIn: false } current ? current.Name : "My profile";
+        // Defaulting to the currently selected profile's own name — built-in or not — means accepting the
+        // prompt as-is edits that profile in place (see LoadProfiles' override lookup) rather than forcing
+        // the user to invent a new name just to tweak a built-in preset.
+        string defaultName = SelectedProfile is { } current && !ReferenceEquals(current, _customSentinel)
+            ? current.Name : "My profile";
         string? name = _profilePrompt.Prompt(defaultName);
         if (string.IsNullOrWhiteSpace(name))
         {
-            return;
-        }
-
-        if (RecordingProfiles.BuiltIn.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            MessageBox.Show(Resources.Strings.Profile_NameTaken, Resources.Strings.Profile_SaveTitle,
-                MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using Serilog;
 
 namespace RecMode.Encoding.Ffmpeg;
 
@@ -44,15 +47,11 @@ public sealed class FfmpegRecordingSession : IDisposable
         ArgumentNullException.ThrowIfNull(job);
         OutputPath = job.OutputPath;
 
-        _pipe = new NamedPipeServerStream(
-            job.PipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous, frameBytes * 4, frameBytes * 4);
+        _pipe = CreateSecurePipe(job.PipeName, frameBytes * 4);
 
         if (job.AudioPipeName is not null)
         {
-            AudioPipe = new NamedPipeServerStream(
-                job.AudioPipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous, 1 << 20, 1 << 20);
+            AudioPipe = CreateSecurePipe(job.AudioPipeName, 1 << 20);
         }
 
         string args = FfmpegArgsBuilder.Build(job);
@@ -68,7 +67,8 @@ public sealed class FfmpegRecordingSession : IDisposable
         if (job.BelowNormalPriority)
         {
             // Best-effort: keep the encoder from starving foreground work (§3.3). Never fatal if it fails.
-            try { _ffmpeg.PriorityClass = ProcessPriorityClass.BelowNormal; } catch (Exception) { }
+            try { _ffmpeg.PriorityClass = ProcessPriorityClass.BelowNormal; }
+            catch (Exception ex) { Log.Debug(ex, "Couldn't lower the ffmpeg process priority"); }
         }
 
         // Capture ffmpeg's stderr so failures are diagnosable (logged on finalize / pipe break).
@@ -112,6 +112,28 @@ public sealed class FfmpegRecordingSession : IDisposable
         {
             throw new EncoderPipeBrokenException("The encoder pipe broke (ffmpeg exited unexpectedly).", ex);
         }
+    }
+
+    /// <summary>Creates a named pipe restricted to the current Windows user. The plain
+    /// <c>NamedPipeServerStream</c> constructor (this file's previous approach) passes a null security
+    /// descriptor to <c>CreateNamedPipe</c>, and Windows' default DACL for that case grants read access to
+    /// <c>Everyone</c> — and these pipes carry raw NV12 desktop frames and raw system/mic audio. Pipe names
+    /// are predictable (<c>recmode_vid_&lt;pid&gt;_&lt;tickcount&gt;</c>) and <c>\\.\pipe\</c> is an
+    /// enumerable directory, so any other local user account on the machine could open and read the pipe —
+    /// and since it's created before <c>ffmpeg.exe</c> is started (a few instances/thread-creation calls
+    /// away from actually connecting), a process spinning on <c>CreateFile</c> reliably wins that race.
+    /// Restricting the pipe's DACL to only the identity that created it closes that off entirely: a
+    /// different account's <c>CreateFile</c> now fails with access denied regardless of timing.</summary>
+    private static NamedPipeServerStream CreateSecurePipe(string pipeName, int bufferSize)
+    {
+        var security = new PipeSecurity();
+        SecurityIdentifier owner = WindowsIdentity.GetCurrent().User
+            ?? throw new InvalidOperationException("Couldn't resolve the current Windows user's SID.");
+        security.AddAccessRule(new PipeAccessRule(owner, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+
+        return NamedPipeServerStreamAcl.Create(
+            pipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous,
+            bufferSize, bufferSize, security);
     }
 
     /// <summary>Cancels a producer currently blocked on the video pipe without tearing down session resources.</summary>

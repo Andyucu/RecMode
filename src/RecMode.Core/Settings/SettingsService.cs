@@ -30,7 +30,6 @@ public sealed class SettingsService : ISettingsService, IDisposable
     private Timer? _debounceTimer;
     private bool _savePending;
     private bool _disposed;
-    private string? _pendingJson;
 
     public SettingsService(IAppPaths paths, IErrorReporter errors)
     {
@@ -86,13 +85,32 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             CancelDebounce();
             _savePending = false;
-            _pendingJson = null;
-            WriteToDisk(CreateSnapshot());
+            try
+            {
+                WriteToDisk(CreateSnapshot());
             }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+            {
+                // Same race FlushDebouncedSave already guards against: CreateSnapshot() enumerates
+                // Current.Schedules/CustomProfiles, which can throw InvalidOperationException if a view
+                // model mutates either list concurrently (e.g. SchedulerService.Fire() calling Save() from
+                // its own tick at the same moment the user edits a Schedule row). Save() previously had no
+                // catch here at all — an unhandled exception on whichever caller happened to trigger the race.
+                _errors.Warn("settings.snapshot-failed", "Couldn't prepare your settings for saving.", null, ex);
+                return;
+            }
+        }
 
         RaiseSettingsChanged();
     }
 
+    /// <summary>Requests a debounced save. Only (re)arms the timer — does <em>not</em> snapshot <see cref="Current"/>
+    /// here. A dragged slider fires this on every tick (up to ~100 times for one drag), and the old behavior of
+    /// serializing the whole settings object (all schedules, all custom profiles) synchronously on every single
+    /// call violated §3.9's "allocation-free/throttled hot paths" for no benefit — only the debounce's eventual
+    /// single flush ever reaches disk. The snapshot itself happens once, when the debounce actually elapses —
+    /// see <see cref="OnDebounceElapsed"/> for why that still has to happen on the UI thread, not the timer's
+    /// own thread pool thread.</summary>
     public void RequestSave()
     {
         lock (_saveLock)
@@ -103,18 +121,6 @@ public sealed class SettingsService : ISettingsService, IDisposable
             }
 
             _savePending = true;
-            try
-            {
-                // Snapshot on the caller's (normally UI) thread. The timer only writes this immutable
-                // JSON, so it never enumerates collections while a view model is changing them.
-                _pendingJson = CreateSnapshot();
-            }
-            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-            {
-                _savePending = false;
-                _errors.Warn("settings.snapshot-failed", "Couldn't prepare your settings for saving.", null, ex);
-                return;
-            }
             _debounceTimer ??= new Timer(_ => OnDebounceElapsed(), null, Timeout.Infinite, Timeout.Infinite);
             _debounceTimer.Change(DebounceDelay, Timeout.InfiniteTimeSpan);
         }
@@ -122,25 +128,43 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private void OnDebounceElapsed()
     {
+        // Fires on a thread-pool timer thread. CreateSnapshot() enumerates Current.Schedules/CustomProfiles,
+        // which view models only ever mutate from the UI thread — serializing them concurrently from here
+        // would race exactly like Save()/Dispose() already can (a known, separate gap). Marshal back onto the
+        // same UI SynchronizationContext RaiseSettingsChanged already uses, so the actual snapshot+write always
+        // happens on the same thread as every other settings mutation, same as the old synchronous-in-RequestSave
+        // behavior did — just deferred to once per debounce window instead of once per call.
+        if (_notificationContext is not null && SynchronizationContext.Current != _notificationContext)
+        {
+            _notificationContext.Post(_ => FlushDebouncedSave(), null);
+        }
+        else
+        {
+            FlushDebouncedSave();
+        }
+    }
+
+    private void FlushDebouncedSave()
+    {
         lock (_saveLock)
         {
-            if (_disposed)
+            if (_disposed || !_savePending)
             {
+                // An immediate Save() (or a second debounce window's own flush) already handled this,
+                // or the service was disposed (Dispose() flushes any pending save itself) before this
+                // marshaled callback got to run.
                 return;
             }
 
-            // An immediate Save may have cancelled this callback after it was already queued.
-            if (!_savePending)
+            try
             {
-                return;
+                WriteToDisk(CreateSnapshot());
             }
-
-            if (_pendingJson is not null)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
-                WriteToDisk(_pendingJson);
+                _errors.Warn("settings.snapshot-failed", "Couldn't prepare your settings for saving.", null, ex);
             }
             _savePending = false;
-            _pendingJson = null;
         }
 
         RaiseSettingsChanged();
@@ -148,7 +172,16 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private string CreateSnapshot()
     {
-        Current.SchemaVersion = RecModeSettings.CurrentSchemaVersion;
+        // Only ever raise the recorded schema version, never lower it. A file written by a newer build keeps
+        // its own higher number so that build's migration steps don't re-run against already-migrated data
+        // (SettingsMigrator makes the same choice on the way in). Combined with
+        // RecModeSettings.UnknownProperties, this is what lets an older build read and re-save a newer
+        // build's settings without destroying them.
+        if (Current.SchemaVersion < RecModeSettings.CurrentSchemaVersion)
+        {
+            Current.SchemaVersion = RecModeSettings.CurrentSchemaVersion;
+        }
+
         return JsonSerializer.Serialize(Current, JsonOptions);
     }
 
@@ -157,18 +190,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         try
         {
             Directory.CreateDirectory(_paths.DataDirectory);
-            string tempPath = _paths.SettingsFilePath + ".tmp";
-            File.WriteAllText(tempPath, json);
-
-            // Atomic replace so a crash mid-write never leaves a truncated settings file.
-            if (File.Exists(_paths.SettingsFilePath))
-            {
-                File.Replace(tempPath, _paths.SettingsFilePath, null);
-            }
-            else
-            {
-                File.Move(tempPath, _paths.SettingsFilePath);
-            }
+            // Atomic (temp-file + rename, flushed to physical disk first) so a crash mid-write never leaves
+            // a truncated settings file.
+            AtomicFileWriter.Write(_paths.SettingsFilePath, json);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -223,9 +247,16 @@ public sealed class SettingsService : ISettingsService, IDisposable
             if (_savePending)
             {
                 CancelDebounce();
-                WriteToDisk(_pendingJson ?? CreateSnapshot());
+                try
+                {
+                    WriteToDisk(CreateSnapshot());
+                }
+                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+                {
+                    // Same race as Save()/FlushDebouncedSave — must not throw out of Dispose() during shutdown.
+                    _errors.Warn("settings.snapshot-failed", "Couldn't prepare your settings for saving.", null, ex);
+                }
                 _savePending = false;
-                _pendingJson = null;
             }
 
             _disposed = true;

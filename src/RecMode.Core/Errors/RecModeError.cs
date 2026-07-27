@@ -21,9 +21,6 @@ public sealed record RecModeError
     /// <summary>Originating exception, if this error wraps one. Not shown raw to users.</summary>
     public Exception? Exception { get; init; }
 
-    /// <summary>When the error occurred (UTC).</summary>
-    public DateTimeOffset TimestampUtc { get; init; } = DateTimeOffset.UtcNow;
-
     public static RecModeError Warning(string code, string message, string? suggestion = null, Exception? ex = null) =>
         new() { Code = code, Severity = ErrorSeverity.RecoverableWarning, Message = message, Suggestion = suggestion, Exception = ex };
 

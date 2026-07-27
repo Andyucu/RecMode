@@ -20,7 +20,7 @@ public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths
     /// <summary>Recovers any orphaned recordings found in the configured output folder. Safe to call once at startup.</summary>
     public void RecoverOrphans()
     {
-        string dir = settings.Current.OutputFolder ?? paths.RecordingsDirectory;
+        string dir = paths.ResolveUserPath(settings.Current.OutputFolder) ?? paths.RecordingsDirectory;
         if (!Directory.Exists(dir))
         {
             return;

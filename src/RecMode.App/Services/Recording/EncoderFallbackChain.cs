@@ -12,10 +12,16 @@ namespace RecMode.App.Services;
 /// </summary>
 internal sealed class EncoderFallbackChain(IEncoderProbe encoderProbe)
 {
-    /// <summary>Selected encoder first, then same-codec alternates, then libx264 CPU baseline, then any hardware H.264.</summary>
-    public List<EncoderInfo> Build(EncoderInfo selected)
+    /// <summary>Selected encoder first, then same-codec alternates, then libx264 CPU baseline, then any
+    /// hardware H.264 — every fallback candidate filtered to codecs <paramref name="container"/> can actually
+    /// hold (e.g. WebM is AV1-only), so a selected-encoder failure on a restrictive container never falls
+    /// back into candidates ffmpeg will refuse to mux regardless of whether they'd otherwise open fine. The
+    /// caller-supplied <paramref name="selected"/> itself is assumed already validated (pre-flight already
+    /// checked it against the container before <see cref="RecordingCoordinator.Start"/> got this far).</summary>
+    public List<EncoderInfo> Build(EncoderInfo selected, MediaContainer container)
     {
-        IReadOnlyList<EncoderInfo> available = encoderProbe.GetAvailableEncoders();
+        IReadOnlyList<EncoderInfo> available = encoderProbe.GetAvailableEncoders()
+            .Where(e => MediaCompatibility.IsVideoCompatible(e.Codec, container)).ToList();
         var chain = new List<EncoderInfo> { selected };
 
         void Add(EncoderInfo? e)
@@ -40,10 +46,14 @@ internal sealed class EncoderFallbackChain(IEncoderProbe encoderProbe)
     }
 
     /// <summary>Software-only fallback chain for the same codec as <paramref name="current"/> (last resort:
-    /// libx264), for the hw→sw downgrade — never returns a hardware encoder.</summary>
-    public List<EncoderInfo> BuildSoftwareOnly(EncoderInfo current)
+    /// libx264), for the hw→sw downgrade — never returns a hardware encoder. Filtered to
+    /// <paramref name="container"/>-compatible codecs, same reasoning as <see cref="Build"/> — critically
+    /// important here, since this chain drives a *mid-recording* downgrade: falling back to an incompatible
+    /// codec would fail to open on a container like WebM and turn a Degraded warning into a killed recording.</summary>
+    public List<EncoderInfo> BuildSoftwareOnly(EncoderInfo current, MediaContainer container)
     {
-        IReadOnlyList<EncoderInfo> available = encoderProbe.GetAvailableEncoders();
+        IReadOnlyList<EncoderInfo> available = encoderProbe.GetAvailableEncoders()
+            .Where(e => MediaCompatibility.IsVideoCompatible(e.Codec, container)).ToList();
         var chain = new List<EncoderInfo>();
 
         void Add(EncoderInfo? e)

@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using Serilog;
 
 namespace RecMode.Audio;
 
@@ -18,29 +20,47 @@ internal sealed class MixSource : IDisposable
     private readonly WaveFormat _sourceFormat;
     private readonly bool _isFloat;
     private readonly int _channels;
+    // True for mixers that only ever feed live UI meters (RecordViewModel's own meter mixer, separate from
+    // the one a real recording pumps) — nothing will ever call ReadMixed, so buffering samples into _buffer
+    // every callback is pure waste: it silently fills for 2s then starts discarding via DiscardOnBufferOverflow.
+    private readonly bool _meteringOnly;
 
     private volatile float _peak;
     private volatile float _rms;
+    // Reused across DataAvailable callbacks (~100/s at typical WASAPI buffer sizes) instead of allocating
+    // fresh arrays every time; grown, never shrunk. Only the non-float PCM path needs these — the float path
+    // feeds WASAPI's own buffer straight through (see OnDataAvailable).
+    private float[] _floatScratch = [];
+    private byte[] _byteScratch = [];
 
     public float Gain { get; set; } = 1f;
     public bool Muted { get; set; }
 
     public AudioLevel Level => Muted ? AudioLevel.Silent : new AudioLevel(_rms, _peak);
 
-    public MixSource(IWaveIn capture)
+    /// <summary>
+    /// Resolves a WASAPI capture's reported format to one whose <see cref="WaveFormat.Encoding"/> can be
+    /// trusted. Mix formats — full-system loopback in particular, since <c>WasapiLoopbackCapture.WaveFormat</c>
+    /// reflects whatever the audio engine's actual mix format is — very commonly arrive as
+    /// <see cref="WaveFormatExtensible"/>, which carries the *real* encoding (PCM vs IEEE float) in its
+    /// SubFormat GUID rather than in <c>BitsPerSample</c>. This originally guessed "32-bit Extensible must be
+    /// float", which silently bit-reinterpreted 32-bit integer PCM as float garbage on any device whose mix
+    /// format genuinely is 32-bit PCM — the suspected cause of the long-standing full-system-audio-silence
+    /// bug. Per-app audio never hit it because <c>ProcessLoopbackCapture</c> always reports a plain,
+    /// unambiguous IeeeFloat format.
+    /// <para>Extracted from the constructor and made internal specifically so this is unit-testable: the
+    /// failing case needs hardware whose mix format is Extensible+PCM, which this project has never had
+    /// access to, but a fake <see cref="IWaveIn"/> reproduces it exactly.</para>
+    /// </summary>
+    internal static WaveFormat ResolveFormat(WaveFormat raw) =>
+        raw is WaveFormatExtensible extensible ? extensible.ToStandardWaveFormat() : raw;
+
+    public MixSource(IWaveIn capture, bool meteringOnly = false)
     {
         _capture = capture;
+        _meteringOnly = meteringOnly;
 
-        // WASAPI mix formats (full-system loopback in particular — WasapiLoopbackCapture.WaveFormat reflects
-        // whatever the audio engine's actual mix format is) very commonly arrive as WaveFormatExtensible rather
-        // than a plain WaveFormat, and Extensible carries the *real* encoding (PCM vs IEEE float) in its
-        // SubFormat GUID, not in BitsPerSample. Resolving it via NAudio's own ToStandardWaveFormat() (rather
-        // than guessing "32-bit Extensible must be float", which silently bit-reinterprets 32-bit integer PCM
-        // as float garbage whenever a device's mix format actually is 32-bit PCM) is what was missing here —
-        // per-app audio never hit this because ProcessLoopbackCapture always reports a plain, unambiguous
-        // IeeeFloat WaveFormat, never Extensible.
-        WaveFormat raw = capture.WaveFormat;
-        WaveFormat f = raw is WaveFormatExtensible wfe ? wfe.ToStandardWaveFormat() : raw;
+        WaveFormat f = ResolveFormat(capture.WaveFormat);
         _sourceFormat = f;
         _channels = f.Channels;
         _isFloat = f.Encoding == WaveFormatEncoding.IeeeFloat;
@@ -67,9 +87,27 @@ internal sealed class MixSource : IDisposable
         _out = sp; // 48 kHz stereo float
 
         capture.DataAvailable += OnDataAvailable;
+        // Log-only: a mid-capture WASAPI failure (device unplugged, exclusive-mode conflict from another
+        // app, etc.) previously surfaced only as DataAvailable silently stopping — the underlying exception
+        // was captured by the capture source and raised via this exact event, but nothing here was
+        // listening for it. Doesn't change behavior (the mixer already treats "no more data" as silence);
+        // this just makes the reason visible in the log instead of a mystery.
+        capture.RecordingStopped += OnRecordingStopped;
+    }
+
+    private void OnRecordingStopped(object? sender, StoppedEventArgs e)
+    {
+        if (e.Exception is not null)
+        {
+            Log.Warning(e.Exception, "Audio capture stopped unexpectedly");
+        }
     }
 
     public void Start() => _capture.StartRecording();
+
+    /// <summary>Discards whatever's currently buffered without stopping capture — see
+    /// <see cref="RecMode.Audio.IAudioMixer.ClearBuffers"/> for why this exists.</summary>
+    public void ClearBuffer() => _buffer.ClearBuffer();
 
     /// <summary>Reads up to <paramref name="count"/> interleaved stereo floats into <paramref name="dest"/>; returns the count read (rest is silence).</summary>
     public int ReadMixed(float[] dest, int count) => _out.Read(dest, 0, count);
@@ -92,34 +130,50 @@ internal sealed class MixSource : IDisposable
             return;
         }
 
-        float[] floats = new float[totalSamples];
         if (_isFloat)
         {
-            Buffer.BlockCopy(e.Buffer, 0, floats, 0, totalSamples * 4);
-        }
-        else
-        {
-            // General integer-PCM reader: the previous code only ever read 16-bit samples regardless of the
-            // source's actual bit depth, which silently misaligned/garbled anything that wasn't exactly 16-bit.
-            for (int i = 0; i < totalSamples; i++)
+            // Already the exact byte layout the mix buffer expects (float32, same channel count/rate as the
+            // source) — meter directly off WASAPI's own buffer and feed it straight through, instead of
+            // allocating a scratch copy every callback just to hand back identical bytes.
+            ReadOnlySpan<float> samples = MemoryMarshal.Cast<byte, float>(e.Buffer.AsSpan(0, totalSamples * 4));
+            _peak = AudioMath.Peak(samples);
+            _rms = AudioMath.Rms(samples);
+            if (!_meteringOnly)
             {
-                floats[i] = ReadPcmSample(e.Buffer, i * bytesPerSample, bytesPerSample);
+                _buffer.AddSamples(e.Buffer, 0, totalSamples * 4);
             }
+            return;
+        }
+
+        // General integer-PCM reader: the previous code only ever read 16-bit samples regardless of the
+        // source's actual bit depth, which silently misaligned/garbled anything that wasn't exactly 16-bit.
+        if (_floatScratch.Length < totalSamples)
+        {
+            _floatScratch = new float[totalSamples];
+            _byteScratch = new byte[totalSamples * 4];
+        }
+        for (int i = 0; i < totalSamples; i++)
+        {
+            _floatScratch[i] = ReadPcmSample(e.Buffer, i * bytesPerSample, bytesPerSample);
         }
 
         // Meter over all channels.
-        _peak = AudioMath.Peak(floats);
-        _rms = AudioMath.Rms(floats);
+        ReadOnlySpan<float> floatSpan = _floatScratch.AsSpan(0, totalSamples);
+        _peak = AudioMath.Peak(floatSpan);
+        _rms = AudioMath.Rms(floatSpan);
 
         // Feed the mix buffer (float bytes match the buffer format).
-        byte[] bytes = new byte[totalSamples * 4];
-        Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
-        _buffer.AddSamples(bytes, 0, bytes.Length);
+        if (!_meteringOnly)
+        {
+            Buffer.BlockCopy(_floatScratch, 0, _byteScratch, 0, totalSamples * 4);
+            _buffer.AddSamples(_byteScratch, 0, totalSamples * 4);
+        }
     }
 
     public void Dispose()
     {
         _capture.DataAvailable -= OnDataAvailable;
+        _capture.RecordingStopped -= OnRecordingStopped;
         try { _capture.StopRecording(); } catch (Exception) { }
         _capture.Dispose();
     }
@@ -154,12 +208,24 @@ internal sealed class MixSource : IDisposable
 
     private sealed class StereoDownmixSampleProvider(ISampleProvider source, int channels) : ISampleProvider
     {
+        // Reused across reads rather than allocated per read; grown, never shrunk. Read() runs on the audio
+        // pump path (4096-float chunks, ~21 ms apart) for the whole recording whenever the WASAPI mix format
+        // has more than 2 channels — routine on HDMI/receiver/5.1 setups. Same §3.9 allocation-free hot-path
+        // rule as the rest of MixSource. Not thread-safe, but neither is ISampleProvider: the mixer's pump
+        // is the single reader.
+        private float[] _input = [];
+
         public WaveFormat WaveFormat { get; } = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 2);
         public int Read(float[] buffer, int offset, int count)
         {
             int frames = count / 2;
-            float[] input = new float[frames * channels];
-            int read = source.Read(input, 0, input.Length);
+            int needed = frames * channels;
+            if (_input.Length < needed)
+            {
+                _input = new float[needed];
+            }
+            float[] input = _input;
+            int read = source.Read(input, 0, needed);
             int inputFrames = read / channels;
             for (int frame = 0; frame < inputFrames; frame++)
             {

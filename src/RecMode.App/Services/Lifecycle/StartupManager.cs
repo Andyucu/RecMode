@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.Win32;
 
 namespace RecMode.App.Services;
@@ -10,6 +11,10 @@ public interface IStartupManager
 
     /// <summary>Registers (to the tray) or unregisters RecMode for launch at sign-in.</summary>
     void SetEnabled(bool enabled);
+
+    /// <summary>Self-heals a Run-key entry left pointing at a portable install that's since moved. Call once
+    /// at every launch.</summary>
+    void ReconcileAfterMove();
 }
 
 /// <summary>
@@ -61,6 +66,45 @@ public sealed class StartupManager : IStartupManager
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
         {
             // Optional integration: group policy must not make a portable app crash.
+        }
+    }
+
+    /// <summary>The Run key is the one thing this portable app writes outside its own folder (§3.5), and it's
+    /// self-referential in a way nothing else in the app is: if the user moves or re-extracts the portable
+    /// folder somewhere else, the registry value keeps pointing at the old, now-gone location forever — there
+    /// was previously no code path that ever revisited it. <see cref="IsEnabled"/> already reports this
+    /// correctly as "off" (the registered exe doesn't match the current one), so the Settings toggle doesn't
+    /// lie, but the stale entry itself just sits there, silently failing to launch anything at every future
+    /// sign-in. Called once per launch: if a registered path no longer exists on disk at all — unambiguous
+    /// proof the folder moved, not just a coincidentally different install — re-points the entry at the
+    /// current exe instead, preserving what was almost certainly still-wanted "start with Windows" intent
+    /// rather than leaving a dead reference or silently turning the feature off.</summary>
+    public void ReconcileAfterMove()
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            string? command = key?.GetValue(ValueName) as string;
+            string? current = Environment.ProcessPath;
+            if (command is null || current is null)
+            {
+                return;
+            }
+
+            string registeredExe = ExtractExecutable(command);
+            if (string.Equals(registeredExe, current, StringComparison.OrdinalIgnoreCase))
+            {
+                return; // already correct
+            }
+
+            if (!File.Exists(registeredExe))
+            {
+                key!.SetValue(ValueName, $"\"{current}\" --tray");
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            // Best-effort, same failure tolerance as IsEnabled/SetEnabled.
         }
     }
 

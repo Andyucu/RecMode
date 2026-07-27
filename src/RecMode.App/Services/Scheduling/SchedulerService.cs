@@ -54,7 +54,16 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             if (coordinator.IsRecording)
             {
                 Log.Information("Scheduled recording reached its duration — stopping");
-                coordinator.Stop();
+                // RecordingCoordinator.Stop() can block for tens of seconds in the worst case (an unbounded
+                // pacer-thread join that can be deep inside an auto-split segment's finalize/remux/encoder-
+                // restart sequence) — the same reason RecordViewModel.ToggleRecord() runs it off the UI
+                // thread instead of calling it inline. This Tick() runs on a DispatcherTimer, so calling
+                // Stop() directly here would freeze the whole app for however long that takes, for an
+                // unattended scheduled recording nobody is even watching end. coordinator.Finished (observed
+                // by OnRecordingFinished below, and separately by RecordViewModel's own dispatcher-marshaled
+                // handler) still fires correctly once Stop() actually completes, just from a background
+                // thread instead of this one — already a safe, established pattern (see ToggleRecord).
+                System.Threading.Tasks.Task.Run(coordinator.Stop);
             }
 
             return; // let the next tick evaluate a fresh state

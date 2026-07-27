@@ -18,7 +18,12 @@ public interface IPreviewEngine : IDisposable
     /// <summary>Raised (off-thread, ≤ 30 Hz) when a new frame is ready. Handlers marshal to the UI thread.</summary>
     event Action? FrameAvailable;
 
-    void Start(CaptureTarget target, bool captureCursor);
+    /// <summary>Starts capturing <paramref name="target"/>, scaled to fit within <paramref name="maxWidth"/>×
+    /// <paramref name="maxHeight"/> (aspect-preserving, never upscaled past the source's own size) — pass the
+    /// preview surface's actual on-screen pixel size so this doesn't do GPU scale/readback/upload work for
+    /// pixels larger than what will ever actually be displayed. Defaults match the size this always rendered
+    /// at before the caller could report a real one.</summary>
+    void Start(CaptureTarget target, bool captureCursor, int maxWidth = 1280, int maxHeight = 720);
     bool TryGetLatestFrame(byte[] dest);
 
     /// <summary>Enables/disables the webcam picture-in-picture overlay on the preview; call after <see cref="Start"/>. Null source disables it.</summary>

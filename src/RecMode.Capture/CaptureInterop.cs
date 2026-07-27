@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using SharpGen.Runtime;
+using Serilog;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -153,9 +154,10 @@ internal static class CaptureInterop
                 }
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Best-effort probe — an unexpected DXGI failure here should never block capture from starting.
+            Log.Debug(ex, "IsMonitorHdr probe failed; assuming non-HDR");
         }
 
         return false;

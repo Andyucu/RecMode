@@ -62,19 +62,4 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void OpenLicense_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            vm.OpenLicense();
-        }
-    }
-
-    private void OpenThirdPartyNotices_Click(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            vm.OpenThirdPartyNotices();
-        }
-    }
 }

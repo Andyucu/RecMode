@@ -30,10 +30,30 @@ public interface IAudioMixer : IDisposable
     /// default its child processes') audio instead of the whole system — per-app audio (plan §7).
     /// Returns which of the requested sources actually started, so callers can surface a recoverable
     /// warning when a source silently degraded instead of just continuing without audio.
+    /// <paramref name="meteringOnly"/> — pass true when this mixer only ever feeds live UI meters and
+    /// <see cref="PumpUntil"/> will never run against it (e.g. the Record screen's live meter bars, which
+    /// run their own separate mixer instance from the one an actual recording pumps): each source then
+    /// skips buffering samples for consumption entirely — peak/RMS are still computed every callback —
+    /// instead of silently filling, then discarding out of, a buffer nobody was ever going to read.
     /// </summary>
-    AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null);
+    AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null, bool meteringOnly = false);
 
     void Stop();
+
+    /// <summary>
+    /// Discards any audio already buffered from each active source, without stopping capture. Each source's
+    /// <c>BufferedWaveProvider</c> starts accumulating the instant <see cref="Start"/> is called (or, across
+    /// a pause, keeps accumulating the whole time capture is silently still running), independent of whether
+    /// anything is actually consuming it yet — <see cref="PumpUntil"/> only starts pulling once the encoder's
+    /// audio pipe has connected, which can be several seconds after <see cref="Start"/> (waiting on the video
+    /// pipe/encoder to connect first), and doesn't run at all while paused. Without clearing here, that
+    /// backlog is still sitting at the front of the buffer once consumption resumes, so <see cref="PumpUntil"/>'s
+    /// first reads hand back *stale* audio — captured before recording (or resuming) actually began — instead
+    /// of live current audio, silently shifting every real sample later than the video content it was
+    /// actually captured alongside. Call this right before consumption is about to (re)start: once after
+    /// <c>StartRecording()</c>, and once after every <c>Resume()</c>.
+    /// </summary>
+    void ClearBuffers();
 
     /// <summary>
     /// Writes mixed f32le to <paramref name="pipe"/> paced to <paramref name="segmentElapsed"/> (the current

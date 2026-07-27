@@ -199,6 +199,14 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
             "library.open-failed", "Couldn't open the file.");
     }
 
+    // Process.Start("explorer.exe", ...) with the default UseShellExecute=false resolves a bare filename via
+    // CreateProcess's own search order, which checks the *launching process's own directory first* — a
+    // portable, self-contained app, so that directory is exactly wherever the user unzipped RecMode.exe. A
+    // file named explorer.exe planted next to it would run instead of the real one. Fully qualifying the path
+    // to %WINDIR%\explorer.exe (the one location that's actually genuine) closes that off.
+    private static readonly string ExplorerExePath =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+
     private void Reveal(LibraryItem? item)
     {
         if (item is null)
@@ -206,7 +214,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
             return;
         }
 
-        Run(() => Process.Start("explorer.exe", $"/select,\"{item.FilePath}\""),
+        Run(() => Process.Start(ExplorerExePath, $"/select,\"{item.FilePath}\""),
             "library.reveal-failed", "Couldn't show the file in Explorer.");
     }
 
@@ -217,9 +225,27 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
             return;
         }
 
+        // Windows keeps no Recycle Bin on removable or network volumes, so the shell silently falls back to a
+        // permanent delete there — and UIOption.OnlyErrorDialogs (FOF_SILENT | FOF_NOCONFIRMATION) suppresses
+        // the "this can't be recycled, delete permanently?" prompt that would otherwise be the user's only
+        // warning. That's the *default* configuration for this app, not an edge case: portable installs keep
+        // .\Recordings inside the app folder, so running from a USB stick put every recording on removable
+        // media. A mis-click destroyed it outright while the button's own tooltip promised the Recycle Bin.
+        // Confirm explicitly when the delete genuinely can't be undone.
+        if (!CanRecycle(item.FilePath) &&
+            System.Windows.MessageBox.Show(
+                $"{Path.GetFileName(item.FilePath)}\n\n{Resources.Strings.Library_DeletePermanentBody}",
+                Resources.Strings.Library_DeletePermanentTitle,
+                System.Windows.MessageBoxButton.OKCancel,
+                System.Windows.MessageBoxImage.Warning,
+                System.Windows.MessageBoxResult.Cancel) != System.Windows.MessageBoxResult.OK)
+        {
+            return;
+        }
+
         try
         {
-            // Recycle Bin, not permanent — a mis-click is recoverable.
+            // Recycle Bin where the volume supports one; permanent (confirmed above) where it doesn't.
             FileSystem.DeleteFile(item.FilePath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
             if (item.IsImage == false)
             {
@@ -231,6 +257,22 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         catch (Exception ex)
         {
             _errors.Warn("library.delete-failed", "Couldn't delete the file.", null, ex);
+        }
+    }
+
+    /// <summary>True when the file's volume actually has a Recycle Bin, so a delete is undoable. Fixed
+    /// (internal/SATA/NVMe) drives do; removable and network ones don't. Fails safe: anything unreadable is
+    /// treated as non-recyclable, which asks for confirmation rather than silently destroying the file.</summary>
+    private static bool CanRecycle(string filePath)
+    {
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(filePath));
+            return root is not null && new DriveInfo(root).DriveType == DriveType.Fixed;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
@@ -251,13 +293,13 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         Run(() =>
         {
             Directory.CreateDirectory(dir);
-            Process.Start("explorer.exe", $"\"{dir}\"");
+            Process.Start(ExplorerExePath, $"\"{dir}\"");
         },
             "library.folder-failed", "Couldn't open the folder.");
     }
 
     private string CurrentDirectory() => _showVideos
-        ? _settings.Current.OutputFolder ?? _paths.RecordingsDirectory
+        ? _paths.ResolveUserPath(_settings.Current.OutputFolder) ?? _paths.RecordingsDirectory
         : _settings.Current.ScreenshotFolder ?? _paths.ScreenshotsDirectory;
 
     private void Run(Action action, string code, string message)

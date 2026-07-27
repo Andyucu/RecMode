@@ -7,6 +7,7 @@ using RecMode.App.Views;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Settings;
+using RecMode.Encoding.Encoders;
 using Serilog;
 
 namespace RecMode.App;
@@ -49,8 +50,15 @@ public partial class App : Application
 
         // Single-instance guard (before any expensive startup): a second launch forwards its command line to
         // the running instance and exits. Self-test runs bypass this so verification is never blocked. The
-        // guard is skipped for --selftest-* so headless checks can always spin up their own process.
-        bool isSelfTest = Array.Exists(e.Args, a => a.StartsWith("--selftest-", StringComparison.Ordinal));
+        // guard is skipped for --selftest-* so headless checks can always spin up their own process — but
+        // only in a build that actually compiles the self-test harness in (RECMODE_SELFTEST, Debug builds
+        // only — see the csproj). Without the #if, any --selftest-* on the command line would bypass the
+        // single-instance guard in a *shipped* build too, letting a second full instance start (hooks,
+        // hotkeys, its own RecordingCoordinator) even though the harness itself isn't even present to run.
+        bool isSelfTest = false;
+#if RECMODE_SELFTEST
+        isSelfTest = Array.Exists(e.Args, a => a.StartsWith("--selftest-", StringComparison.Ordinal));
+#endif
         if (!isSelfTest)
         {
             _singleInstance = new Services.SingleInstance();
@@ -79,7 +87,11 @@ public partial class App : Application
         paths.EnsureDirectories();
         ConfigureLogging(paths);
 
-        _host = Host.CreateDefaultBuilder()
+        // A bare HostBuilder rather than Host.CreateDefaultBuilder(): the default pulls in config providers
+        // (appsettings.json/environment-variable probing), a console lifetime, and other ASP.NET-oriented
+        // defaults this WPF app never uses (settings persistence is entirely ISettingsService's own JSON file,
+        // not IConfiguration) — trimming it is a small, safe startup-speed win with no behavior change.
+        _host = new HostBuilder()
             .UseSerilog()
             .ConfigureServices(services =>
             {
@@ -92,6 +104,52 @@ public partial class App : Application
         // Settings load (with migration + corrupt recovery), then crash-safety wiring.
         var settingsService = _host.Services.GetRequiredService<ISettingsService>();
         settingsService.Load();
+
+        // Startup-speed: the encoder probe trial-encodes every catalog entry via real ffmpeg subprocesses (or,
+        // once disk-cached, just deserializes a small JSON file) — kick it off now, on a background thread, so
+        // it races window creation instead of blocking it. Must come after settingsService.Load() (the probe
+        // reads the ffmpeg-path-override setting via IFfmpegLocator). RecordViewModel.LoadDevices() still calls
+        // GetAvailableEncoders() synchronously once the Record screen becomes active — EncoderProbe's own lock
+        // just makes that call wait out whatever's left of this background probe instead of starting cold.
+        var encoderProbe = _host.Services.GetRequiredService<IEncoderProbe>();
+        bool isFirstRun = settingsService.IsFirstRun; // snapshot before any background task can race Save()
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            System.Collections.Generic.IReadOnlyList<RecMode.Encoding.Encoders.EncoderInfo> available = encoderProbe.GetAvailableEncoders();
+
+            // First-run only: benchmark actual encode throughput (not just "does it open," which the probe
+            // above already answered) and recommend the fastest one with real-time headroom, preferring
+            // hardware per §3.9. Bounded to H.264 candidates — the universal baseline codec, and small enough
+            // (typically 2-4 encoders on real hardware) to stay a background-only cost that never delays the
+            // Record screen. A returning user's own encoder choice is never overridden.
+            if (isFirstRun)
+            {
+                var h264Candidates = available.Where(e => e.Codec == RecMode.Core.Settings.VideoCodec.H264).ToList();
+                RecMode.Encoding.Ffmpeg.IFfmpegLocator ffmpegLocator = _host.Services.GetRequiredService<RecMode.Encoding.Ffmpeg.IFfmpegLocator>();
+                RecMode.Encoding.Ffmpeg.FfmpegResolution ff = ffmpegLocator.Resolve();
+                var coordinator = _host.Services.GetRequiredService<Services.RecordingCoordinator>();
+
+                // Abort the moment the user starts recording: each benchmarked candidate opens a real
+                // hardware encoder session, and consumer NVENC/AMF/QSV drivers cap concurrent sessions — so
+                // a benchmark still running when a brand-new user hits Record would push their very first
+                // recording onto a software fallback with a Degraded warning.
+                if (ff.IsAvailable && ff.FfmpegPath is not null &&
+                    RecMode.Encoding.Encoders.EncoderBenchmark.Recommend(
+                        ff.FfmpegPath, h264Candidates, shouldAbort: () => coordinator.IsRecording) is { } recommended)
+                {
+                    settingsService.Current.Codec = recommended.Codec;
+                    settingsService.Current.Backend = recommended.Backend;
+                    settingsService.Save();
+
+                    // Also apply it to the already-loaded Record screen — persisting alone only took effect
+                    // on the next launch. See RecordViewModel.ApplyRecommendedEncoder, which declines if the
+                    // user has since chosen an encoder or a recording has started.
+                    Dispatcher.BeginInvoke(() =>
+                        _host.Services.GetRequiredService<ViewModels.RecordViewModel>()
+                             .ApplyRecommendedEncoder(recommended.Codec, recommended.Backend));
+                }
+            }
+        });
 
         // First-run only: if a microphone is physically connected, default the Mic toggle on instead of
         // off, so a new user with a mic doesn't silently record video-only. Returning users' explicit
@@ -118,14 +176,18 @@ public partial class App : Application
         var theme = _host.Services.GetRequiredService<Themes.ThemeManager>();
         theme.Apply(settings.Current.Theme, settings.Current.Accent);
 
-        // Headless verification hook (temporary; the real CLI arrives in Phase 5): drive the production
-        // RecordingCoordinator for a few seconds and exit, writing the outcome to Data\selftest-result.txt.
+#if RECMODE_SELFTEST
+        // Headless verification hook: drive the production RecordingCoordinator for a few seconds and exit,
+        // writing the outcome to Data\selftest-result.txt. Debug-only (RECMODE_SELFTEST, see the csproj) —
+        // this is a manual integration-test harness for GPU/WGC/ffmpeg/WASAPI behavior the pure-logic test
+        // projects can't reach, not something meant to ship.
         string? selfTest = Array.Find(e.Args, a => a.StartsWith("--selftest-", StringComparison.Ordinal));
         if (selfTest is not null)
         {
             new SelfTest.SelfTestRunner(_host, paths, Dispatcher, code => Shutdown(code)).Run(selfTest["--selftest-".Length..]);
             return;
         }
+#endif
 
         var options = Services.CommandLineOptions.Parse(e.Args);
 
@@ -158,6 +220,10 @@ public partial class App : Application
         // Recover any recordings orphaned by a previous crash (safe-recording payoff), off the UI thread.
         var recovery = _host.Services.GetRequiredService<Services.OrphanRecoveryService>();
         System.Threading.Tasks.Task.Run(recovery.RecoverOrphans);
+
+        // Self-heal a "start with Windows" Run-key entry left pointing at a portable install that's since
+        // moved (see StartupManager.ReconcileAfterMove) - a no-op for everyone who never enabled it.
+        _host.Services.GetRequiredService<Services.IStartupManager>().ReconcileAfterMove();
 
         // Launch-time update check (plan §3.5): notify only, never auto-apply without the user explicitly
         // clicking "Update & restart" in Settings. Silent for NotConfigured/UpToDate/Failed — only a real

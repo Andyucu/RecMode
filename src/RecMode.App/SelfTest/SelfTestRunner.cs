@@ -649,12 +649,16 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             }
         }
 
-        public bool TryGetLatestFrame(out byte[] data, out int width, out int height, out int stride)
+        public bool TryGetLatestFrame(ref byte[] destination, out int width, out int height, out int stride)
         {
-            data = _frame;
             width = _width;
             height = _height;
             stride = _width * 4;
+            if (destination.Length < _frame.Length)
+            {
+                destination = new byte[_frame.Length];
+            }
+            Buffer.BlockCopy(_frame, 0, destination, 0, _frame.Length);
             return true;
         }
     }

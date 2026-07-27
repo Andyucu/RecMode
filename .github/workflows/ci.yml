@@ -7,7 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  # NOTE: this job doesn't actually run the test suite (413 tests as of 0.9.72-beta). `tests/` is intentionally
+  # excluded from version control (see CLAUDE.md's standing "never stage/commit" list), so it doesn't exist in
+  # this checkout at all — RecMode.slnx (the committed solution) has no test projects for the same reason
+  # (RecMode.local.slnx, also untracked, is what a local dev build/test run actually uses). The suite is run
+  # locally via ./build.ps1 before every release; this workflow only builds+packages what's actually pushed.
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

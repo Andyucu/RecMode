@@ -53,6 +53,22 @@ public sealed class GlobalHotkeys : IDisposable
         return -1;
     }
 
+    /// <summary>Probes whether a modifier+key combination could be registered right now, without touching any
+    /// currently-registered hotkey and without raising <see cref="RegistrationFailed"/> — a probe "failing" is
+    /// an expected, silent outcome the caller decides how to handle itself (e.g. hotkey-capture UI validation),
+    /// not a real registration attempt gone wrong.</summary>
+    public bool CanRegister(uint modifiers, uint virtualKey)
+    {
+        int id = _nextId++;
+        bool ok = RegisterHotKey(_source.Handle, id, modifiers, virtualKey);
+        if (ok)
+        {
+            UnregisterHotKey(_source.Handle, id);
+        }
+
+        return ok;
+    }
+
     /// <summary>Unregisters every hotkey (so the caller can rebind). Does not tear down the message window.</summary>
     public void UnregisterAll()
     {

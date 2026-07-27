@@ -31,7 +31,27 @@ public partial class ShellWindow : Window
         _theme = theme;
         SourceInitialized += OnSourceInitialized;
         StateChanged += OnStateChanged;
+        IsVisibleChanged += OnIsVisibleChanged;
         _theme.Changed += ApplyBackdrop;
+    }
+
+    // Distinct from OnStateChanged/minimize: fires on Show()/Hide() too, including ShellPresenter hiding this
+    // window without minimizing it when swapping to the Compact layout, and the initial --tray launch (which
+    // never calls Show() at all, so this simply never fires and RecordViewModel's default "not visible" state
+    // stands) — see RecordViewModel.SetWindowVisible's doc comment for why minimize alone isn't enough.
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (DataContext is ShellViewModel shell)
+        {
+            if ((bool)e.NewValue)
+            {
+                shell.EnsureInitialPageLoaded();
+            }
+
+            // ShellWindow (RecordView) is the one layout that actually displays the preview image and audio
+            // meters — see RecordViewModel.SetWindowVisible's doc comment for why CompactWindow passes false.
+            shell.Record.SetWindowVisible((bool)e.NewValue, hostsPreviewSurfaces: true);
+        }
     }
 
     private void OnStateChanged(object? sender, EventArgs e)
@@ -44,8 +64,9 @@ public partial class ShellWindow : Window
 
         bool maximized = WindowState == WindowState.Maximized;
         MaxButtonIcon.Data = (System.Windows.Media.Geometry)FindResource(maximized ? "IconRestoreGeometry" : "IconMaximizeGeometry");
-        MaxButton.ToolTip = maximized ? "Restore" : "Maximize";
-        System.Windows.Automation.AutomationProperties.SetName(MaxButton, maximized ? "Restore" : "Maximize");
+        string label = maximized ? RecMode.App.Resources.Strings.Shell_Restore : RecMode.App.Resources.Strings.Shell_Maximize;
+        MaxButton.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(MaxButton, label);
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) => ApplyBackdrop();
@@ -78,12 +99,23 @@ public partial class ShellWindow : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        // First pass (any close, including Alt+F4): redirect to a full app shutdown instead of letting this
-        // window merely close, which would otherwise leave the process (and tray icon) running headless.
-        // Application.Shutdown() re-closes every open window, including this one — the second time through,
-        // AppShutdownState.InProgress lets it actually proceed.
         if (!AppShutdownState.InProgress)
         {
+            // Settings → General → "Close button minimizes to tray": the × hides instead of quitting, the
+            // same fate minimize already gets unconditionally (TrayIconService). The tray menu's own "Quit"
+            // always exits regardless, since it calls Application.Shutdown() directly rather than closing
+            // this window.
+            if (DataContext is ShellViewModel { Settings.CloseToTray: true })
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+
+            // Redirect to a full app shutdown instead of letting this window merely close, which would
+            // otherwise leave the process (and tray icon) running headless. Application.Shutdown() re-closes
+            // every open window, including this one — the second time through, AppShutdownState.InProgress
+            // lets it actually proceed.
             e.Cancel = true;
             AppShutdownState.InProgress = true;
             Application.Current.Shutdown();

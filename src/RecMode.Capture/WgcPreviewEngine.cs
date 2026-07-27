@@ -1,4 +1,5 @@
 using RecMode.Capture.Webcam;
+using Serilog;
 using Vortice.Direct3D11;
 using Windows.Graphics.Capture;
 
@@ -11,11 +12,20 @@ namespace RecMode.Capture;
 /// </summary>
 public sealed class WgcPreviewEngine : IPreviewEngine
 {
-    private const int MaxPreviewWidth = 1280;
-    private const int MaxPreviewHeight = 720;
     private static readonly TimeSpan MinFrameInterval = TimeSpan.FromMilliseconds(33); // ~30 fps
 
+    private int _maxPreviewWidth = 1280;
+    private int _maxPreviewHeight = 720;
+
     private readonly Lock _sync = new();
+    // Held for the whole duration of OnFrameArrived's GPU work, and taken (empty critical section) by Stop()
+    // after unsubscribing but before disposing the scaler/context/device — see WgcCaptureEngine, which has
+    // the identical callback shape and the same barrier for the same reason. Without it, a FrameArrived
+    // callback already dispatched when Stop() unsubscribes can be mid-Scale() (a VideoProcessorBlt +
+    // staging readback, several ms) while those COM objects are released underneath it: an access violation,
+    // which is not catchable and terminates the process. Deliberately a separate lock from _sync, so the
+    // multi-ms GPU work never contends with TryGetLatestFrame's plain memcpy.
+    private readonly Lock _disposeGuard = new();
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
     private BgraScaler? _scaler;
@@ -42,13 +52,16 @@ public sealed class WgcPreviewEngine : IPreviewEngine
 
     public event Action? FrameAvailable;
 
-    public void Start(CaptureTarget target, bool captureCursor)
+    public void Start(CaptureTarget target, bool captureCursor, int maxWidth = 1280, int maxHeight = 720)
     {
         ArgumentNullException.ThrowIfNull(target);
         if (IsRunning)
         {
             Stop();
         }
+
+        _maxPreviewWidth = Math.Max(2, maxWidth);
+        _maxPreviewHeight = Math.Max(2, maxHeight);
 
         if (target.Kind == CaptureKind.AllDisplays)
         {
@@ -81,27 +94,34 @@ public sealed class WgcPreviewEngine : IPreviewEngine
 
     private void OnFrameArrived(Direct3D11CaptureFramePool pool, object? args)
     {
-        using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
-        if (frame is null || _scaler is null)
+        // All GPU work runs under _disposeGuard so Stop() can't release the scaler/context/device mid-Scale().
+        // Re-reading _scaler into a local inside the lock is what makes the null check load-bearing: checking
+        // the field and then dereferencing it later would still be a check-then-use race.
+        lock (_disposeGuard)
         {
-            return;
-        }
+            using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
+            BgraScaler? scaler = _scaler;
+            if (frame is null || scaler is null)
+            {
+                return;
+            }
 
-        // Throttle to ≤ 30 fps — cheap early-out before the GPU scale + readback.
-        long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
-        if (_lastFrameTicks != 0 && now - _lastFrameTicks < minTicks)
-        {
-            return;
-        }
-        _lastFrameTicks = now;
+            // Throttle to ≤ 30 fps — cheap early-out before the GPU scale + readback.
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+            if (_lastFrameTicks != 0 && now - _lastFrameTicks < minTicks)
+            {
+                return;
+            }
+            _lastFrameTicks = now;
 
-        using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
-        _scaler.Scale(tex, _scratch);
-        lock (_sync)
-        {
-            (_scratch, _latest) = (_latest, _scratch);
-            _hasLatest = true;
+            using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
+            scaler.Scale(tex, _scratch);
+            lock (_sync)
+            {
+                (_scratch, _latest) = (_latest, _scratch);
+                _hasLatest = true;
+            }
         }
 
         FrameAvailable?.Invoke();
@@ -221,9 +241,21 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             _framePool.FrameArrived -= OnFrameArrived;
         }
 
+        // Barrier against an OnFrameArrived call already dispatched when the unsubscribe above took effect —
+        // it blocks here until that callback finishes its GPU work, so the disposals below can't pull the
+        // scaler/context/device out from under it. Same mechanism as WgcCaptureEngine.Stop().
+        lock (_disposeGuard) { }
+
         _ddaStopping = true;
         bool wasDda = _ddaThread is not null;
-        bool ddaExited = !wasDda || _ddaThreadExited.Wait(TimeSpan.FromSeconds(5));
+        if (wasDda && !_ddaThreadExited.Wait(TimeSpan.FromSeconds(5)))
+        {
+            // The DDA thread disposes its own resources in its finally block whenever it does exit, so
+            // leaving them alive here is the safe choice — but it used to be silent, which made a stuck
+            // duplication thread undiagnosable. (WgcCaptureEngine raises Faulted for the same case; preview
+            // has no error channel of its own, so log instead.)
+            Log.Warning("The preview desktop-duplication thread did not stop within 5 seconds; its resources will be released once it does");
+        }
 
         _session?.Dispose();
         _framePool?.Dispose();
@@ -245,11 +277,6 @@ public sealed class WgcPreviewEngine : IPreviewEngine
 
     public void Dispose() => Stop();
 
-    private static (int, int) FitPreview(int srcW, int srcH)
-    {
-        double scale = Math.Min(1.0, Math.Min(MaxPreviewWidth / (double)srcW, MaxPreviewHeight / (double)srcH));
-        int w = Math.Max(2, (int)Math.Round(srcW * scale));
-        int h = Math.Max(2, (int)Math.Round(srcH * scale));
-        return (w % 2 == 0 ? w : w - 1, h % 2 == 0 ? h : h - 1);
-    }
+    private (int, int) FitPreview(int srcW, int srcH) =>
+        PreviewSizing.Fit(srcW, srcH, _maxPreviewWidth, _maxPreviewHeight);
 }

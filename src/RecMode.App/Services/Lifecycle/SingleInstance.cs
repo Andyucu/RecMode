@@ -77,7 +77,21 @@ public sealed class SingleInstance : IDisposable
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Single-instance listener iteration failed; continuing");
+                Log.Warning(ex, "Single-instance listener iteration failed; retrying shortly");
+                try
+                {
+                    // Bounded backoff before retrying. Without this, a failure that recurs on every
+                    // iteration — e.g. the pipe name is already held by a different Windows session's
+                    // RecMode instance (pipe names, unlike the Local\ mutex, are machine-global rather than
+                    // per-session, so fast user switching can hit this) — would otherwise spin this loop as
+                    // fast as the CLR can throw and catch, pegging a CPU core and flooding the log for the
+                    // rest of the session.
+                    await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
     }

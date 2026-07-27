@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Settings;
+using Serilog;
 
 namespace RecMode.Encoding.Ffmpeg;
 
@@ -12,21 +13,82 @@ namespace RecMode.Encoding.Ffmpeg;
 ///   <item>Bundled build under <c>AppPaths.FfmpegDirectory</c>, hash-verified against the manifest if present.</item>
 /// </list>
 /// Never throws — a missing/invalid ffmpeg becomes an unavailable result carrying a <see cref="RecModeError"/>.
+/// <para>
+/// Caches its result for as long as the resolved override setting doesn't change: resolving hashes both
+/// (100+ MB) bundled binaries against the pinned manifest, and this is called repeatedly within a single run
+/// (once to populate the Record screen's encoder list, again on every recording start) — nothing about the
+/// files on disk changes between those calls, so re-hashing every time was pure repeated I/O for no benefit.
+/// Recomputes automatically if <see cref="RecModeSettings.FfmpegPathOverride"/> changes, so changing it in
+/// Settings still takes effect without an app restart.
+/// </para>
 /// </summary>
 public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : IFfmpegLocator
 {
     private const string FfmpegExe = "ffmpeg.exe";
     private const string FfprobeExe = "ffprobe.exe";
 
+    private readonly Lock _cacheLock = new();
+    private FfmpegResolution? _cached;
+    private string? _cachedOverridePath;
+
     public FfmpegResolution Resolve()
     {
         string? overridePath = settings.Current.FfmpegPathOverride;
-        if (!string.IsNullOrWhiteSpace(overridePath))
+        lock (_cacheLock)
         {
-            return ResolveFromOverride(overridePath);
+            if (_cached is not null && string.Equals(_cachedOverridePath, overridePath, StringComparison.Ordinal))
+            {
+                return _cached;
+            }
         }
 
-        return ResolveBundled();
+        FfmpegResolution result;
+        if (string.IsNullOrWhiteSpace(overridePath))
+        {
+            result = ResolveBundled();
+        }
+        else
+        {
+            result = ResolveFromOverride(overridePath);
+
+            // A stale override must not block recording when a perfectly good bundled build is sitting next
+            // to the exe. This is the normal portable case, not an edge case: point the override at
+            // D:\tools\ffmpeg on one machine, move the folder to a machine with no D: drive, and recording
+            // used to refuse to start with "fix the path in Settings" — while .\ffmpeg\ffmpeg.exe, hash-pinned
+            // and ready, went unused. The override is an optimization, so fall back and warn rather than fail.
+            if (!result.IsAvailable)
+            {
+                FfmpegResolution bundled = ResolveBundled();
+                if (bundled.IsAvailable)
+                {
+                    Log.Warning("The configured ffmpeg override {Path} is unusable; falling back to the bundled build at {Bundled}",
+                        overridePath, bundled.FfmpegPath);
+                    result = bundled with
+                    {
+                        Error = RecModeError.Warning(
+                            "ffmpeg.override-fallback",
+                            "The ffmpeg path in Settings couldn't be used, so the bundled build is being used instead.",
+                            "Clear or fix the custom ffmpeg path in Settings to stop seeing this."),
+                    };
+                }
+            }
+        }
+
+        // Only cache a successful resolution. An "unavailable" result exists so the user can fix the
+        // problem (e.g. drop ffmpeg into .\ffmpeg\, as the error message itself suggests) — caching it would
+        // keep reporting that same stale error on every later call until the app restarts, even after the
+        // user does exactly what the message asked. A cache hit's entire purpose is skipping the expensive
+        // SHA-256 hashing of two 100+ MB binaries, which only happens on the success path in the first place.
+        if (result.IsAvailable)
+        {
+            lock (_cacheLock)
+            {
+                _cached = result;
+                _cachedOverridePath = overridePath;
+            }
+        }
+
+        return result;
     }
 
     private static FfmpegResolution ResolveFromOverride(string overridePath)
@@ -71,18 +133,31 @@ public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : 
         }
 
         FfmpegManifest? manifest = FfmpegManifest.TryLoad(dir);
-        bool verified = false;
-        RecModeError? warning = null;
-
         if (manifest is null)
         {
-            warning = RecModeError.Warning(
-                "ffmpeg.manifest-absent",
-                "The ffmpeg build wasn't hash-verified (no manifest present).");
+            return new FfmpegResolution
+            {
+                IsAvailable = true,
+                FfmpegPath = ffmpegPath,
+                FfprobePath = File.Exists(ffprobePath) ? ffprobePath : null,
+                Source = FfmpegSource.Bundled,
+                HashVerified = false,
+                Error = RecModeError.Warning(
+                    "ffmpeg.manifest-absent",
+                    "The ffmpeg build wasn't hash-verified (no manifest present)."),
+            };
         }
-        else
+
+        (bool verified, RecModeError? error) = VerifyHashes(manifest, ffmpegPath, ffprobePath);
+        if (error?.Severity == ErrorSeverity.BlockingError)
         {
-            (verified, warning) = VerifyHashes(manifest, ffmpegPath, ffprobePath);
+            // A pinned hash that doesn't match means the bundled binary was modified or corrupted since it
+            // was built — unlike "no manifest at all" or "manifest present but pins nothing" above/below
+            // (nothing to check, so best-effort continues), this is an active integrity failure. Continuing
+            // to run the mismatched binary anyway (the previous behavior: a Warning, but still IsAvailable)
+            // defeated the entire point of pinning it — the one threat this check is shaped for (the binary
+            // was tampered with or corrupted after being built) is exactly the case it used to let through.
+            return Unavailable(FfmpegSource.Bundled, error);
         }
 
         return new FfmpegResolution
@@ -92,40 +167,49 @@ public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : 
             FfprobePath = File.Exists(ffprobePath) ? ffprobePath : null,
             Source = FfmpegSource.Bundled,
             HashVerified = verified,
-            Error = warning,
+            Error = error,
         };
     }
 
-    private static (bool Verified, RecModeError? Warning) VerifyHashes(
+    /// <summary>Blocking on an actual mismatch (a pinned hash that doesn't match); Warning if the manifest is
+    /// present but pins nothing to check (same non-blocking treatment as no manifest at all — see
+    /// <see cref="ResolveBundled"/>); Verified=true only when at least one hash was actually pinned and
+    /// matched — a manifest with both fields blank previously reported <c>HashVerified = true</c> despite
+    /// nothing having been checked at all.</summary>
+    private static (bool Verified, RecModeError? Error) VerifyHashes(
         FfmpegManifest manifest, string ffmpegPath, string ffprobePath)
     {
-        if (!MatchesIfPinned(manifest.FfmpegSha256, ffmpegPath))
+        bool ffmpegPinned = !string.IsNullOrWhiteSpace(manifest.FfmpegSha256);
+        bool ffprobePinned = File.Exists(ffprobePath) && !string.IsNullOrWhiteSpace(manifest.FfprobeSha256);
+
+        if (ffmpegPinned && !Matches(manifest.FfmpegSha256, ffmpegPath))
         {
-            return (false, RecModeError.Warning(
+            return (false, RecModeError.Blocking(
                 "ffmpeg.hash-mismatch",
                 "The bundled ffmpeg.exe doesn't match its pinned hash.",
-                "The build may have been modified; recording still works but verify the source."));
+                "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
         }
 
-        if (File.Exists(ffprobePath) && !MatchesIfPinned(manifest.FfprobeSha256, ffprobePath))
+        if (ffprobePinned && !Matches(manifest.FfprobeSha256, ffprobePath))
+        {
+            return (false, RecModeError.Blocking(
+                "ffprobe.hash-mismatch",
+                "The bundled ffprobe.exe doesn't match its pinned hash.",
+                "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
+        }
+
+        if (!ffmpegPinned && !ffprobePinned)
         {
             return (false, RecModeError.Warning(
-                "ffprobe.hash-mismatch",
-                "The bundled ffprobe.exe doesn't match its pinned hash."));
+                "ffmpeg.manifest-empty",
+                "The ffmpeg build wasn't hash-verified (the manifest has no pinned hashes)."));
         }
 
         return (true, null);
     }
 
-    private static bool MatchesIfPinned(string expectedHex, string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(expectedHex))
-        {
-            return true; // nothing pinned → nothing to fail
-        }
-
-        return string.Equals(ComputeSha256(filePath), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool Matches(string expectedHex, string filePath) =>
+        string.Equals(ComputeSha256(filePath), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string ComputeSha256(string filePath)
     {

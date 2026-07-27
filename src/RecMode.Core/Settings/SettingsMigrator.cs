@@ -17,7 +17,15 @@ public static class SettingsMigrator
     {
         ArgumentNullException.ThrowIfNull(root);
 
-        int version = root["SchemaVersion"]?.GetValue<int>() ?? 0;
+        // TryGetValue rather than GetValue<int>(): a hand-edited or half-written settings.json can carry
+        // "SchemaVersion" as a string, float, or object instead of an int. GetValue<int>() throws
+        // (InvalidOperationException/FormatException) in that case, and Load() runs before the app's global
+        // exception handlers are registered — an uncaught throw here is a startup crash with no crash log, no
+        // .corrupt backup, and no way out short of manually deleting the file. Treat anything unparseable the
+        // same as a missing version: 0, which every real migration/clamp path below already handles safely.
+        int version = root["SchemaVersion"] is JsonValue schemaVersion && schemaVersion.TryGetValue(out int parsed)
+            ? parsed
+            : 0;
         int start = version;
 
         // Future steps go here, e.g.:

@@ -31,8 +31,9 @@
 
             <StackPanel Margin="0,0,0,12"
                         Visibility="{Binding SelectedRecurrence, Converter={StaticResource EnumToVisibility}, ConverterParameter=Once}">
-                <TextBlock x:Name="OnceDateLabel" Text="Date" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
-                <DatePicker SelectedDate="{Binding OnceDate}" AutomationProperties.LabeledBy="{Binding ElementName=OnceDateLabel}" />
+                <TextBlock x:Name="OnceDateLabel" Text="{x:Static res:Strings.ScheduleEdit_Date}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
+                <DatePicker SelectedDate="{Binding OnceDate}" Style="{StaticResource AppDatePicker}"
+                            AutomationProperties.LabeledBy="{Binding ElementName=OnceDateLabel}" />
             </StackPanel>
 
             <Grid Margin="0,0,0,12">

@@ -66,7 +66,16 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
 
             if (entries.Count > MaxEntries)
             {
-                entries = entries.OrderByDescending(e => e.CreatedAt).Take(MaxEntries).ToList();
+                // Evict from the *other* entries only. Sorting the whole list by CreatedAt and taking the
+                // newest N could discard the entry being added right now, if its timestamp happened to be
+                // older than a thousand existing ones — reachable with clock skew or a restored library.json,
+                // and the symptom ("my newest recording has no metadata and no Record-again button") would
+                // never be attributed to eviction.
+                entries = entries.Where(e => !ReferenceEquals(e, entry))
+                    .OrderByDescending(e => e.CreatedAt)
+                    .Take(MaxEntries - 1)
+                    .Append(entry)
+                    .ToList();
             }
 
             Write(entries);
@@ -121,7 +130,24 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
             }
 
             string json = File.ReadAllText(paths.LibraryIndexPath);
-            return JsonSerializer.Deserialize<List<LibraryIndexEntry>>(json, Options) ?? [];
+            List<LibraryIndexEntry> entries = JsonSerializer.Deserialize<List<LibraryIndexEntry>>(json, Options) ?? [];
+
+            // LibraryIndexEntry is a positional record, so System.Text.Json builds it through the primary
+            // constructor and fills any *missing* member with default — a JSON object with no "FileName"
+            // deserializes cleanly to an entry whose FileName is null, and a bare `null` array element
+            // deserializes to a null entry. Both are structurally valid JSON, so the JsonException catch
+            // below never fires for them; they'd instead blow up later in ByFileName (null dictionary key),
+            // PruneMissing (null into an OrdinalIgnoreCase HashSet), or Add (NRE) — and Add runs inside
+            // Finalize(), where until now an exception permanently wedged the recorder. Drop them here,
+            // where malformed-index tolerance already lives, so the rest of this class can assume non-null.
+            int dropped = entries.RemoveAll(e => e is null || string.IsNullOrEmpty(e.FileName));
+            if (dropped > 0)
+            {
+                Log.Warning("Dropped {Count} malformed entr{Suffix} from the library index at {Path}",
+                    dropped, dropped == 1 ? "y" : "ies", paths.LibraryIndexPath);
+            }
+
+            return entries;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -139,9 +165,7 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
         {
             Directory.CreateDirectory(Path.GetDirectoryName(paths.LibraryIndexPath)!);
             string json = JsonSerializer.Serialize(entries, Options);
-            string temp = paths.LibraryIndexPath + ".tmp";
-            File.WriteAllText(temp, json);
-            File.Move(temp, paths.LibraryIndexPath, overwrite: true);
+            AtomicFileWriter.Write(paths.LibraryIndexPath, json);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

@@ -41,6 +41,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private bool _isScreenSource = true;
     private bool _isWindowSource;
     private bool _isRegionSource;
+    private bool _isWebcamSource;
     private bool _followWindowEnabled;
     private bool _selectingRegion;
     private bool _isRecording;
@@ -94,8 +95,8 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
         Formats = [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
         FrameRates = [15, 30, 60, 120];
-        _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mp4;
-        _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 60;
+        _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mkv;
+        _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 30;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
         _brightness = Math.Clamp(settings.Current.Brightness, -100, 100);
 
@@ -107,6 +108,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         ScreenshotCommand = new RelayCommand(TakeScreenshot, () => CurrentTarget(refreshFollowedWindow: false) is not null);
         ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
         ToggleManualZoomCommand = new RelayCommand(ToggleManualZoom);
+        ToggleMicMuteCommand = new RelayCommand(ToggleMicMute, () => _coordinator.IsRecording && MicEnabled);
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
         SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
@@ -130,6 +132,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand ScreenshotCommand { get; }
     public IRelayCommand ToggleAnnotateCommand { get; }
     public IRelayCommand ToggleManualZoomCommand { get; }
+    public IRelayCommand ToggleMicMuteCommand { get; }
     public IRelayCommand SaveProfileCommand { get; }
     public IRelayCommand DeleteProfileCommand { get; }
 
@@ -159,6 +162,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             if (SetProperty(ref _isScreenSource, value) && value)
             {
                 OnPropertyChanged(nameof(ShowWindowPicker));
+                OnPropertyChanged(nameof(ShowWebcamOverlayCard));
                 RestartPreview();
                 RecordCommand.NotifyCanExecuteChanged();
             }
@@ -175,6 +179,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 LoadWindows();
                 OnPropertyChanged(nameof(ShowWindowPicker));
                 OnPropertyChanged(nameof(ShowFollowWindow));
+                OnPropertyChanged(nameof(ShowWebcamOverlayCard));
                 RestartPreview();
                 RecordCommand.NotifyCanExecuteChanged();
             }
@@ -192,6 +197,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             }
 
             OnPropertyChanged(nameof(ShowRegionInfo));
+            OnPropertyChanged(nameof(ShowWebcamOverlayCard));
             RecordCommand.NotifyCanExecuteChanged();
             if (!value || _selectingRegion)
             {
@@ -210,6 +216,25 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             // is already stored, cancelling keeps it (nothing forces a fallback); otherwise cancelling
             // reverts to Screen since there's no prior region to fall back to.
             PickRegion(revertOnCancel: _region is null);
+        }
+    }
+
+    /// <summary>Webcam as the recording source itself (distinct from the picture-in-picture overlay further
+    /// down the Record screen, which composites a webcam onto another source instead of replacing it) —
+    /// records <see cref="SelectedWebcamDevice"/> directly via <see cref="RecMode.Capture.Webcam.WebcamCaptureEngine"/>.
+    /// The PIP overlay card is hidden while this is selected (see <see cref="ShowWebcamOverlayCard"/>) since
+    /// overlaying a webcam onto itself doesn't mean anything.</summary>
+    public bool IsWebcamSource
+    {
+        get => _isWebcamSource;
+        set
+        {
+            if (SetProperty(ref _isWebcamSource, value) && value)
+            {
+                OnPropertyChanged(nameof(ShowWebcamOverlayCard));
+                RestartPreview();
+                RecordCommand.NotifyCanExecuteChanged();
+            }
         }
     }
 
@@ -326,6 +351,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public bool ShowWindowPicker => IsWindowSource;
     public bool ShowFollowWindow => IsWindowSource;
     public bool ShowRegionInfo => IsRegionSource;
+    public bool ShowWebcamOverlayCard => !IsWebcamSource;
 
     public bool FollowWindowEnabled
     {
@@ -362,7 +388,6 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             {
                 _settings.Current.Codec = value.Codec;
                 _settings.Current.Backend = value.Backend;
-                _settings.Current.HardwareEncoding = value.IsHardware;
                 _settings.RequestSave();
                 OnPropertyChanged(nameof(HardwareBadge));
                 OnPropertyChanged(nameof(QualityLabel));
@@ -415,24 +440,56 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         get
         {
             (int w, int h) = EstimatedResolutionForSizeLabel();
-            int kbps = FfmpegArgsBuilder.EstimateTypicalKbps(w, h, SelectedFrameRate, Quality);
+            int kbps = SelectedEncoder is { } enc0
+                ? FfmpegArgsBuilder.EstimateTypicalKbps(w, h, SelectedFrameRate, Quality, enc0.Codec, enc0.IsHardware)
+                : FfmpegArgsBuilder.EstimateTypicalKbps(w, h, SelectedFrameRate, Quality);
             double mbPerMinute = kbps * 60.0 / 8000.0; // kbit/s -> MB/min (decimal MB, "roughly how big")
             int crf = SelectedEncoder is { } enc ? FfmpegArgsBuilder.EffectiveQualityValue(enc, Quality) : FfmpegArgsBuilder.QualityToCrf(Quality);
             return $"{FfmpegArgsBuilder.QualityTier(Quality)} · ~{mbPerMinute:0.#} MB/min · CRF {crf}";
         }
     }
 
+    private CaptureTarget? _sizeLabelCacheTarget;
+    private (int Width, int Height) _sizeLabelCache;
+
     /// <summary>Best-effort source resolution for <see cref="QualityLabel"/>'s size estimate — the current
     /// capture target's raw size (not the post-<c>CaptureSizing</c> encode size, close enough for an estimate),
-    /// falling back to a common 1080p assumption when no target is selected yet or its size can't be read.</summary>
+    /// falling back to a common 1080p assumption when no target is selected yet or its size can't be read.
+    /// Cached per-target: for a Monitor/Window source, <see cref="CaptureCapabilities.TryGetSourceSize"/>
+    /// creates an actual WGC <c>GraphicsCaptureItem</c> just to read its size — genuinely expensive COM work
+    /// to redo on every <c>QualityLabel</c> read (bound in XAML, re-evaluated on every property-changed
+    /// notification touching it), when the resolved size for an unchanged target never changes.</summary>
+    private static readonly (int Width, int Height) DefaultSizeLabelResolution = (1920, 1080);
+
     private (int Width, int Height) EstimatedResolutionForSizeLabel()
     {
         CaptureTarget? target = CurrentTarget(refreshFollowedWindow: false);
-        if (target is not null && CaptureCapabilities.TryGetSourceSize(target, out int w, out int h))
+        if (target is null)
         {
-            return (w, h);
+            return DefaultSizeLabelResolution;
         }
-        return (1920, 1080);
+
+        if (_sizeLabelCacheTarget is not null && _sizeLabelCacheTarget.Equals(target))
+        {
+            return _sizeLabelCache;
+        }
+
+        // A Webcam target is deliberately not probed here. TryGetSourceSize activates the camera for real
+        // (MediaCapture.InitializeAsync + teardown, ~100-300 ms, blocking) — unacceptable from a data-bound
+        // getter that re-evaluates on every Quality slider tick, which locked the UI solid for the length of
+        // a drag whenever the camera was slow or held by another app. The recording path still probes
+        // properly during preflight, where blocking is expected; this label is documented as a rough anchor,
+        // so the common 720p webcam mode is a good enough basis for it.
+        (int Width, int Height) resolved =
+            target.Kind == CaptureKind.Webcam ? (1280, 720)
+            : CaptureCapabilities.TryGetSourceSize(target, out int w, out int h) ? (w, h)
+            : DefaultSizeLabelResolution;
+
+        // Cached unconditionally, including the fallback. Caching only on success meant a failing probe
+        // (camera busy, window closed, monitor disconnected) was retried on every single read forever.
+        _sizeLabelCacheTarget = target;
+        _sizeLabelCache = resolved;
+        return resolved;
     }
 
     public double Brightness
@@ -467,6 +524,10 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             {
                 OnPropertyChanged(nameof(RecordButtonText));
                 OnPropertyChanged(nameof(CanEditSettings));
+                ToggleMicMuteCommand.NotifyCanExecuteChanged();
+                // Hand the meters over to (or back from) the recording's own mixer, so only one WASAPI
+                // capture graph is ever open at a time — see RefreshMeteringSource.
+                RefreshMeteringSource();
             }
         }
     }
@@ -600,12 +661,17 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// <summary>How much room is left on the output drive — "{used} of {total}" while recording, "{free} free of {total}" at rest.</summary>
     public string DiskSpaceText { get => _diskSpaceText; private set => SetProperty(ref _diskSpaceText, value); }
 
+    // Cache for the "used of total" recording display below — a drive's total capacity is effectively
+    // constant for the life of a recording, so there's no need to re-query it on every progress tick.
+    private string? _cachedTotalRoot;
+    private long _cachedTotalBytes;
+
     /// <summary>Refreshes <see cref="DiskSpaceText"/> against the output folder's drive. Best-effort — a bad path or unready drive just clears the text.</summary>
     private void UpdateDiskSpaceText(long recordingBytes = 0)
     {
         try
         {
-            string outputDir = _settings.Current.OutputFolder ?? _paths.RecordingsDirectory;
+            string outputDir = _paths.ResolveUserPath(_settings.Current.OutputFolder) ?? _paths.RecordingsDirectory;
             string? root = Path.GetPathRoot(Path.GetFullPath(outputDir));
             if (root is null)
             {
@@ -613,6 +679,31 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 return;
             }
 
+            if (recordingBytes > 0)
+            {
+                // This branch is driven by RecordingCoordinator.ProgressChanged (≤ 4 Hz) for the whole
+                // duration of a recording — real DriveInfo reads are actual syscalls, and on a mapped
+                // network-share output folder a stalled server would otherwise stall the UI thread four
+                // times a second. Only re-read the drive when the root actually changes.
+                if (!string.Equals(root, _cachedTotalRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    var driveForTotal = new DriveInfo(root);
+                    if (!driveForTotal.IsReady)
+                    {
+                        DiskSpaceText = "";
+                        return;
+                    }
+
+                    _cachedTotalRoot = root;
+                    _cachedTotalBytes = driveForTotal.TotalSize;
+                }
+
+                DiskSpaceText = $"{FormatBytes(recordingBytes)} of {FormatBytes(_cachedTotalBytes)}";
+                return;
+            }
+
+            // Idle "free of total" view: only refreshed on page navigation and when a recording finishes,
+            // never on the hot progress-tick path, so a fresh read here is fine.
             var drive = new DriveInfo(root);
             if (!drive.IsReady)
             {
@@ -620,10 +711,9 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 return;
             }
 
-            string total = FormatBytes(drive.TotalSize);
-            DiskSpaceText = recordingBytes > 0
-                ? $"{FormatBytes(recordingBytes)} of {total}"
-                : $"{FormatBytes(drive.AvailableFreeSpace)} free of {total}";
+            _cachedTotalRoot = root;
+            _cachedTotalBytes = drive.TotalSize;
+            DiskSpaceText = $"{FormatBytes(drive.AvailableFreeSpace)} free of {FormatBytes(drive.TotalSize)}";
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
         {
@@ -669,18 +759,69 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             StopPreview();
             StopMetering();
         }
-        else if (_isActivePage)
+        else
         {
-            if (!IsRecording)
-            {
-                StartPreview();
-            }
-            StartMetering();
+            TryResumeAfterVisibilityChange();
         }
+    }
+
+    /// <summary>Called whenever the top-level window actually hosting this page (<c>ShellWindow</c> or
+    /// <c>CompactWindow</c> — both share this one <see cref="RecordViewModel"/> instance) is shown or hidden
+    /// via <c>Window.Show()</c>/<c>Hide()</c>, as distinct from OS-level minimize (<see cref="SetWindowMinimized"/>).
+    /// Two real §3.9 gaps this closes that minimize alone didn't cover: a <c>--tray</c> launch, where no window
+    /// is ever shown at all (so preview/metering must never start in the first place, not just stop once
+    /// something notices); and <c>ShellPresenter</c> swapping the active shell layout (Sidebar/TopTab ↔
+    /// Compact), which hides the previous window without minimizing it — previously left its preview/meters
+    /// running for the rest of the session. Defaults to not-visible: nothing is shown until a window's own
+    /// <c>Show()</c> call fires <c>IsVisibleChanged</c>.
+    /// <para><paramref name="hostsPreviewSurfaces"/> — <c>ShellWindow</c> and <c>CompactWindow</c> are not
+    /// interchangeable here: <c>CompactWindow.xaml</c> binds none of <c>PreviewImage</c>/<c>HasPreview</c>/
+    /// <c>SystemMeter</c>/<c>MicMeter</c> (verified — it has only the source tiles and audio enable toggles,
+    /// no meter bars or preview image at all), so starting a full WGC/D3D11 preview session plus live WASAPI
+    /// metering while Compact is the shown window burns §3.9's exact budget for zero observable benefit. Pass
+    /// <c>true</c> from a window that actually displays them, <c>false</c> from one that doesn't — a window
+    /// reporting itself hidden always stops preview/metering regardless of this flag's last value.</para></summary>
+    public void SetWindowVisible(bool visible, bool hostsPreviewSurfaces = true)
+    {
+        IsWindowVisible = visible;
+        _hostsPreviewSurfaces = hostsPreviewSurfaces;
+        if (!visible)
+        {
+            StopPreview();
+            StopMetering();
+        }
+        else
+        {
+            TryResumeAfterVisibilityChange();
+        }
+    }
+
+    private bool _hostsPreviewSurfaces = true;
+
+    /// <summary>Shared by <see cref="SetWindowMinimized"/> and <see cref="SetWindowVisible"/>: re-evaluate
+    /// whether preview/metering should actually (re)start now, given both flags plus the existing
+    /// active-page/recording state. <see cref="StartPreview"/>/<see cref="StartMetering"/> re-check the full
+    /// combined condition themselves, so calling this from either flag's setter is safe regardless of which
+    /// order the two flags settle in.</summary>
+    private void TryResumeAfterVisibilityChange()
+    {
+        if (!_isActivePage || _isWindowMinimized || !_isWindowVisible || !_hostsPreviewSurfaces)
+        {
+            return;
+        }
+
+        if (!IsRecording)
+        {
+            StartPreview();
+        }
+        StartMetering();
     }
 
     private bool _isWindowMinimized;
     public bool IsWindowMinimized { get => _isWindowMinimized; private set => SetProperty(ref _isWindowMinimized, value); }
+
+    private bool _isWindowVisible;
+    public bool IsWindowVisible { get => _isWindowVisible; private set => SetProperty(ref _isWindowVisible, value); }
 
     private bool _isActivePageObservable;
     /// <summary>Mirrors the private <c>_isActivePage</c> field (set in <see cref="OnNavigatedTo"/>/
@@ -697,6 +838,11 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     private CaptureTarget? CurrentTarget(bool refreshFollowedWindow = true)
     {
+        if (IsWebcamSource)
+        {
+            return SelectedWebcamDevice is { } device ? CaptureTarget.FromWebcam(device.Id, device.DisplayName) : null;
+        }
+
         if (IsRegionSource)
         {
             return _region is { } r && SelectedMonitor is { } mon
@@ -764,6 +910,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             Encoders.Add(e);
         }
         SelectedEncoder = PickDefaultEncoder();
+        _autoSelectedEncoder = SelectedEncoder; // remembered so ApplyRecommendedEncoder can tell "still the default" from "user picked this"
         _devicesLoaded = true;
     }
 
@@ -813,6 +960,32 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         return resolved;
     }
 
+    private EncoderInfo? _autoSelectedEncoder;
+
+    /// <summary>
+    /// Applies the first-run encoder benchmark's recommendation to the live Record screen. Writing it to
+    /// settings alone wasn't enough: <see cref="LoadDevices"/> → <see cref="PickDefaultEncoder"/> has almost
+    /// always already run by the time the background benchmark finishes (the Record screen is deliberately
+    /// usable in ~2s), and nothing re-selected afterward — so the "recommended default" only ever took
+    /// effect on the *second* launch, which defeats the point of a first-run benchmark.
+    /// <para>Declines if the user has since picked an encoder themselves, or if a recording is already under
+    /// way — a benchmark result must never change the encoder out from under either.</para>
+    /// </summary>
+    internal void ApplyRecommendedEncoder(VideoCodec codec, EncoderBackend backend)
+    {
+        if (IsRecording || !ReferenceEquals(SelectedEncoder, _autoSelectedEncoder))
+        {
+            return;
+        }
+
+        EncoderInfo? match = Encoders.FirstOrDefault(e => e.Codec == codec && e.Backend == backend);
+        if (match is not null)
+        {
+            SelectedEncoder = match;
+            _autoSelectedEncoder = match;
+        }
+    }
+
     private EncoderInfo? PickDefaultEncoder()
     {
         EncoderInfo? saved = Encoders.FirstOrDefault(e =>
@@ -844,6 +1017,22 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         else
         {
             Application.Current?.Dispatcher.BeginInvoke(action);
+        }
+    }
+
+    /// <summary>Same marshaling as <see cref="Dispatch"/> but at <see cref="System.Windows.Threading.DispatcherPriority.Render"/>
+    /// instead of the default Normal — for high-frequency, non-critical UI work (preview frame writes, up to
+    /// ~30/sec) that shouldn't compete with input/layout at the same priority as state changes users are
+    /// actively waiting on (recording progress, start/stop).</summary>
+    private static void DispatchLowPriority(Action action)
+    {
+        if (Application.Current?.Dispatcher.CheckAccess() == true)
+        {
+            action();
+        }
+        else
+        {
+            Application.Current?.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, action);
         }
     }
 }

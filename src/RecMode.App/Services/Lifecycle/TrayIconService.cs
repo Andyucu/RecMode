@@ -21,6 +21,9 @@ public sealed class TrayIconService : IDisposable
     private Window? _window;
     private TaskbarIcon? _tray;
     private Icon? _icon;
+    private MenuItem? _recentMenu;
+    private ContextMenu? _menu;
+    private Action? _onPresenterChanged;
 
     public TrayIconService(RecordViewModel record) => _record = record;
 
@@ -30,21 +33,29 @@ public sealed class TrayIconService : IDisposable
     {
         _presenter = presenter;
         RewireWindow(presenter.Current);
-        presenter.CurrentChanged += () => RewireWindow(presenter.Current);
+        // Kept in a field so Dispose() can detach it. As a bare lambda it was unremovable, and it captures
+        // the presenter — so a disposed tray service stayed reachable through it. Harmless while both are
+        // singletons, but it made Dispose() silently asymmetric.
+        _onPresenterChanged = () => RewireWindow(presenter.Current);
+        presenter.CurrentChanged += _onPresenterChanged;
 
         _icon = BuildIcon();
 
         var menu = new ContextMenu();
-        menu.Items.Add(MenuItem("Show RecMode", ShowWindow));
-        menu.Items.Add(MenuItem("Start / stop recording", () => { if (_record.RecordCommand.CanExecute(null)) _record.RecordCommand.Execute(null); }));
-        menu.Items.Add(MenuItem("Screenshot", _record.TakeScreenshot));
+        menu.Items.Add(MenuItem(Resources.Strings.Tray_ShowRecMode, ShowWindow));
+        menu.Items.Add(MenuItem(Resources.Strings.Tray_StartStopRecording, () => { if (_record.RecordCommand.CanExecute(null)) _record.RecordCommand.Execute(null); }));
+        menu.Items.Add(MenuItem(Resources.Strings.Record_Screenshot, _record.TakeScreenshot));
+        _recentMenu = new MenuItem { Header = Resources.Strings.Tray_Recent };
+        menu.Items.Add(_recentMenu);
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuItem("Quit", () => Application.Current.Shutdown()));
+        menu.Items.Add(MenuItem(Resources.Strings.Tray_Quit, () => Application.Current.Shutdown()));
+        menu.Opened += OnMenuOpened;
+        _menu = menu;
 
         _tray = new TaskbarIcon
         {
             Icon = _icon,
-            ToolTipText = "RecMode",
+            ToolTipText = Resources.Strings.App_Name,
             ContextMenu = menu,
         };
         _tray.TrayMouseDoubleClick += (_, _) => ShowWindow();
@@ -71,6 +82,32 @@ public sealed class TrayIconService : IDisposable
     }
 
     private void ShowWindow() => _presenter?.Show();
+
+    private void OnMenuOpened(object sender, RoutedEventArgs e) => RefreshRecentMenu();
+
+    /// <summary>Rebuilt every time the tray menu is about to open (not change-tracked) — cheap (at most 3
+    /// items) and avoids wiring a live-update event for a list that only ever changes right when a recording
+    /// starts, which is exactly when this menu isn't open anyway.</summary>
+    private void RefreshRecentMenu()
+    {
+        if (_recentMenu is null)
+        {
+            return;
+        }
+
+        _recentMenu.Items.Clear();
+        if (_record.RecentTargets.Count == 0)
+        {
+            _recentMenu.IsEnabled = false;
+            return;
+        }
+
+        _recentMenu.IsEnabled = true;
+        foreach (RecMode.Capture.CaptureTarget target in _record.RecentTargets)
+        {
+            _recentMenu.Items.Add(MenuItem(target.DisplayName, () => _record.QuickRecordFromTray(target)));
+        }
+    }
 
     private static MenuItem MenuItem(string header, Action action)
     {
@@ -114,6 +151,18 @@ public sealed class TrayIconService : IDisposable
         if (_window is not null)
         {
             _window.StateChanged -= OnStateChanged;
+        }
+
+        if (_presenter is not null && _onPresenterChanged is not null)
+        {
+            _presenter.CurrentChanged -= _onPresenterChanged;
+            _onPresenterChanged = null;
+        }
+
+        if (_menu is not null)
+        {
+            _menu.Opened -= OnMenuOpened;
+            _menu = null;
         }
 
         _tray?.Dispose();

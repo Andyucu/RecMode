@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,12 +16,6 @@ namespace RecMode.App.Views;
 /// </summary>
 public partial class WindowPickerOverlay : Window
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-
-    private const uint SWP_NOZORDER = 0x0004;
-    private const uint SWP_NOACTIVATE = 0x0010;
-
     private int _originX;
     private int _originY;
     private double _dpiScale = 1.0;
@@ -49,7 +42,7 @@ public partial class WindowPickerOverlay : Window
         int height = monitors.Max(m => m.Y + m.Height) - _originY;
 
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        SetWindowPos(hwnd, IntPtr.Zero, _originX, _originY, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+        OverlayWindowStyle.SetBounds(hwnd, _originX, _originY, width, height);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

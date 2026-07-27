@@ -2,9 +2,17 @@ namespace RecMode.Core.Recording;
 
 /// <summary>
 /// The single recording state machine (plan §3.7). Owns legal transitions, the record→pause→finalize
-/// lifecycle, and the pause PTS math that keeps output gapless. This is deliberately UI-free and
-/// side-effect-free beyond raising <see cref="StateChanged"/>: capture/audio/encoder subsystems subscribe
-/// and react. Not thread-safe — callers marshal onto one thread (the UI/dispatcher).
+/// lifecycle, and the pause PTS math that keeps output gapless. Deliberately UI-free and entirely
+/// side-effect-free: it never calls out to anything.
+/// <para>Thread-safe — every member reads and writes under <c>_sync</c>, which it has to be: the UI thread
+/// drives transitions while the pacer and audio-pump threads concurrently read <see cref="State"/> and
+/// <see cref="Elapsed"/> on every frame.</para>
+/// <para>Consumers <em>poll</em> this rather than subscribing (see <c>RecordingCoordinator.PaceLoop</c>).
+/// A <c>StateChanged</c> event previously existed, and this comment claimed capture/audio/encoder subsystems
+/// subscribed to it — no production code ever did; its only subscriber was one unit test. It was removed
+/// rather than left as a trap: it was raised while holding <c>_sync</c>, so the first handler that marshalled
+/// to the UI thread would have deadlocked against a UI thread already blocked reading <see cref="Elapsed"/>.
+/// Reintroduce it only with the invoke moved outside the lock.</para>
 /// </summary>
 public sealed class RecordingStateMachine
 {
@@ -27,8 +35,6 @@ public sealed class RecordingStateMachine
     {
         get { lock (_sync) { return _state; } }
     }
-
-    public event EventHandler<RecordingStateChangedEventArgs>? StateChanged;
 
     /// <summary>True once recording has begun and not yet finalized.</summary>
     public bool IsActive => State is RecordingState.Recording or RecordingState.Paused;
@@ -120,6 +126,42 @@ public sealed class RecordingStateMachine
         }
     }
 
+    /// <summary>Same as <see cref="Pause"/> but returns false instead of throwing when not currently
+    /// Recording. Callers with more than one thread that can independently decide to pause (a UI action
+    /// racing the pacer thread's own disk-critical guard, for example) should use this so the loser of the
+    /// race is a harmless no-op rather than an unhandled InvalidOperationException.</summary>
+    public bool TryPause()
+    {
+        lock (_sync)
+        {
+            if (_state != RecordingState.Recording)
+            {
+                return false;
+            }
+
+            _pausedAt = _clock.Elapsed;
+            Transition(RecordingState.Paused);
+            return true;
+        }
+    }
+
+    /// <summary>Same as <see cref="Resume"/> but returns false instead of throwing when not currently Paused.
+    /// See <see cref="TryPause"/> for why.</summary>
+    public bool TryResume()
+    {
+        lock (_sync)
+        {
+            if (_state != RecordingState.Paused)
+            {
+                return false;
+            }
+
+            _totalPaused += _clock.Elapsed - _pausedAt;
+            Transition(RecordingState.Recording);
+            return true;
+        }
+    }
+
     /// <summary>Recording/Paused → Finalizing (flush, faststart/remux, library entry, toast).</summary>
     public void Stop()
     {
@@ -162,15 +204,5 @@ public sealed class RecordingStateMachine
     private InvalidOperationException InvalidTransition(string what) =>
         new($"Invalid recording transition from {_state} ({what}).");
 
-    private void Transition(RecordingState next)
-    {
-        RecordingState previous = _state;
-        if (previous == next)
-        {
-            return;
-        }
-
-        _state = next;
-        StateChanged?.Invoke(this, new RecordingStateChangedEventArgs(previous, next));
-    }
+    private void Transition(RecordingState next) => _state = next;
 }

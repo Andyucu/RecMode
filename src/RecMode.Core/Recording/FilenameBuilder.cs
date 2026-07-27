@@ -8,6 +8,11 @@ namespace RecMode.Core.Recording;
 /// </summary>
 public static class FilenameBuilder
 {
+    // Windows paths top out around 260 chars total, so no legitimate expanded name is anywhere near this —
+    // it exists purely to bound the settings-driven filename pattern (free-text, unbounded in the Settings
+    // UI) before Sanitize ever sees it.
+    private const int MaxNameLength = 200;
+
     public static string BuildFileName(string pattern, DateTimeOffset when, string source, string codec, string extension)
     {
         string expanded = (string.IsNullOrWhiteSpace(pattern) ? "RecMode {date} {time}" : pattern)
@@ -15,6 +20,10 @@ public static class FilenameBuilder
             .Replace("{time}", when.ToString("HH-mm-ss", CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{source}", source, StringComparison.Ordinal)
             .Replace("{codec}", codec, StringComparison.Ordinal);
+        if (expanded.Length > MaxNameLength)
+        {
+            expanded = expanded[..MaxNameLength];
+        }
 
         string safe = Sanitize(expanded);
         return $"{safe}.{extension.TrimStart('.')}";
@@ -61,14 +70,18 @@ public static class FilenameBuilder
 
     private static string Sanitize(string name)
     {
-        Span<char> buffer = stackalloc char[name.Length];
+        // Heap-allocated rather than stackalloc'd: name's length traces back to the free-text filename
+        // pattern in Settings, which BuildFileName bounds but this method has no way to re-verify on its
+        // own — an unbounded stackalloc here would be an uncatchable StackOverflowException waiting to
+        // happen the moment that guarantee is ever violated by a future caller.
+        char[] buffer = new char[name.Length];
         int n = 0;
         foreach (char c in name)
         {
             buffer[n++] = Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c;
         }
 
-        string result = new string(buffer[..n]).Trim();
+        string result = new string(buffer, 0, n).Trim();
         return result.Length == 0 ? "RecMode" : result;
     }
 }

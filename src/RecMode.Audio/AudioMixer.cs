@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using Serilog;
 
 namespace RecMode.Audio;
 
@@ -33,7 +34,7 @@ public sealed class AudioMixer : IAudioMixer
     public AudioLevel SystemLevel => _system?.Level ?? AudioLevel.Silent;
     public AudioLevel MicLevel => _mic?.Level ?? AudioLevel.Silent;
 
-    public AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null)
+    public AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null, bool meteringOnly = false)
     {
         if (IsRunning)
         {
@@ -42,45 +43,54 @@ public sealed class AudioMixer : IAudioMixer
 
         if (captureSystem)
         {
+            // `capture` is tracked separately from `system`: the MixSource constructor reads
+            // capture.WaveFormat, which lazily queries the device's mix format and can genuinely throw — at
+            // which point `system` is still null, so disposing only via `system` left the IWaveIn (holding a
+            // live IAudioClient/MMDevice) undisposed. Same shape for the mic below.
+            IWaveIn? capture = null;
             MixSource? system = null;
             try
             {
-                IWaveIn loopback = targetProcessId is int pid
+                capture = targetProcessId is int pid
                     ? new ProcessLoopback.ProcessLoopbackCapture(pid)
                     : new WasapiLoopbackCapture();
-                system = new MixSource(loopback);
+                system = new MixSource(capture, meteringOnly);
                 system.Start();
                 _system = system;
             }
-            catch (Exception) when (targetProcessId is not null)
+            catch (Exception ex) when (targetProcessId is not null)
             {
                 // Target process gone/activation failed — fail closed (no system audio) rather than
                 // silently substituting full-system loopback, which the user didn't ask for.
-                system?.Dispose();
+                Log.Warning(ex, "Per-app audio loopback failed for PID {Pid}; system audio disabled for this recording", targetProcessId);
+                DisposeFailedSource(system, capture);
                 _system = null;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Loopback device unavailable/exclusive-mode conflict — continue without system audio.
-                system?.Dispose();
+                Log.Warning(ex, "System-audio loopback capture failed to start; continuing without system audio");
+                DisposeFailedSource(system, capture);
                 _system = null;
             }
         }
 
         if (captureMic)
         {
+            IWaveIn? capture = null;
             MixSource? micSource = null;
             try
             {
-                var mic = new WasapiCapture(); // default capture device, shared mode
-                micSource = new MixSource(mic);
+                capture = new WasapiCapture(); // default capture device, shared mode
+                micSource = new MixSource(capture, meteringOnly);
                 micSource.Start();
                 _mic = micSource;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // No mic / unavailable — continue with system only.
-                micSource?.Dispose();
+                Log.Warning(ex, "Microphone capture failed to start; continuing without microphone audio");
+                DisposeFailedSource(micSource, capture);
                 _mic = null;
             }
         }
@@ -94,6 +104,34 @@ public sealed class AudioMixer : IAudioMixer
             MicRequested = captureMic,
             MicStarted = _mic is not null,
         };
+    }
+
+    /// <summary>Cleans up a half-constructed source. When <paramref name="source"/> exists it owns (and
+    /// disposes) the capture; when construction failed before that, the capture has to be disposed directly
+    /// or its IAudioClient/MMDevice leaks — which on the mic path leaves Windows' "microphone in use"
+    /// indicator lit for the rest of the process.</summary>
+    private static void DisposeFailedSource(MixSource? source, IWaveIn? capture)
+    {
+        if (source is not null)
+        {
+            source.Dispose();
+            return;
+        }
+
+        try
+        {
+            capture?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Disposing a failed audio capture threw; ignoring");
+        }
+    }
+
+    public void ClearBuffers()
+    {
+        _system?.ClearBuffer();
+        _mic?.ClearBuffer();
     }
 
     public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token)
