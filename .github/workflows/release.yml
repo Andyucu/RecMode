@@ -32,6 +32,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Build gate (Release, warnings as errors)
+        # Directory.Build.props is intentionally untracked (see CLAUDE.md's standing "never stage/commit"
+        # list) — it never reaches this checkout, so without explicitly restating the properties it would
+        # normally supply, this build silently skips TreatWarningsAsErrors/EnforceCodeStyleInBuild and could
+        # cut a release from code that wouldn't even pass the same gate ci.yml already applies on every push.
+        # This mirrors ci.yml's own build step for exactly that reason, run here too since release.yml can be
+        # dispatched manually without ci.yml having run against this exact commit first.
+        run: >
+          dotnet build RecMode.slnx -c Release
+          -p:TreatWarningsAsErrors=true -p:EnforceCodeStyleInBuild=true
+
       - name: Install packaging tools and bundled FFmpeg
         shell: pwsh
         run: |
@@ -41,6 +52,19 @@ jobs:
           "$env:RUNNER_TEMP\wix" | Out-File -FilePath $env:GITHUB_PATH -Append
           $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
           Invoke-WebRequest 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' -OutFile $archive
+
+          # BtbN publishes no versioned/dated tags for this build - 'latest' is a single release whose asset
+          # BtbN silently replaces in place on every rebuild, which is exactly what let this workflow re-pin
+          # ffmpeg on every release with zero gate. .github/ffmpeg-pin.json records the SHA-256 of the exact
+          # bytes last independently reviewed; this step fails the release on purpose the moment BtbN's asset
+          # no longer matches it, forcing a deliberate, reviewed, committed update to the pin instead of a
+          # silent swap.
+          $pin = Get-Content (Join-Path $PWD '.github\ffmpeg-pin.json') -Raw | ConvertFrom-Json
+          $actualHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $pin.sha256) {
+            throw "ffmpeg build hash mismatch: BtbN's 'latest' win64-gpl.zip is now $actualHash, pinned value in .github/ffmpeg-pin.json is $($pin.sha256). BtbN has republished 'latest' with new content. Independently download and verify the new build, then deliberately update ffmpeg-pin.json to accept it - do not just copy the new hash without reviewing what changed."
+          }
+
           $extract = Join-Path $env:RUNNER_TEMP 'ffmpeg'
           Expand-Archive $archive -DestinationPath $extract
           $bin = Get-ChildItem $extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
@@ -76,6 +100,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $release, $portable, $installer | Out-Null
 
           dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:RecModePortable=true -p:Version=$env:VERSION -o $portable
+          # PDBs can embed the building machine's absolute source paths; a shipped end-user zip has no use for
+          # them (this app's own local-minidump crash reporter + Serilog logging don't need them either).
+          Get-ChildItem $portable -Filter *.pdb | Remove-Item -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $portable 'ffmpeg') | Out-Null
           Copy-Item "$env:RUNNER_TEMP\ffmpeg-bin\*" (Join-Path $portable 'ffmpeg') -Recurse -Force
           Copy-Item LICENSE $portable -Force
@@ -83,6 +110,7 @@ jobs:
           Compress-Archive -Path (Join-Path $portable '*') -DestinationPath "$portable.zip" -Force
 
           dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:RecModePortable=false -p:Version=$env:VERSION -o $installer
+          Get-ChildItem $installer -Filter *.pdb | Remove-Item -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $installer 'ffmpeg') | Out-Null
           Copy-Item "$env:RUNNER_TEMP\ffmpeg-bin\*" (Join-Path $installer 'ffmpeg') -Recurse -Force
           Copy-Item LICENSE $installer -Force

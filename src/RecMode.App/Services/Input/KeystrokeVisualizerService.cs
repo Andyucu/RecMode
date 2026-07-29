@@ -46,7 +46,7 @@ public sealed class KeystrokeVisualizerService(RecordViewModel record, ISettings
             return;
         }
 
-        _overlay = new KeystrokeOverlayWindow();
+        _overlay = new KeystrokeOverlayWindow(record.ActiveCaptureTarget);
         _overlay.Show();
         hook.KeyDown += OnKeyDown;
         hook.Install();

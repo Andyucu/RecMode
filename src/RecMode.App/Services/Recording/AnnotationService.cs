@@ -30,7 +30,22 @@ public sealed class AnnotationService(RecordViewModel record, IOsCapabilities os
     {
         record.PropertyChanged += OnPropertyChanged;
         hotkeys.Pressed += OnHotkeyPressed;
+        hotkeys.Cleared += OnHotkeysCleared;
         _hooked = true;
+    }
+
+    /// <summary>A hotkey remap wipes every global hotkey process-wide, including our Esc/F12 exit shortcuts —
+    /// without this, they stayed stale (unregistered) for the rest of an active draw session with no error,
+    /// silently leaving the overlay's own Esc handler as the only working way to exit.</summary>
+    private void OnHotkeysCleared()
+    {
+        _escapeHotkeyId = -1;
+        _exitHotkeyId = -1;
+        if (_overlay is not null)
+        {
+            _escapeHotkeyId = hotkeys.Register(0, VirtualKeys.Escape);
+            _exitHotkeyId = hotkeys.Register(0, VirtualKeys.F12);
+        }
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -139,6 +154,7 @@ public sealed class AnnotationService(RecordViewModel record, IOsCapabilities os
         if (_hooked)
         {
             hotkeys.Pressed -= OnHotkeyPressed;
+            hotkeys.Cleared -= OnHotkeysCleared;
         }
 
         Hide();

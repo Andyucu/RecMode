@@ -36,7 +36,28 @@ jobs:
         continue-on-error: true
 
       - name: Dependency vulnerability audit
-        run: dotnet list RecMode.slnx package --vulnerable --include-transitive
+        shell: pwsh
+        run: |
+          # `dotnet list package --vulnerable` always exits 0 — it's a reporting tool, not a gate — so this
+          # step used to stay green on CI regardless of what it actually printed. In --vulnerable mode the CLI
+          # only lists packages that ARE vulnerable (a clean dependency tree reports none at all under
+          # top/transitivePackages), so a non-empty list here is unambiguous; --format json makes that
+          # machine-checkable instead of scraping the human-readable table.
+          $json = dotnet list RecMode.slnx package --vulnerable --include-transitive --format json | Out-String
+          $data = $json | ConvertFrom-Json
+          $vulnerable = @()
+          foreach ($project in $data.projects) {
+            foreach ($framework in $project.frameworks) {
+              if ($framework.topLevelPackages) { $vulnerable += $framework.topLevelPackages }
+              if ($framework.transitivePackages) { $vulnerable += $framework.transitivePackages }
+            }
+          }
+          if ($vulnerable.Count -gt 0) {
+            Write-Host "::error::Vulnerable package(s) found:"
+            $vulnerable | ForEach-Object { Write-Host "  $($_.id) $($_.resolvedVersion)" }
+            exit 1
+          }
+          Write-Host "No vulnerable packages found."
 
       - name: Portable packaging smoke test
         shell: pwsh

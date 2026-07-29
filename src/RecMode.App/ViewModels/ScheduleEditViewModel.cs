@@ -14,6 +14,7 @@ public sealed class ScheduleEditViewModel : ObservableObject
     private DayOfWeek _selectedWeeklyDay;
     private string _selectedProfileOption;
     private DateTime _onceDate;
+    private readonly DateTimeOffset? _originalOnceAt;
 
     public ScheduleEditViewModel(ScheduleItem source, IReadOnlyList<string> profileNames)
     {
@@ -22,6 +23,7 @@ public sealed class ScheduleEditViewModel : ObservableObject
         _time = source.Time;
         _durationMinutes = source.DurationMinutes;
         _onceDate = (source.OnceAt ?? DateTimeOffset.Now.AddMinutes(30)).LocalDateTime.Date;
+        _originalOnceAt = source.OnceAt;
         _selectedWeeklyDay = source.WeeklyDay ?? source.LastFiredUtc?.ToLocalTime().DayOfWeek ?? DateTime.Today.DayOfWeek;
 
         ProfileOptions = [FollowRecordSettingsOption, .. profileNames];
@@ -73,6 +75,18 @@ public sealed class ScheduleEditViewModel : ObservableObject
         else
         {
             target.OnceAt = null;
+        }
+
+        // ScheduleEvaluator.IsOnceDue treats any non-null LastFiredUtc as "this Once schedule already ran,
+        // never again" — full stop, regardless of OnceAt. Without this, editing a fired Once schedule to a
+        // new date and re-enabling it looked like it worked (the row showed "On", the new date showed in the
+        // editor) but the schedule silently never fired again. Only reset when the target date/time actually
+        // moved — a plain rename or profile-only edit shouldn't resurrect a schedule that genuinely already
+        // ran at its original, unchanged time.
+        if (SelectedRecurrence == ScheduleRecurrence.Once && target.OnceAt != _originalOnceAt)
+        {
+            target.LastFiredUtc = null;
+            target.LastFiredOccurrence = null;
         }
     }
 }

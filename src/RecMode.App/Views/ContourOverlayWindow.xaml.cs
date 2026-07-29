@@ -253,8 +253,15 @@ public partial class ContourOverlayWindow : Window
     {
         int right = rect.X + rect.Width;
         int bottom = rect.Y + rect.Height;
-        int x = Math.Clamp(rect.X, bounds.X, right - minSize);
-        int y = Math.Clamp(rect.Y, bounds.Y, bottom - minSize);
+
+        // Math.Clamp throws ArgumentException if min > max. Dragging a corner far enough past the opposite
+        // edge of the monitor (e.g. the bottom-right handle dragged left past the fixed left edge) drives
+        // Width/Height negative, which can push right/bottom below bounds.X/Y + minSize — inverting the
+        // clamp range on live mouse input. Widening the upper bound to never fall below the lower one keeps
+        // Math.Clamp's precondition satisfied instead of crashing mid-drag (and, if a recording is in
+        // progress, taking it down with the process).
+        int x = Math.Clamp(rect.X, bounds.X, Math.Max(bounds.X, right - minSize));
+        int y = Math.Clamp(rect.Y, bounds.Y, Math.Max(bounds.Y, bottom - minSize));
         right = Math.Min(right, bounds.X + bounds.Width);
         bottom = Math.Min(bottom, bounds.Y + bounds.Height);
         int w = Math.Max(minSize, right - x);

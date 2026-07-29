@@ -13,8 +13,10 @@ public interface IStartupManager
     void SetEnabled(bool enabled);
 
     /// <summary>Self-heals a Run-key entry left pointing at a portable install that's since moved. Call once
-    /// at every launch.</summary>
-    void ReconcileAfterMove();
+    /// at every launch. <paramref name="userOptedIntoStartup"/> must be this install's own persisted
+    /// "start with Windows" setting — reconciliation only ever touches the key when this install itself opted
+    /// in, so a copy that never enabled the setting can never silently adopt someone else's stale entry.</summary>
+    void ReconcileAfterMove(bool userOptedIntoStartup);
 }
 
 /// <summary>
@@ -78,9 +80,22 @@ public sealed class StartupManager : IStartupManager
     /// sign-in. Called once per launch: if a registered path no longer exists on disk at all — unambiguous
     /// proof the folder moved, not just a coincidentally different install — re-points the entry at the
     /// current exe instead, preserving what was almost certainly still-wanted "start with Windows" intent
-    /// rather than leaving a dead reference or silently turning the feature off.</summary>
-    public void ReconcileAfterMove()
+    /// rather than leaving a dead reference or silently turning the feature off.
+    /// <para>
+    /// Gated on <paramref name="userOptedIntoStartup"/>: without it, a copy of RecMode that has never itself
+    /// opted into "start with Windows" — extracted once just to try it, run, and later deleted — could silently
+    /// adopt an existing stale Run-key entry left by a different install the moment that install's own exe
+    /// stopped existing on disk (e.g. that other copy was itself deleted), registering itself to autostart with
+    /// no prompt, no UI feedback, and no consent from whoever ran it. Requiring this install's own persisted
+    /// opt-in means reconciliation only ever repoints an entry *this* install's user actually asked for.
+    /// </para></summary>
+    public void ReconcileAfterMove(bool userOptedIntoStartup)
     {
+        if (!userOptedIntoStartup)
+        {
+            return;
+        }
+
         try
         {
             using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);

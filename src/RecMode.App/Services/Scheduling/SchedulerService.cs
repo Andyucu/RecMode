@@ -29,6 +29,13 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
     private bool _scheduledRecordingActive;
     private bool _started;
 
+    // RecordViewModel.StartRecordingFromCli() now runs pre-flight/encoder-startup on a background thread and
+    // returns a Task<bool> that only completes once a recording has actually started (or failed) — often
+    // several seconds later. Without this guard, a Fire() whose Task hasn't resolved yet left every check in
+    // Tick() (coordinator.IsRecording in particular) still reading false, so the next ~20s tick would see the
+    // same schedule as still due and fire it a second time before the first attempt had even finished.
+    private bool _fireInFlight;
+
     public void Start()
     {
         if (_started)
@@ -69,26 +76,32 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             return; // let the next tick evaluate a fresh state
         }
 
-        if (coordinator.IsRecording)
+        if (coordinator.IsRecording || _fireInFlight)
         {
-            return; // never interrupt an in-progress (manual or scheduled) recording
+            return; // never interrupt an in-progress (manual or scheduled) recording, or double-fire mid-start
         }
 
         foreach (ScheduleItem item in settings.Current.Schedules)
         {
             if (ScheduleEvaluator.IsDue(item, now))
             {
-                Fire(item, now);
+                _fireInFlight = true;
+                _ = Fire(item, now); // fire-and-forget from this tick; Tick() must not block on encoder startup
                 break; // one at a time
             }
         }
     }
 
-    private void Fire(ScheduleItem item, DateTimeOffset now)
+    private async System.Threading.Tasks.Task Fire(ScheduleItem item, DateTimeOffset now)
     {
         Log.Information("Firing schedule {Name} ({Recurrence} @ {Time}, {Dur} min)",
             item.Name, item.Recurrence, item.Time, item.DurationMinutes);
 
+        // Bound the profile's lifetime to cover the *actual* async start, not just the synchronous kick-off —
+        // otherwise ApplyProfileForSchedule's restore (in the IDisposable returned below) ran microseconds
+        // after Task.Run was queued and always won the race against RecordingCoordinator.Start() reading
+        // audio settings from _settings.Current on its own background thread, silently recording with the
+        // Record screen's audio state instead of the schedule-bound profile's.
         IDisposable? scheduledProfile = null;
         if (item.ProfileName is not null)
         {
@@ -104,17 +117,19 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             }
         }
 
+        bool started;
         try
         {
             record.EnsureDevicesLoaded();
-            record.StartRecordingFromCli();
+            started = await record.StartRecordingFromCli().ConfigureAwait(true);
         }
         finally
         {
             scheduledProfile?.Dispose();
+            _fireInFlight = false;
         }
 
-        if (coordinator.IsRecording)
+        if (started)
         {
             // Mark success only after a recording has actually started. A broken target/output remains visible
             // and can be retried after the user fixes it rather than silently disabling a one-time schedule.

@@ -64,7 +64,18 @@ public partial class App : Application
             _singleInstance = new Services.SingleInstance();
             if (!_singleInstance.TryAcquireOwnership())
             {
-                Services.SingleInstance.TryForwardToPrimary(e.Args);
+                // The mutex is only ever released by the OS on process exit, so failing to acquire it means
+                // some RecMode process is genuinely still alive — but its pipe might not be listening yet, or
+                // ever (hung instance, or a same-user squatter the SID check correctly refused to trust). A
+                // discarded result here used to make this instance vanish silently in exactly that case: the
+                // user's command line (including a plain double-click) went nowhere and nothing launched.
+                if (!Services.SingleInstance.TryForwardToPrimary(e.Args))
+                {
+                    MessageBox.Show(
+                        "RecMode appears to already be running, but couldn't be reached to hand off this request.\n\n" +
+                        "Check Task Manager for an existing RecMode process; if none is genuinely running, this may be a stale lock left behind by a crash.",
+                        "RecMode", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
                 Shutdown(0);
                 return;
             }
@@ -203,6 +214,19 @@ public partial class App : Application
         {
             _presenter.Show();
         }
+        else
+        {
+            // A shown window's IsVisibleChanged is what normally triggers ShellViewModel.EnsureInitialPageLoaded
+            // → RecordViewModel.LoadDevices() — which never fires here, since no window is ever shown. Without
+            // this, Monitors/Encoders/SelectedEncoder all stay empty for the entire headless session: F9, the
+            // tray "Start/stop recording" menu item, and tray Screenshot all silently no-op (RecordCommand.
+            // CanExecute needs a resolved source + encoder), with no error and nothing logged. This is exactly
+            // the launch mode "Start with Windows" uses (StartupManager registers "<exe>" --tray), so a user who
+            // enables that setting and never opens the window at least once would find every tray/hotkey action
+            // dead. EnsureDevicesLoaded() is idempotent, so this is harmless even if a later CLI action
+            // (--tray --record) or opening the window also calls it.
+            _host.Services.GetRequiredService<ViewModels.RecordViewModel>().EnsureDevicesLoaded();
+        }
 
         // MVP UX: global hotkeys + tray icon (Phase 5). Resolved on the UI thread (hotkeys need a message pump).
         _host.Services.GetRequiredService<Services.HotkeyBindings>().Register();
@@ -222,8 +246,10 @@ public partial class App : Application
         System.Threading.Tasks.Task.Run(recovery.RecoverOrphans);
 
         // Self-heal a "start with Windows" Run-key entry left pointing at a portable install that's since
-        // moved (see StartupManager.ReconcileAfterMove) - a no-op for everyone who never enabled it.
-        _host.Services.GetRequiredService<Services.IStartupManager>().ReconcileAfterMove();
+        // moved (see StartupManager.ReconcileAfterMove) - a no-op for everyone who never enabled it. Gated on
+        // this install's own persisted opt-in, not just on there being a stale entry at all — see the method
+        // doc for why.
+        _host.Services.GetRequiredService<Services.IStartupManager>().ReconcileAfterMove(settings.Current.StartWithWindows);
 
         // Launch-time update check (plan §3.5): notify only, never auto-apply without the user explicitly
         // clicking "Update & restart" in Settings. Silent for NotConfigured/UpToDate/Failed — only a real
@@ -275,7 +301,7 @@ public partial class App : Application
 
         if (options.Record && !coordinator.IsRecording && record.RecordCommand.CanExecute(null))
         {
-            record.StartRecordingFromCli(); // automation starts immediately (no pre-roll countdown)
+            _ = record.StartRecordingFromCli(); // automation starts immediately (no pre-roll countdown)
         }
 
         if (options.Stop && coordinator.IsRecording)
@@ -365,14 +391,19 @@ public partial class App : Application
 
         _crash?.MarkSessionEndedCleanly();
         Log.Information("RecMode exiting cleanly");
-        Log.CloseAndFlush();
 
         _singleInstance?.Dispose();
 
+        // Host disposal tears down every DI-registered service (trackers, watchers, hooks, etc.), several of
+        // which log from their own Dispose() — closing the logger before this ran silently swallowed exactly
+        // the diagnostics a shutdown-time bug would need. Log.CloseAndFlush() must be the last thing this
+        // method does.
         if (_host is not null)
         {
             _host.Dispose();
         }
+
+        Log.CloseAndFlush();
 
         base.OnExit(e);
     }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 using RecMode.App.Services;
 using RecMode.Capture;
 using RecMode.Core.Recording;
@@ -42,24 +43,32 @@ public sealed partial class RecordViewModel
             return; // already starting (e.g. mid pre-roll countdown) — ignore the extra press
         }
 
-        StartRecording(withCountdown: true); // interactive start (button/hotkey/tray) honours the countdown setting
+        _ = StartRecording(withCountdown: true); // interactive start (button/hotkey/tray) honours the countdown setting
     }
 
-    /// <summary>Starts recording without the pre-roll countdown — for CLI automation (<c>--record</c>), which means "now".</summary>
-    public void StartRecordingFromCli()
+    /// <summary>Starts recording without the pre-roll countdown — for CLI automation (<c>--record</c>), which
+    /// means "now". Returns whether the recording actually started, once it has (not merely been kicked off) —
+    /// <see cref="RecordingCoordinator.Start"/> itself runs on a background thread, so a caller that checked
+    /// <see cref="IsRecording"/> synchronously right after this method returned would always see it still
+    /// false: pre-flight, webcam activation, and encoder startup ("can take several seconds", per
+    /// <see cref="StartRecording"/>'s own comment) all happen before the state machine transitions. This is
+    /// what <see cref="Services.SchedulerService.Fire"/> awaits instead.</summary>
+    public Task<bool> StartRecordingFromCli()
     {
-        if (!_coordinator.IsRecording && !_startInFlight)
+        if (_coordinator.IsRecording || _startInFlight)
         {
-            StartRecording(withCountdown: false);
+            return Task.FromResult(false);
         }
+
+        return StartRecording(withCountdown: false);
     }
 
-    private void StartRecording(bool withCountdown)
+    private Task<bool> StartRecording(bool withCountdown)
     {
         CaptureTarget? target = CurrentTarget();
         if (target is null || SelectedEncoder is null)
         {
-            return;
+            return Task.FromResult(false);
         }
 
         _startInFlight = true;
@@ -73,7 +82,7 @@ public sealed partial class RecordViewModel
             {
                 _startInFlight = false;
                 StartPreview(); // cancelled during countdown; bring preview back
-                return;
+                return Task.FromResult(false);
             }
         }
 
@@ -91,8 +100,14 @@ public sealed partial class RecordViewModel
         int quality = Quality;
         StatusText = Resources.Strings.Record_StatusStarting;
 
-        _ = System.Threading.Tasks.Task.Run(() => _coordinator.Start(target, encoder, container, fps, quality))
-            .ContinueWith(
+        // The returned task completes with the real outcome as soon as _coordinator.Start() itself returns —
+        // deliberately not chained after the UI-thread dispatch below, which is fire-and-forget via
+        // BeginInvoke and could complete anywhere from immediately to several message-loop turns later. A
+        // caller that needs to know "did the recording actually start" (SchedulerService.Fire, in particular)
+        // awaits this directly rather than racing that dispatch.
+        Task<bool> startTask = System.Threading.Tasks.Task.Run(() => _coordinator.Start(target, encoder, container, fps, quality));
+
+        _ = startTask.ContinueWith(
                 t => Dispatch(() =>
                 {
                     // _startInFlight stays true across the whole async start, so a second F9/tray click
@@ -120,6 +135,8 @@ public sealed partial class RecordViewModel
                     }
                 }),
                 System.Threading.Tasks.TaskScheduler.Default);
+
+        return startTask;
     }
 
     private void TogglePause()

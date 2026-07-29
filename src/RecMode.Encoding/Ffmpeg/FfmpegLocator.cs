@@ -182,20 +182,36 @@ public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : 
         bool ffmpegPinned = !string.IsNullOrWhiteSpace(manifest.FfmpegSha256);
         bool ffprobePinned = File.Exists(ffprobePath) && !string.IsNullOrWhiteSpace(manifest.FfprobeSha256);
 
-        if (ffmpegPinned && !Matches(manifest.FfmpegSha256, ffmpegPath))
+        try
         {
-            return (false, RecModeError.Blocking(
-                "ffmpeg.hash-mismatch",
-                "The bundled ffmpeg.exe doesn't match its pinned hash.",
-                "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
-        }
+            if (ffmpegPinned && !Matches(manifest.FfmpegSha256, ffmpegPath))
+            {
+                return (false, RecModeError.Blocking(
+                    "ffmpeg.hash-mismatch",
+                    "The bundled ffmpeg.exe doesn't match its pinned hash.",
+                    "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
+            }
 
-        if (ffprobePinned && !Matches(manifest.FfprobeSha256, ffprobePath))
+            if (ffprobePinned && !Matches(manifest.FfprobeSha256, ffprobePath))
+            {
+                return (false, RecModeError.Blocking(
+                    "ffprobe.hash-mismatch",
+                    "The bundled ffprobe.exe doesn't match its pinned hash.",
+                    "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return (false, RecModeError.Blocking(
-                "ffprobe.hash-mismatch",
-                "The bundled ffprobe.exe doesn't match its pinned hash.",
-                "The build may have been modified or corrupted. Reinstall RecMode or set a custom ffmpeg path in Settings."));
+            // File.Exists(ffmpegPath) passing doesn't mean File.OpenRead will succeed a moment later — an AV
+            // scanner or backup agent can hold the file open without FILE_SHARE_READ right as this class's
+            // own doc comment promises "never throws". Best-effort, same as "no manifest"/"manifest empty"
+            // below: the binary is still usable as a subprocess even though our own read handle failed, so
+            // this degrades to "not hash-verified" instead of taking down whichever caller asked for the
+            // encoder list (historically the Record screen's first paint, on the UI thread).
+            return (false, RecModeError.Warning(
+                "ffmpeg.hash-check-failed",
+                "The bundled ffmpeg build couldn't be hash-verified right now.",
+                "Another program may have the file open. Recording can still proceed.", ex));
         }
 
         if (!ffmpegPinned && !ffprobePinned)

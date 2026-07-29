@@ -40,16 +40,13 @@ public sealed record CaptureTarget
 
     public static CaptureTarget FromAllDisplays(IReadOnlyList<MonitorInfo> monitors)
     {
-        int minX = monitors.Min(m => m.X);
-        int minY = monitors.Min(m => m.Y);
-        int width = monitors.Max(m => m.X + m.Width) - minX;
-        int height = monitors.Max(m => m.Y + m.Height) - minY;
+        VirtualDesktopLayout.Bounds bounds = VirtualDesktopLayout.Compute(monitors);
         return new CaptureTarget
         {
             Kind = CaptureKind.AllDisplays,
             Handle = nint.Zero,
             DisplayName = "All Displays",
-            VirtualDesktopBounds = new RegionRect(minX, minY, width, height),
+            VirtualDesktopBounds = new RegionRect(bounds.MinX, bounds.MinY, bounds.Width, bounds.Height),
         };
     }
 }

@@ -64,7 +64,7 @@ public sealed partial class RecordViewModel
     /// <see cref="SetWindowVisible"/>. Re-checked after any await, since all of these can change while a
     /// camera is still activating.</summary>
     private bool CanRunPreview =>
-        !IsRecording && _isActivePage && !IsWindowMinimized && IsWindowVisible && _hostsPreviewSurfaces;
+        !IsRecording && PreviewEligibility.CanRun(_isActivePage, IsWindowMinimized, IsWindowVisible, _hostsPreviewSurfaces);
 
     /// <summary>Set synchronously the moment an asynchronous preview start begins — <see cref="_preview"/>
     /// alone isn't a sufficient re-entrancy guard because it's only assigned once activation completes. Same
@@ -168,6 +168,19 @@ public sealed partial class RecordViewModel
         finally
         {
             _previewStarting = false;
+
+            // If this activation was discarded because the selected source changed while the camera was
+            // still activating (the "target moved on" branch above), _preview is still null and nothing else
+            // was ever told to pick up whatever the *new* current target is — the preview pane stayed on its
+            // "Preview paused" placeholder for the rest of the visit, until some unrelated property change
+            // happened to call RestartPreview() again. StartPreview() re-reads CurrentTarget() itself, so
+            // this correctly targets whatever is selected now, not the stale target being activated above.
+            // No-ops harmlessly on the success path (_preview is already set) and when nothing should be
+            // previewing right now (CanRunPreview false).
+            if (_preview is null && CanRunPreview)
+            {
+                StartPreview();
+            }
         }
     }
 

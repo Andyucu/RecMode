@@ -21,6 +21,14 @@ public sealed record RecordingResult(bool Success, int ExitCode, string OutputPa
 /// </summary>
 public sealed class FfmpegRecordingSession : IDisposable
 {
+    // Bounds a chatty encoder's stderr over a long recording — nothing here previously capped it, and
+    // `-loglevel warning` is not silent: a per-frame condition (a driver warning, a "non monotonically
+    // increasing dts" notice) can emit one line per frame, and at 60fps over 2 hours that's 432,000 lines —
+    // tens of MB in a StringBuilder that then gets .ToString()'d (allocating another full copy) on every
+    // Finalize/RotateSegment/pipe-break, directly against the "memory flat over 2h" budget. Only read on
+    // failure, so keeping just the tail is enough to diagnose what actually went wrong.
+    private const int MaxStderrChars = 262_144; // ~256 KB
+
     private readonly string _ffmpegPath;
     private readonly System.Text.StringBuilder _stderr = new();
     private readonly Lock _stderrLock = new();
@@ -72,7 +80,22 @@ public sealed class FfmpegRecordingSession : IDisposable
         }
 
         // Capture ffmpeg's stderr so failures are diagnosable (logged on finalize / pipe break).
-        _ffmpeg.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (_stderrLock) { _stderr.AppendLine(e.Data); } } };
+        _ffmpeg.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                return;
+            }
+
+            lock (_stderrLock)
+            {
+                _stderr.AppendLine(e.Data);
+                if (_stderr.Length > MaxStderrChars)
+                {
+                    _stderr.Remove(0, _stderr.Length - MaxStderrChars);
+                }
+            }
+        };
         _ffmpeg.BeginErrorReadLine();
 
         // ffmpeg opens the pipe as it initializes; wait for it to connect, but bail if it exits first or

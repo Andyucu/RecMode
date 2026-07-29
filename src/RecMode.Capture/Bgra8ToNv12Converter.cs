@@ -9,6 +9,16 @@ namespace RecMode.Capture;
 /// </summary>
 public static class Bgra8ToNv12Converter
 {
+    // BT.601 limited/"TV" range (luma 16-235, chroma 16-240) — the range every decoder assumes by default
+    // absent an explicit signal in the bitstream, which is exactly what this pipeline leaves unset
+    // (FfmpegArgsBuilder emits no -color_range flag at all — confirmed by grep, not just assumed; there is no
+    // corresponding declaration to keep in sync if this ever changes). This used to be full-range (luma
+    // 0-255, chroma centered at 128 over the full 0-255 span) with nothing signaling that either, so every
+    // player expanded the actual 16-235/16-240 range a limited-range assumption implies right back out —
+    // crushing near-black content to pure black and near-white content to pure white on both paths that use
+    // this converter (the GDI VM/RDP fallback and webcam-as-source). If -color_range (or an equivalent
+    // -colorspace/-color_trc flag) is ever added to FfmpegArgsBuilder, it must declare "tv"/limited to match
+    // what's actually produced here — anyone doing that should not assume it already does.
     public static void Convert(byte[] bgra, int srcW, int srcH, int dstW, int dstH, byte[] output)
     {
         int ySize = dstW * dstH;
@@ -16,7 +26,7 @@ public static class Bgra8ToNv12Converter
         for (int x = 0; x < dstW; x++)
         {
             (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, dstW, dstH, x, y);
-            output[y * dstW + x] = (byte)Math.Clamp((77 * r + 150 * g + 29 * b + 128) >> 8, 0, 255);
+            output[y * dstW + x] = (byte)Math.Clamp(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16, 0, 255);
         }
         for (int y = 0; y < dstH; y += 2)
         for (int x = 0; x < dstW; x += 2)
@@ -25,8 +35,8 @@ public static class Bgra8ToNv12Converter
             for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++)
             {
                 (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, dstW, dstH, x + dx, y + dy);
-                sumU += (-43 * r - 85 * g + 128 * b + 32768) >> 8;
-                sumV += (128 * r - 107 * g - 21 * b + 32768) >> 8;
+                sumU += ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+                sumV += ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
             }
             int at = ySize + (y / 2) * dstW + x;
             output[at] = (byte)Math.Clamp(sumU / 4, 0, 255);

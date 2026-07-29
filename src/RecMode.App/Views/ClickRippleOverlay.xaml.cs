@@ -11,18 +11,30 @@ namespace RecMode.App.Views;
 /// <summary>
 /// Fullscreen click-highlight overlay (plan Phase 8): draws an expanding, fading ring at each mouse click.
 /// Click-through (WS_EX_TRANSPARENT) so it never intercepts input, non-activating, and deliberately NOT
-/// excluded from capture so the ripple is part of the recording. Covers the primary monitor.
+/// excluded from capture so the ripple is part of the recording. Sized to whatever is actually being recorded
+/// (same resolution <see cref="AnnotationOverlay"/> already uses), not just the primary monitor — without
+/// this, recording a non-primary display with "Highlight mouse clicks" on silently produced no ripples at all:
+/// <see cref="AddRipple"/> only draws for clicks inside <see cref="_bounds"/>, which every click on the actual
+/// recorded (non-primary) monitor would fail.
 /// </summary>
 public partial class ClickRippleOverlay : Window
 {
-    private readonly MonitorInfo _monitor;
+    private readonly RegionRect _bounds;
     private double _dpiScale = 1.0;
 
-    public ClickRippleOverlay()
+    public ClickRippleOverlay(CaptureTarget? target)
     {
         InitializeComponent();
-        IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-        _monitor = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+        if (target is not null && CaptureCapabilities.TryGetScreenBounds(target, out RegionRect bounds))
+        {
+            _bounds = bounds;
+        }
+        else
+        {
+            IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
+            MonitorInfo mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            _bounds = new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+        }
 
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
@@ -32,7 +44,7 @@ public partial class ClickRippleOverlay : Window
     {
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         OverlayWindowStyle.ApplyClickThrough(hwnd);
-        OverlayWindowStyle.SetBounds(hwnd, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height);
+        OverlayWindowStyle.SetBounds(hwnd, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -47,15 +59,15 @@ public partial class ClickRippleOverlay : Window
     /// <summary>Adds a ripple at the given screen (physical, virtual-desktop) coordinates.</summary>
     public void AddRipple(int screenX, int screenY)
     {
-        // Only ripple clicks on the covered monitor.
-        if (screenX < _monitor.X || screenX >= _monitor.X + _monitor.Width ||
-            screenY < _monitor.Y || screenY >= _monitor.Y + _monitor.Height)
+        // Only ripple clicks on the covered area.
+        if (screenX < _bounds.X || screenX >= _bounds.X + _bounds.Width ||
+            screenY < _bounds.Y || screenY >= _bounds.Y + _bounds.Height)
         {
             return;
         }
 
-        double x = (screenX - _monitor.X) / _dpiScale;
-        double y = (screenY - _monitor.Y) / _dpiScale;
+        double x = (screenX - _bounds.X) / _dpiScale;
+        double y = (screenY - _bounds.Y) / _dpiScale;
 
         var brush = (Brush)(TryFindResource("AccentBrush") ?? Brushes.DeepSkyBlue);
         const double size = 46;

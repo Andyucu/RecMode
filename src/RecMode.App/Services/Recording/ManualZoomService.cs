@@ -19,6 +19,18 @@ public sealed class ManualZoomService(RecordViewModel record, GlobalHotkeys hotk
     {
         record.PropertyChanged += OnPropertyChanged;
         hotkeys.Pressed += OnHotkeyPressed;
+        hotkeys.Cleared += OnHotkeysCleared;
+    }
+
+    /// <summary>A hotkey remap wipes every global hotkey process-wide, including our own Esc — without this,
+    /// exiting manual zoom via Esc silently stopped working for the rest of an active zoom session.</summary>
+    private void OnHotkeysCleared()
+    {
+        _escapeHotkeyId = -1;
+        if (record.IsManualZooming)
+        {
+            _escapeHotkeyId = hotkeys.Register(0, VirtualKeys.Escape);
+        }
     }
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -54,6 +66,7 @@ public sealed class ManualZoomService(RecordViewModel record, GlobalHotkeys hotk
     {
         record.PropertyChanged -= OnPropertyChanged;
         hotkeys.Pressed -= OnHotkeyPressed;
+        hotkeys.Cleared -= OnHotkeysCleared;
         if (_escapeHotkeyId != -1)
         {
             hotkeys.Unregister(_escapeHotkeyId);

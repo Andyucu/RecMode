@@ -3,6 +3,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using RecMode.App.Services;
 using RecMode.App.ViewModels;
 using RecMode.App.Views;
@@ -285,7 +287,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
             var mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
 
-            var overlay = new ClickRippleOverlay();
+            var overlay = new ClickRippleOverlay(target: null); // falls back to the primary monitor
             overlay.Show();
             await Task.Delay(200);
             // ripple at the monitor centre (screen/physical coords)
@@ -511,22 +513,30 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
     }
 
     /// <summary>
-    /// <c>--selftest-avsync</c>: a long (10-minute) recording with a visual flash marker fired every 60s, to
-    /// verify CFR video frame pacing holds — no drift, no stalls — over a duration far longer than any other
-    /// self-test exercises (plan §1's "±40ms soak sync test"). Originally paired each flash with an audio beep
-    /// for a true A/V offset measurement, but that half had to be dropped this pass: investigating it surfaced
-    /// a genuine, reproducible finding — full-system (<c>SystemAudioEnabled</c>) recordings produce a valid,
-    /// correctly-timed AAC stream that is nevertheless completely silent (confirmed via <c>ffmpeg astats</c>
-    /// on both a fresh recording and the pre-existing <c>--selftest-av</c> output), even though per-app audio
-    /// targeting records real content correctly (verified earlier this session) and the underlying
-    /// <see cref="RecMode.Audio.AudioMixer"/>/WASAPI capture demonstrably detects live audio when tested in
-    /// isolation. Root cause not found in the time available — see CLAUDE.md/PROJECT_MEMORY.md for the full
-    /// writeup; this method now verifies video-only.
+    /// <c>--selftest-avsync</c>: a recording with a paired visual flash + audio beep fired at a regular
+    /// interval, to measure real A/V offset (plan §1's "±40ms soak sync test") and confirm CFR video frame
+    /// pacing holds (no drift, no stalls) over a duration much longer than any other self-test exercises.
+    /// <para>
+    /// The audio half was dropped for a full session in 2026-07-08 after investigation found full-system
+    /// (<c>SystemAudioEnabled</c>) recordings producing a valid, correctly-timed AAC stream that was
+    /// nevertheless completely silent. Re-verified 2026-07-28 with the exact same tone+<c>ffmpeg astats</c>
+    /// methodology that session used: on this machine, right now, full-system audio genuinely carries real
+    /// signal (confirmed via a fresh <c>--selftest-av</c> run with a played test tone, peak -18 dB / RMS
+    /// -21 dB — not the bug's <c>-inf</c>). The 2026-07-24 <c>MixSource.ResolveFormat</c> fix (§CLAUDE.md) is
+    /// the most likely explanation, though this dev machine's own WASAPI mix format was never able to
+    /// reproduce the original silent-stream symptom either way, so that's inference, not direct proof of
+    /// root-cause closure. Given audio demonstrably works today, the beep is restored here.
+    /// </para>
+    /// <para>
+    /// Duration/interval are overridable via <c>RECMODE_SOAK_SECONDS</c>/<c>RECMODE_SOAK_INTERVAL_SECONDS</c>
+    /// environment variables (defaults: 600s / 60s, matching the plan's own "2h soak" spirit scaled to
+    /// something a single self-test invocation can actually run) — set lower for a quick smoke run.
+    /// </para>
     /// </summary>
     private async Task RunAvSyncSoakSelfTestAsync()
     {
-        const int soakSeconds = 600;
-        const int markerIntervalSeconds = 60;
+        int soakSeconds = GetEnvInt("RECMODE_SOAK_SECONDS", 600);
+        int markerIntervalSeconds = GetEnvInt("RECMODE_SOAK_INTERVAL_SECONDS", 60);
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
         try
         {
@@ -546,12 +556,28 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             RecordingResult? finished = null;
             coordinator.Finished += r => finished = r;
 
-            if (!coordinator.Start(target, encoder, MediaContainer.Mp4, 60, 70))
+            // Frame rate is overridable so the A/V-offset measurement can be repeated at different rates —
+            // if the offset scales with the frame interval it's tick quantization in the pacer/capture
+            // hand-off; if it's constant in milliseconds it's a fixed pipeline latency difference. That
+            // distinction decides which fix is even applicable, so it has to be measurable.
+            int fps = GetEnvInt("RECMODE_SOAK_FPS", 60);
+            if (!coordinator.Start(target, encoder, MediaContainer.Mp4, fps, 70))
             {
                 System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
                 shutdown(3);
                 return;
             }
+
+            // Both marker emitters are created ONCE, before the loop, and reused for every marker.
+            // Creating them per-marker (the original approach) meant each marker paid a fresh WPF window
+            // creation + first-render and a fresh WASAPI render-device open — both cold-start costs in the
+            // tens of milliseconds, and both highly variable. That put jitter of the same magnitude as the
+            // offset being measured directly into the instrument: three runs of the per-marker version
+            // produced per-marker offsets ranging from +22ms to -130ms, with two runs of the *identical*
+            // configuration averaging -101ms and -50ms. A measurement whose noise is as large as its signal
+            // can't support any conclusion about the pipeline, let alone a compensation constant.
+            using var emitter = new SoakMarkerEmitter(mon);
+            await Task.Delay(500); // let the pre-created window and audio device settle before the first use
 
             var markerTimesSec = new List<double>();
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -561,7 +587,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 if (sw.Elapsed.TotalSeconds >= nextMarkerAt)
                 {
                     markerTimesSec.Add(sw.Elapsed.TotalSeconds);
-                    FireMarker(mon);
+                    emitter.Fire();
                     nextMarkerAt += markerIntervalSeconds;
                 }
                 await Task.Delay(200);
@@ -593,39 +619,128 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
         }
     }
 
-    /// <summary>Fires one soak marker: a hard-edged full-monitor white flash (NOT capture-excluded — it must
-    /// be visible in the recording). Originally paired with an audio beep for true A/V offset verification —
-    /// see the comment below for why that half was dropped for this pass.</summary>
-    private static void FireMarker(RecMode.Capture.MonitorInfo monitor)
+    /// <summary>
+    /// Emits paired flash+beep markers for <c>--selftest-avsync</c>, keeping both emitters <em>warm</em> —
+    /// the full-screen flash window and the WASAPI render device are created once and reused, so firing a
+    /// marker costs only a visibility toggle and a buffer write.
+    /// <para>
+    /// This matters more than it looks. The original per-marker version created a fresh <see cref="Window"/>
+    /// and a fresh <c>WaveOutEvent</c> every time, so every measurement included a one-off WPF
+    /// window-creation + first-render and a one-off audio-device open — both variable, both tens of
+    /// milliseconds, and both entirely outside the pipeline being measured. That noise floor was the same
+    /// size as the signal: per-marker offsets ranged +22ms..-130ms and two runs of an identical
+    /// configuration averaged -101ms and -50ms. Warm emitters remove that from the instrument so the
+    /// remaining variation is attributable to the capture/encode pipeline rather than to the measuring
+    /// apparatus.
+    /// </para>
+    /// <para>
+    /// The beep deliberately goes out through the ordinary default render device rather than through
+    /// <see cref="RecMode.Audio.AudioMixer"/>: it must exercise the same "real sound plays, full-system
+    /// loopback captures it" path a user's system audio takes, not the app's own capture-side mixer.
+    /// </para>
+    /// </summary>
+    private sealed class SoakMarkerEmitter : IDisposable
     {
-        var flash = new Window
-        {
-            WindowStyle = WindowStyle.None,
-            Background = Brushes.White,
-            Left = monitor.X,
-            Top = monitor.Y,
-            Width = monitor.Width,
-            Height = monitor.Height,
-            Topmost = true,
-            ShowInTaskbar = false,
-            ShowActivated = false,
-            ResizeMode = ResizeMode.NoResize,
-        };
-        flash.Show();
-        _ = Task.Delay(150).ContinueWith(_ => flash.Dispatcher.Invoke(flash.Close));
+        private const int BeepMs = 150;
+        private const int SampleRate = 48000;
+        private const int Channels = 2;
 
-        // Audio marker deliberately dropped: this session found that full-system (SystemAudioEnabled)
-        // recordings produce a technically-valid, correctly-timed AAC stream that is nevertheless completely
-        // silent (confirmed via ffmpeg astats on both a fresh recording and the pre-existing, previously
-        // shipped --selftest-av output) — a real, reproducible, previously-undiscovered bug, NOT something
-        // this self-test's own marker mechanism caused (neither an in-process NAudio tone nor a short-lived
-        // external tone-player process showed up either, even though both are independently proven audible/
-        // capturable via a standalone WasapiLoopbackCapture and via AudioMixer.SystemLevel in isolation, and
-        // an external tone process's audio IS captured correctly by the same coordinator when targeted via
-        // per-app audio instead of full-system). Root cause not found in the time available this session —
-        // tracked as a real, open finding (see CLAUDE.md/PROJECT_MEMORY.md) rather than declared fixed. This
-        // soak run therefore verifies video-only: CFR frame pacing/timing consistency over a long duration.
+        private readonly Window _flash;
+        private readonly BufferedWaveProvider? _beepBuffer;
+        private readonly WaveOutEvent? _output;
+        private readonly byte[] _beepPcm;
+
+        public SoakMarkerEmitter(RecMode.Capture.MonitorInfo monitor)
+        {
+            _flash = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                Background = Brushes.White,
+                Left = monitor.X,
+                Top = monitor.Y,
+                Width = monitor.Width,
+                Height = monitor.Height,
+                Topmost = true,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                ResizeMode = ResizeMode.NoResize,
+                Visibility = Visibility.Hidden,
+            };
+            // Shown once (hidden) so the HWND, the render pass, and the DWM surface all exist up front;
+            // per-marker cost is then just the visibility toggle.
+            _flash.Show();
+
+            _beepPcm = RenderBeep();
+            try
+            {
+                var format = WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels);
+                _beepBuffer = new BufferedWaveProvider(format)
+                {
+                    BufferDuration = TimeSpan.FromSeconds(2),
+                    DiscardOnBufferOverflow = true,
+                };
+                // The render device's own output buffering sits between AddSamples() and the moment the tone
+                // reaches the mix point that loopback taps - so it lands in the recording *late* by roughly
+                // this much, and shows up in the analyzer as a positive offset that has nothing to do with
+                // the capture pipeline. Overridable via RECMODE_SOAK_BEEP_LATENCY_MS specifically so that
+                // bias can be demonstrated (vary it; a true pipeline offset would not move with it) and then
+                // subtracted, rather than being silently folded into the reported result.
+                _output = new WaveOutEvent { DesiredLatency = GetEnvInt("RECMODE_SOAK_BEEP_LATENCY_MS", 100) };
+                _output.Init(_beepBuffer);
+                _output.Play(); // stays playing (silent) for the whole soak; a marker just queues samples
+            }
+            catch (Exception ex)
+            {
+                // Best-effort: without audio the flash half alone still verifies frame pacing.
+                Log.Warning(ex, "Soak marker audio device couldn't be opened; markers will be video-only");
+                _output = null;
+                _beepBuffer = null;
+            }
+        }
+
+        /// <summary>One marker: show the flash and queue the beep as close together as this thread allows.</summary>
+        public void Fire()
+        {
+            _beepBuffer?.AddSamples(_beepPcm, 0, _beepPcm.Length);
+            _flash.Visibility = Visibility.Visible;
+            _ = Task.Delay(BeepMs).ContinueWith(_ =>
+                _flash.Dispatcher.BeginInvoke(() => _flash.Visibility = Visibility.Hidden));
+        }
+
+        /// <summary>Pre-renders the tone burst to raw 32-bit float PCM once, so firing a marker never pays
+        /// generation cost. A short linear fade in/out avoids a click transient smearing the onset the
+        /// analyzer is looking for.</summary>
+        private static byte[] RenderBeep()
+        {
+            int frames = SampleRate * BeepMs / 1000;
+            const int fade = 48; // ~1ms
+            byte[] pcm = new byte[frames * Channels * sizeof(float)];
+            for (int i = 0; i < frames; i++)
+            {
+                double envelope = Math.Min(1.0, Math.Min(i, frames - 1 - i) / (double)fade);
+                float sample = (float)(0.8 * envelope * Math.Sin(2 * Math.PI * 1000 * i / SampleRate));
+                for (int ch = 0; ch < Channels; ch++)
+                {
+                    BitConverter.TryWriteBytes(
+                        pcm.AsSpan(((i * Channels) + ch) * sizeof(float), sizeof(float)), sample);
+                }
+            }
+            return pcm;
+        }
+
+        public void Dispose()
+        {
+            try { _output?.Stop(); } catch (Exception ex) { Log.Debug(ex, "Soak marker output stop failed"); }
+            _output?.Dispose();
+            try { _flash.Close(); } catch (Exception ex) { Log.Debug(ex, "Soak marker flash close failed"); }
+        }
     }
+
+    /// <summary>Reads an integer override from the environment, falling back to <paramref name="default_"/>
+    /// on anything missing or unparsable — used so <c>--selftest-avsync</c>'s duration/interval can be
+    /// shortened for a quick smoke run without needing a dedicated CLI flag for a debug-only self-test.</summary>
+    private static int GetEnvInt(string name, int default_) =>
+        int.TryParse(Environment.GetEnvironmentVariable(name), out int value) && value > 0 ? value : default_;
 
 
     /// <summary>Test-only fake for <c>--selftest-webcam</c>: a fixed solid-colour BGRA frame, so the GPU

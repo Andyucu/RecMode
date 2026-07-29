@@ -19,7 +19,10 @@ public sealed class SettingsService : ISettingsService, IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
+        // Tolerant on read (falls back to default(TEnum) on an unrecognized value instead of throwing and
+        // taking the whole settings document down with it — see LenientEnumConverterFactory), strict/readable
+        // string names on write, same as the plain JsonStringEnumConverter this replaces.
+        Converters = { new LenientEnumConverterFactory() },
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
@@ -74,6 +77,13 @@ public sealed class SettingsService : ISettingsService, IDisposable
         {
             RecoverCorruptFile(path, ex);
             Current = new RecModeSettings();
+            // This session is, from the user's own perspective, starting from a blank slate — the same as a
+            // genuinely first-ever launch — so it should get the same first-run treatment (the encoder
+            // benchmark, defaulting the mic on if one's connected) rather than silently skipping both because
+            // a settings file technically existed. RecoverCorruptFile now moves rather than copies the broken
+            // file away, so this also isn't re-detected as "corrupt" again on the next launch — this used to
+            // recur on every subsequent launch, forever, since nothing ever actually replaced the bad file.
+            IsFirstRun = true;
         }
 
         RaiseSettingsChanged();
@@ -222,7 +232,12 @@ public sealed class SettingsService : ISettingsService, IDisposable
         try
         {
             string backup = path + ".corrupt";
-            File.Copy(path, backup, overwrite: true);
+            // Move, not copy: a copy left the broken file in place at `path`, so every subsequent launch
+            // re-read the same corrupt JSON, re-triggered this exact recovery, and re-copied over the same
+            // .corrupt backup — forever, on every single launch, rather than actually recovering once. Moving
+            // it away means the next Load() simply finds no file at `path` and takes the ordinary first-run
+            // path instead.
+            File.Move(path, backup, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

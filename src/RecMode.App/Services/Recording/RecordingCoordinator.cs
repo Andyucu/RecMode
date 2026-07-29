@@ -34,6 +34,15 @@ public sealed class RecordingCoordinator : IDisposable
     private readonly RecordingStateMachine _stateMachine;
 
     private ICaptureEngine? _capture;
+    // Guards every read-then-invoke of _capture from outside the pacer loop (SetBrightness/SetZoomTarget/
+    // SetBaseRect/CaptureSupportsZoom — called from the UI thread and, for auto-zoom, a threadpool timer)
+    // against RetargetCapture/Finalize concurrently swapping or disposing it on the pacer thread. `_capture?.
+    // SetBrightness(value)` alone reads the field once into a local before the null check, so it can't NRE —
+    // but that local can still be a reference to an engine another thread disposes a moment later, between
+    // the read and the call. Deliberately NOT held around the pacer loop's own per-frame use of _capture —
+    // only around the occasional swap/dispose and the infrequent external setter calls, so this adds no
+    // per-frame lock contention to the hot path.
+    private readonly Lock _captureAccessLock = new();
     private WebcamCaptureSource? _webcamCapture;
     private FfmpegRecordingSession? _session;
     private Thread? _pacer;
@@ -82,12 +91,14 @@ public sealed class RecordingCoordinator : IDisposable
     // segment, and whether a downgrade has already been attempted this recording (once per recording).
     private EncoderInfo? _activeEncoder;
     private bool _downgradeAttempted;
+#if RECMODE_SELFTEST
     private volatile bool _testForceDowngrade; // test-only seam for --selftest-downgrade; see AttemptDowngrade
 
     // Test-only seam (--selftest-webcam): injects a synthetic frame source in place of a real
     // WebcamCaptureSource, so the GPU picture-in-picture compositing can be verified without camera hardware.
     private IWebcamFrameSource? _testForcedWebcamSource;
     internal void TestForceWebcamSource(IWebcamFrameSource source) => _testForcedWebcamSource = source;
+#endif
 
     // Draw-on-screen annotation for Window-source recordings (see SetAnnotating): the target actually passed
     // to Start(), the fixed encoder output size, and a pending capture swap applied by the pacer thread only
@@ -99,8 +110,19 @@ public sealed class RecordingCoordinator : IDisposable
     // Follow-window-resize (Window source only): the window's on-screen size last seen, so PaceLoop can
     // detect a resize by polling and queue the same hot-swap SetAnnotating uses. Pacer-thread-owned except
     // for the initial value set in Start(); _isAnnotating is set from the UI thread by SetAnnotating.
+    /// <summary>Bound on the user-configurable A/V sync offset. Half a second each way is far beyond any
+    /// plausible capture-pipeline mismatch (ITU-R BT.1359-1 puts even the *acceptability* limit around
+    /// 90-185ms), and an unbounded value would prepend arbitrarily much silence to the recording.</summary>
+    private const int MaxAudioSyncOffsetMs = 500;
+
     private bool _isAnnotating;
     private int _lastWindowW, _lastWindowH;
+    // Set alongside _pendingRetarget only by CheckWindowResize, which — unlike SetAnnotating's own use of
+    // _pendingRetarget for the draw-on-screen Region-proxy swap — is only ever called from the pacer thread's
+    // own loop, so this field (unlike _pendingRetarget itself) needs no cross-thread safety of its own.
+    // Committed to _lastWindowW/_lastWindowH only once RetargetCapture actually succeeds — see the pacer
+    // loop's consumption of _pendingRetarget for why.
+    private (int W, int H)? _pendingResizeSize;
 
     public RecordingCoordinator(
         Func<ICaptureEngine> captureFactory,
@@ -170,6 +192,7 @@ public sealed class RecordingCoordinator : IDisposable
             _dstW = dstW;
             _dstH = dstH;
             _pendingRetarget = null;
+            _pendingResizeSize = null;
             _isAnnotating = false;
             _zoomMonitorCache = null;
             _zoomMonitorCacheHandle = 0;
@@ -222,13 +245,26 @@ public sealed class RecordingCoordinator : IDisposable
                 return false;
             }
 
-            _stateMachine.StartRecording();
-            _stopRequested = false;
+            // Reset the finalize latch BEFORE flipping IsBusy true (StartRecording(), next), not after. A
+            // Stop() concurrent with this exact window (F9/tray/toolbar pressed a moment too early) reads
+            // _stateMachine.IsBusy first — if that already reports true while _finalizeStarted still carries
+            // the *previous* recording's claimed-and-completed value, TryClaimFinalize() fails, Stop() falls
+            // into the "someone else already claimed it" branch, and _finalizationCompleted.Wait() returns
+            // instantly because it's still Set from the prior recording — so Stop() does nothing and the
+            // user's stop press is silently lost. Worse, for the very first recording of a session (where
+            // _finalizeStarted starts false), that same race lets Stop() successfully claim finalize and tear
+            // down _session/_capture/_mixer while this method is still assigning them further down, producing
+            // a null-reference crash and a spurious Fatal toast. Resetting first closes both: by the time
+            // IsBusy can observe true, a concurrent Stop() sees a freshly-armed latch for *this* attempt and
+            // correctly finalizes whatever has been set up so far, instead of either silently no-op'ing or
+            // colliding with still-in-flight initialization.
             lock (_finalizeLock)
             {
                 _finalizeStarted = false;
                 _finalizationCompleted.Reset();
             }
+            _stateMachine.StartRecording();
+            _stopRequested = false;
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
             _targetFps = fps;
@@ -257,6 +293,32 @@ public sealed class RecordingCoordinator : IDisposable
         {
             _errors.Block("record.start-failed", "Couldn't start the recording.", "See the log for details.", ex);
             SafeTeardown();
+
+            // _stateMachine.StartRecording() above already transitioned to Recording by the time a *later*
+            // step in this same try (ClearBuffers, the pacer thread, the audio pump) throws — without this,
+            // the state machine is stuck there for the rest of the process: every future Start() call sees
+            // IsBusy and is silently rejected, and Stop() would try to finalize a session that SafeTeardown()
+            // already tore down. Recording/Paused -> Finalizing -> Idle is the only legal path back; drive it
+            // explicitly since SafeTeardown() has already released every real resource, so this is purely
+            // state-machine bookkeeping at this point, not a real finalization.
+            try
+            {
+                if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused)
+                {
+                    _stateMachine.Stop();
+                }
+                if (_stateMachine.State == RecordingState.Finalizing)
+                {
+                    _stateMachine.CompleteFinalization();
+                }
+            }
+            catch (InvalidOperationException recoveryEx)
+            {
+                // Best-effort: a failure recovering state-machine bookkeeping shouldn't mask the original
+                // start failure already reported above.
+                Log.Warning(recoveryEx, "Couldn't recover the recording state machine after a failed Start()");
+            }
+
             return false;
         }
     }
@@ -394,13 +456,16 @@ public sealed class RecordingCoordinator : IDisposable
             return;
         }
 
+#if RECMODE_SELFTEST
         if (_testForcedWebcamSource is { } forcedSource)
         {
             (int fx, int fy, int fw, int fh) = WebcamOverlayLayout.ComputeRect(
                 dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
             _capture!.SetWebcamOverlay(forcedSource, new RegionRect(fx, fy, fw, fh));
         }
-        else if (_settings.Current.WebcamEnabled && !string.IsNullOrEmpty(_settings.Current.WebcamDeviceId))
+        else
+#endif
+        if (_settings.Current.WebcamEnabled && !string.IsNullOrEmpty(_settings.Current.WebcamDeviceId))
         {
             try
             {
@@ -464,8 +529,13 @@ public sealed class RecordingCoordinator : IDisposable
             rect.Width > 0 && rect.Height > 0 &&
             (rect.Width != _lastWindowW || rect.Height != _lastWindowH))
         {
-            _lastWindowW = rect.Width;
-            _lastWindowH = rect.Height;
+            // Deliberately NOT committed to _lastWindowW/_lastWindowH here — only once RetargetCapture
+            // actually applies this size (see the pacer loop). Committing eagerly meant a single transient
+            // RetargetCapture failure (the window closing mid-swap, a momentary capture-engine error) marked
+            // this size as "already handled" forever, even though the live capture never actually caught up —
+            // follow-window-resize silently stopped working for the rest of the recording after that one
+            // failure, with the output stuck at a stale, wrongly-sized crop.
+            _pendingResizeSize = (rect.Width, rect.Height);
             _pendingRetarget = original;
         }
     }
@@ -475,16 +545,20 @@ public sealed class RecordingCoordinator : IDisposable
     /// and starts the replacement fully before tearing down the old one, so a failure (e.g. the window closed)
     /// leaves the original capture running instead of losing capture entirely. Pacer-thread-only — see
     /// <see cref="SetAnnotating"/>.</summary>
-    private void RetargetCapture(CaptureTarget target)
+    private bool RetargetCapture(CaptureTarget target)
     {
-        ICaptureEngine next;
+        ICaptureEngine? next = null;
         try
         {
             next = _captureFactory();
             next.Faulted += OnCaptureFaulted;
             next.Start(target, _dstW, _dstH, _settings.Current.CaptureCursor, _targetFps);
             next.SetBrightness(_settings.Current.Brightness);
+#if RECMODE_SELFTEST
             IWebcamFrameSource? webcamSource = _testForcedWebcamSource ?? (IWebcamFrameSource?)_webcamCapture;
+#else
+            IWebcamFrameSource? webcamSource = (IWebcamFrameSource?)_webcamCapture;
+#endif
             if (webcamSource is not null)
             {
                 (int wx, int wy, int ww, int wh) = WebcamOverlayLayout.ComputeRect(
@@ -494,17 +568,36 @@ public sealed class RecordingCoordinator : IDisposable
         }
         catch (Exception ex)
         {
+            // next can be fully constructed (a live D3D11 device/WGC session, Faulted already subscribed)
+            // even when a later step in this same try throws — leaving it undisposed leaked one such engine
+            // per failed retarget, and kept it rooted for the rest of the process via the still-subscribed
+            // Faulted handler. Every failed attempt used to leak, not just a rare one.
+            if (next is not null)
+            {
+                next.Faulted -= OnCaptureFaulted;
+                next.Dispose();
+            }
             _errors.Warn("record.annotate-retarget-failed",
                 "Couldn't switch capture for drawing — the recording will continue without it.",
                 "Try again, or switch to Monitor/Region capture to draw on the recording.", ex);
-            return;
+            return false;
         }
 
-        ICaptureEngine old = _capture!;
-        _capture = next;
+        ICaptureEngine old;
+        lock (_captureAccessLock)
+        {
+            // The swap itself must be inside the lock, not just the assignment: SetBrightness/SetZoomTarget/
+            // SetBaseRect/CaptureSupportsZoom take this same lock around their entire _capture?.Xxx() call, so
+            // whichever side gets there first — a caller mid-call on `old`, or this swap — fully finishes
+            // before the other proceeds. Without that mutual exclusion, a caller could still be inside
+            // old.SetBrightness(...) at the exact moment old.Stop()/Dispose() run below.
+            old = _capture!;
+            _capture = next;
+        }
         old.Faulted -= OnCaptureFaulted;
         old.Stop();
         old.Dispose();
+        return true;
     }
 
     /// <summary>Raised from the capture engine's background (DDA) thread when it hits an unrecoverable
@@ -552,7 +645,9 @@ public sealed class RecordingCoordinator : IDisposable
         _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
         _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
         _downgradeAttempted = false;
+#if RECMODE_SELFTEST
         _testForceDowngrade = false;
+#endif
 
         // Snapshot metadata for the library index (written on successful finalize).
         _metaSource = sourceLabel;
@@ -588,6 +683,7 @@ public sealed class RecordingCoordinator : IDisposable
             BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
             Effort = _settings.Current.Effort,
             BitrateGuardrailEnabled = _settings.Current.BitrateGuardrailEnabled,
+            IsScreenContent = target.Kind != CaptureKind.Webcam,
         };
 
         return (job, audioEnabled);
@@ -792,16 +888,25 @@ public sealed class RecordingCoordinator : IDisposable
 
     /// <summary>Applies the captured-video brightness adjustment (-100..100) to the live recording, so
     /// changes on the Record screen take effect mid-recording, not just on the next session.</summary>
-    public void SetBrightness(double value) => _capture?.SetBrightness(value);
+    public void SetBrightness(double value)
+    {
+        lock (_captureAccessLock) { _capture?.SetBrightness(value); }
+    }
 
     /// <summary>True if the active capture is actually on the GPU VideoProcessor pipeline, so a zoom target
     /// (auto or manual) has any effect. False when capture fell back to the GDI software path — checked before
     /// offering manual zoom's picker so the user isn't sent through a drag-select that can't do anything.</summary>
-    public bool CaptureSupportsZoom => _capture?.SupportsZoom ?? false;
+    public bool CaptureSupportsZoom
+    {
+        get { lock (_captureAccessLock) { return _capture?.SupportsZoom ?? false; } }
+    }
 
     /// <summary>Smart auto-zoom: sets/clears the GPU pan-zoom target (source-local pixels; see
     /// <see cref="ComputeZoomRect"/> to derive one from a screen-space click).</summary>
-    public void SetZoomTarget(RegionRect? rect) => _capture?.SetZoomTarget(rect);
+    public void SetZoomTarget(RegionRect? rect)
+    {
+        lock (_captureAccessLock) { _capture?.SetZoomTarget(rect); }
+    }
 
     /// <summary>
     /// Live-retargets a Region-source recording's actual captured area (source-local pixels) — dragging the
@@ -811,7 +916,7 @@ public sealed class RecordingCoordinator : IDisposable
     /// </summary>
     public void SetBaseRect(RegionRect rect)
     {
-        _capture?.SetBaseRect(rect);
+        lock (_captureAccessLock) { _capture?.SetBaseRect(rect); }
         if (_originalTarget is { Kind: CaptureKind.Region } target)
         {
             _originalTarget = target with { Region = rect };
@@ -895,12 +1000,20 @@ public sealed class RecordingCoordinator : IDisposable
         {
             try
             {
-                audioPipe.WaitForConnection();
+                if (!WaitForAudioPipeConnection(audioPipe, stopSource.Token))
+                {
+                    return; // ffmpeg never connected (dead encoder) or the recording ended first — nothing to pump
+                }
+
+                // The offset is read once here, at pump start, rather than per-iteration: it's applied as
+                // leading silence/discard at the head of the stream, so changing it mid-recording couldn't
+                // take effect anyway, and re-reading it would only invite a torn read of a live setting.
+                int syncOffsetMs = Math.Clamp(_settings.Current.AudioSyncOffsetMs, -MaxAudioSyncOffsetMs, MaxAudioSyncOffsetMs);
                 _mixer!.PumpUntil(audioPipe, () =>
                 {
                     TimeSpan elapsed = _stateMachine.Elapsed - segmentStartedAt;
                     return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
-                }, stopSource.Token);
+                }, stopSource.Token, syncOffsetMs);
             }
             catch (OperationCanceledException) when (stopSource.IsCancellationRequested) { }
             catch (Exception ex)
@@ -909,6 +1022,34 @@ public sealed class RecordingCoordinator : IDisposable
             }
         }) { IsBackground = true, Name = "recmode-audio" };
         _audioThread.Start();
+    }
+
+    /// <summary>Bounded, cancellable wait for ffmpeg to open the audio pipe. The plain synchronous
+    /// <c>NamedPipeServerStream.WaitForConnection()</c> this replaces has no timeout and isn't cancellation-aware
+    /// — <see cref="FfmpegRecordingSession.Start"/> guards the exact same hazard on the *video* pipe ("otherwise
+    /// WaitForConnection would deadlock") but the audio pipe never got the same treatment. If ffmpeg dies (or
+    /// never gets far enough to probe the audio stream — it opens inputs in order, and needs a real video frame
+    /// first) before connecting, the old code stranded this thread forever, and every join against it
+    /// (<see cref="Finalize"/>, <see cref="RotateSegment"/>) was itself unbounded — so a single stuck audio
+    /// connection could freeze <see cref="Stop"/> for the whole app, exactly the class of hang already fixed
+    /// once for the pacer thread. 8 s mirrors the video pipe's own connect timeout.</summary>
+    private static bool WaitForAudioPipeConnection(NamedPipeServerStream pipe, CancellationToken token)
+    {
+        System.Threading.Tasks.Task connect = pipe.WaitForConnectionAsync(token);
+        try
+        {
+            connect.Wait(TimeSpan.FromSeconds(8), token);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (AggregateException)
+        {
+            return false; // the pipe faulted while waiting (e.g. disposed out from under it)
+        }
+
+        return connect.IsCompletedSuccessfully;
     }
 
     private void PaceLoop(int fps)
@@ -1000,20 +1141,30 @@ public sealed class RecordingCoordinator : IDisposable
 
                     case PacerHealthAction.DowngradeToSoftware:
                         // Mid-stream hw→sw fallback: switch the hardware encoder out for a software one on a
-                        // fresh segment (once per recording — AttemptDowngrade enforces that itself).
-                        AttemptDowngrade();
-                        health.ResetAfterRotation(); // fresh grace period for the new encoder
+                        // fresh segment (once per recording — AttemptDowngrade enforces that itself). Only
+                        // reset the health tracker's grace period if a rotation actually happened — otherwise
+                        // (already attempted once, or no software fallback exists for this codec/container)
+                        // ResetAfterRotation() cleared IsBehind unconditionally, so the health indicator
+                        // flickered back to "healthy" every single tick from then on even though the encoder
+                        // was still — and would keep — falling behind real time, misreporting the exact case
+                        // §3.6's recording-health signal exists to catch.
+                        if (AttemptDowngrade())
+                        {
+                            health.ResetAfterRotation(); // fresh grace period for the new encoder
+                        }
                         break;
                 }
 
                 _encoderBehind = health.IsBehind;
 
+#if RECMODE_SELFTEST
                 // Test-only seam (--selftest-downgrade): force the same rotation the health check would trigger.
                 if (_testForceDowngrade)
                 {
                     _testForceDowngrade = false;
                     AttemptDowngrade();
                 }
+#endif
 
                 // Follow window resize (Window source only): WGC's capture item is sized once, when the
                 // engine (re)starts — it doesn't itself track later resizes of the window it's pointed at.
@@ -1032,7 +1183,16 @@ public sealed class RecordingCoordinator : IDisposable
                 if (_pendingRetarget is { } pendingRetarget)
                 {
                     _pendingRetarget = null;
-                    RetargetCapture(pendingRetarget);
+                    (int W, int H)? resizeSize = _pendingResizeSize;
+                    _pendingResizeSize = null;
+                    // Only commit the new size as "seen" if the swap actually applied it — see
+                    // CheckWindowResize's comment for why eagerly committing on failure permanently broke
+                    // follow-window-resize.
+                    if (RetargetCapture(pendingRetarget) && resizeSize is { } size)
+                    {
+                        _lastWindowW = size.W;
+                        _lastWindowH = size.H;
+                    }
                 }
 
                 // Auto-pause safety guard, disk half (§3.6): pause rather than stop outright before a full disk
@@ -1165,18 +1325,27 @@ public sealed class RecordingCoordinator : IDisposable
             Log.Warning("ffmpeg stderr:\n{Stderr}", stderr);
         }
 
-        _capture?.Stop();
+        // Snapshot-and-null under the same lock SetBrightness/SetZoomTarget/SetBaseRect/CaptureSupportsZoom
+        // take around their entire _capture?.Xxx() call, so Stop()/Dispose() below can never run concurrently
+        // with one of those still mid-call on the engine being torn down — see RetargetCapture's identical
+        // pattern and _captureAccessLock's own doc comment for why.
+        ICaptureEngine? capture;
+        lock (_captureAccessLock)
+        {
+            capture = _capture;
+            _capture = null;
+        }
+        capture?.Stop();
         _webcamCapture?.Stop();
         _session?.Dispose();
-        if (_capture is not null)
+        if (capture is not null)
         {
-            _capture.Faulted -= OnCaptureFaulted;
+            capture.Faulted -= OnCaptureFaulted;
         }
-        _capture?.Dispose();
+        capture?.Dispose();
         _mixer?.Dispose();
         _audioStop?.Dispose();
         _session = null;
-        _capture = null;
         _webcamCapture = null;
         _mixer = null;
         _audioThread = null;
@@ -1335,6 +1504,20 @@ public sealed class RecordingCoordinator : IDisposable
                 _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
         }
 
+        // Stop() (UI thread/tray/hotkey) can set this concurrently while the finalize/remux/library-write
+        // above was in flight — that block reaches real wall-clock time (finalize alone waits up to 20s), and
+        // this method has no other checkpoint against it. Without this, RotateSegment would go on to start a
+        // brand-new encoder session for a segment that's about to be immediately abandoned: PaceLoop's next
+        // iteration observes _stopRequested and exits before writing it a single frame, then Stop()'s own
+        // Finalize() finalizes that near-empty session anyway — a spurious near-zero-frame extra file plus a
+        // pointless safe-remux pass over it. Bailing here instead leaves _session null (already set above),
+        // which Finalize() already handles cleanly (no file, no library entry, same as any other "nothing to
+        // finalize" case) — the segments already rotated through above are entirely unaffected either way.
+        if (_stopRequested)
+        {
+            return;
+        }
+
         _segmentIndex++;
         (_recordingPath, _finalPath) = BuildSegmentPaths(_segmentIndex);
 
@@ -1380,29 +1563,36 @@ public sealed class RecordingCoordinator : IDisposable
     /// <see cref="_testForceDowngrade"/> test seam (<c>--selftest-downgrade</c>), which exercises the exact
     /// same rotation path without needing a genuinely overloaded encoder.
     /// </summary>
-    private void AttemptDowngrade()
+    /// <summary>Returns true only if a rotation to a software encoder actually happened. Callers must not
+    /// treat a false return as "healthy again" — it means downgrade was already attempted this recording, the
+    /// active encoder isn't hardware, or no software fallback exists for this codec/container, none of which
+    /// changes whether the encoder is still falling behind.</summary>
+    private bool AttemptDowngrade()
     {
         if (_downgradeAttempted || _activeEncoder is not { IsHardware: true } activeEncoder)
         {
-            return;
+            return false;
         }
 
         _downgradeAttempted = true;
         List<EncoderInfo> swChain = _fallbackChain.BuildSoftwareOnly(activeEncoder, _jobTemplate!.Container);
         if (swChain.Count == 0)
         {
-            return; // no software encoder available for this codec — nothing to fall back to
+            return false; // no software encoder available for this codec — nothing to fall back to
         }
 
         _errors.Warn("record.encoder-downgrade",
             "Switching to software encoding — the hardware encoder couldn't keep up.",
             "This uses more CPU but should stay in sync with real time.");
         RotateSegment(swChain);
+        return true;
     }
 
     /// <summary>Test-only seam (mirrors the temporary --selftest-* hooks): forces the hw→sw downgrade path
     /// deterministically instead of waiting for a genuine sustained encoder stall.</summary>
+#if RECMODE_SELFTEST
     internal void TestForceDowngrade() => _testForceDowngrade = true;
+#endif
 
     private FfmpegRecordingSession? TryStartAnyEncoder(List<EncoderInfo> chain, FfmpegJob template, int frameBytes)
     {
@@ -1432,7 +1622,7 @@ public sealed class RecordingCoordinator : IDisposable
     }
 
     private bool Remux(string mkvPath, string mp4Path) =>
-        _ffmpegPath is not null && RecMode.Encoding.Ffmpeg.Remuxer.RemuxToMp4(_ffmpegPath, mkvPath, mp4Path);
+        _ffmpegPath is not null && RecMode.Encoding.Ffmpeg.Remuxer.RemuxToMp4(_ffmpegPath, mkvPath, mp4Path, _activeEncoder?.Codec);
 
     private static void TryDelete(string path)
     {

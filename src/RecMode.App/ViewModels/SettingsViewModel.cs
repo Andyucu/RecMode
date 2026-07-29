@@ -41,6 +41,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private MediaContainer _selectedContainer;
     private AudioCodec _selectedAudioCodec;
     private int _selectedAudioBitrate;
+    private int _audioSyncOffsetMs;
     private string _outputFolder;
     private string _filenamePattern;
     private bool _countdownEnabled;
@@ -77,6 +78,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedContainer = s.Container;
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
+        _audioSyncOffsetMs = Math.Clamp(s.AudioSyncOffsetMs, -500, 500);
         _outputFolder = paths.ResolveUserPath(s.OutputFolder) ?? paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
@@ -387,6 +389,39 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         set => Persist(ref _selectedAudioBitrate, value, v => _settings.Current.AudioBitrateKbps = v);
     }
 
+    /// <summary>A/V sync offset in ms (see <see cref="RecModeSettings.AudioSyncOffsetMs"/>). Manual and
+    /// defaulted to 0 on purpose — RecMode's own measurements couldn't establish a compensation constant that
+    /// would be right across capture paths and hardware, and every comparable recorder (OBS included) ships
+    /// this as a manual control too.</summary>
+    public int AudioSyncOffsetMs
+    {
+        get => _audioSyncOffsetMs;
+        set
+        {
+            Persist(ref _audioSyncOffsetMs, value, v => _settings.Current.AudioSyncOffsetMs = v);
+            // Raised unconditionally rather than only on change: Persist() doesn't report whether it took,
+            // and both of these are derived read-only projections, so a redundant notification is free.
+            OnPropertyChanged(nameof(AudioSyncOffsetLabelText));
+            OnPropertyChanged(nameof(AudioSyncOffsetDescription));
+        }
+    }
+
+    /// <summary>Signed, unit-suffixed readout next to the slider (e.g. "+120 ms").</summary>
+    public string AudioSyncOffsetLabelText =>
+        _audioSyncOffsetMs == 0 ? "0 ms" : $"{_audioSyncOffsetMs:+#;-#;0} ms";
+
+    /// <summary>Explains which way the current value shifts things, in the user's own terms — "the sound runs
+    /// ahead" / "the sound lags" is what someone actually notices, whereas a bare signed millisecond value
+    /// gives no clue which direction to drag the slider. Deliberately carries no number: the exact value is
+    /// already displayed by <see cref="AudioSyncOffsetLabelText"/> right beside the slider, so repeating it
+    /// here would be duplicate (and separately-localized) UI text saying the same thing twice.</summary>
+    public string AudioSyncOffsetDescription => _audioSyncOffsetMs switch
+    {
+        0 => Resources.Strings.Settings_AudioSyncOffsetInSync,
+        > 0 => Resources.Strings.Settings_AudioSyncOffsetDelayed,
+        _ => Resources.Strings.Settings_AudioSyncOffsetAdvanced,
+    };
+
     /// <summary>Displayed and picked as an absolute path, but <em>persisted</em> via
     /// <see cref="IAppPaths.ToPortableSetting"/> — relative when it lives inside the app folder, so moving a
     /// portable install doesn't leave it pointing at the old machine's absolute path. See that method for why.</summary>
@@ -554,6 +589,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedContainer = s.Container;
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
+        _audioSyncOffsetMs = Math.Clamp(s.AudioSyncOffsetMs, -500, 500);
         _outputFolder = _paths.ResolveUserPath(s.OutputFolder) ?? _paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
@@ -572,7 +608,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _startWithWindows = _startup.IsEnabled;
         _closeToTray = s.CloseToTray;
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
-            nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate), nameof(OutputFolder),
+            nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate),
+            nameof(AudioSyncOffsetMs), nameof(AudioSyncOffsetLabelText), nameof(AudioSyncOffsetDescription), nameof(OutputFolder),
             nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
             nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),

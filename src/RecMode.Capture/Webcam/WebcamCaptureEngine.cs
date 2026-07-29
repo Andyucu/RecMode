@@ -23,7 +23,7 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
     private int _dstW, _dstH;
     private bool _hasLatest;
     private long _capturedFrames;
-    private long _minFrameIntervalTicks;
+    private readonly FrameRateLimiter _rateLimiter = new(Stopwatch.Frequency);
 
     public bool IsRunning { get; private set; }
     public int OutputWidth => _dstW;
@@ -49,7 +49,7 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
 
         _dstW = dstW;
         _dstH = dstH;
-        _minFrameIntervalTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
+        _rateLimiter.SetTargetFps(targetFps);
         _latest = new byte[Nv12ByteSize];
         _scratch = new byte[Nv12ByteSize];
         _hasLatest = false;
@@ -84,7 +84,6 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
     {
         WebcamCaptureSource source = _source!;
         byte[] bgra = []; // grown on first frame by TryGetLatestFrame, then reused — this thread owns it
-        long lastConvertedTicks = 0;
 
         // Event-driven rather than polled (§3.9). This loop used to spin on Thread.Sleep(1)/(4) and run a
         // full BGRA→NV12 conversion every _minFrameIntervalTicks regardless of whether the camera had
@@ -92,7 +91,21 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
         // scalar conversion per frame was re-converting pixels that hadn't changed, on top of ~1000 wakeups
         // a second. Waiting on the source's own FrameArrived caps the work at the camera's real rate.
         using var newFrame = new AutoResetEvent(false);
-        void OnSourceFrameArrived() => newFrame.Set();
+        void OnSourceFrameArrived()
+        {
+            try
+            {
+                newFrame.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // WinRT's MediaFrameReader.FrameArrived unsubscription (WebcamCaptureSource.StopAsync) isn't
+                // guaranteed to block until an already-in-flight callback on the camera's own thread finishes
+                // — that callback can still reach here and call Set() a moment after this method's `finally`
+                // has unsubscribed and the `using` above has disposed newFrame. Harmless to drop: this loop
+                // has already exited by the time that can happen, so there's nothing left to wake up.
+            }
+        }
         source.FrameArrived += OnSourceFrameArrived;
         try
         {
@@ -113,14 +126,9 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
                     continue;
                 }
 
-                if (_minFrameIntervalTicks > 0)
+                if (!_rateLimiter.ShouldAccept(Stopwatch.GetTimestamp()))
                 {
-                    long now = Stopwatch.GetTimestamp();
-                    if (lastConvertedTicks != 0 && now - lastConvertedTicks < _minFrameIntervalTicks)
-                    {
-                        continue;
-                    }
-                    lastConvertedTicks = now;
+                    continue;
                 }
 
                 // Convert into the scratch buffer, then swap references under the lock — the recording path

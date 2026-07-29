@@ -64,7 +64,7 @@ public sealed partial class RecordViewModel
             if (IsWebcamSource)
             {
                 RestartPreview();
-                RecordCommand.NotifyCanExecuteChanged();
+                NotifyCaptureCommandsCanExecuteChanged();
             }
         }
     }

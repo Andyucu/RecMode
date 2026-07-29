@@ -1,3 +1,4 @@
+using Serilog;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Windows.Graphics.Capture;
@@ -38,7 +39,10 @@ public static class ScreenshotCapturer
         using (device)
         using (context)
         {
-            IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
+            // Only needed transiently to hand off to CreateFreeThreaded below; never disposed before, so
+            // every screenshot leaked one wrapper holding its own native reference to `device` until GC
+            // finalized it — see WgcSessionFactory.Start's identical fix for the same pattern.
+            using IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
             GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
 
             using var framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
@@ -46,29 +50,49 @@ public static class ScreenshotCapturer
 
             ScreenshotImage? result = null;
             using var got = new ManualResetEventSlim(false);
+            // Barrier against a FrameArrived callback still in flight when got.Wait(2000) below times out
+            // rather than being signaled: WGC can deliver a frame right at the 2s mark, and without this the
+            // device/context/framePool/session get disposed by the using blocks above while the callback is
+            // still inside Readback() using them — a use-after-dispose that isn't even catchable (it's a COM
+            // access violation on a threadpool thread, i.e. a process crash), not merely a bad result. Taking
+            // this lock after the wait blocks until any in-flight callback has actually finished, exactly the
+            // same barrier WgcCaptureEngine/WgcPreviewEngine's Stop() already use against their own
+            // FrameArrived callbacks.
+            var disposeGuard = new Lock();
 
             framePool.FrameArrived += (pool, _) =>
             {
-                using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
-                if (frame is null || got.IsSet)
+                lock (disposeGuard)
                 {
-                    return;
-                }
+                    using Direct3D11CaptureFrame? frame = pool.TryGetNextFrame();
+                    if (frame is null || got.IsSet)
+                    {
+                        return;
+                    }
 
-                try
-                {
-                    using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
-                    result = Readback(device, context, tex, target.Region);
-                }
-                finally
-                {
-                    got.Set();
+                    try
+                    {
+                        using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
+                        result = Readback(device, context, tex, target.Region);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Never let an exception escape a WinRT event callback running on a threadpool
+                        // thread — unlike a Task, that's a genuinely unhandled exception that terminates the
+                        // process immediately, for what should just be a failed screenshot.
+                        Log.Warning(ex, "Screenshot readback failed");
+                    }
+                    finally
+                    {
+                        got.Set();
+                    }
                 }
             };
 
             using GraphicsCaptureSession session = framePool.CreateCaptureSession(item);
             session.StartCapture();
             got.Wait(2000);
+            lock (disposeGuard) { }
             return result;
         }
     }

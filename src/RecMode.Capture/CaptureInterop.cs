@@ -399,9 +399,22 @@ internal static class CaptureInterop
 
     public static ID3D11Texture2D GetTexture(IDirect3DSurface surface)
     {
+        // Called once per captured frame (up to the target fps) — access is a plain COM RCW (this interface
+        // is hand-declared via [ComImport], not a WinRT-projected disposable wrapper), and was previously never
+        // released, only ever reclaimed by the GC finalizer. At 60fps that's 60 RCWs/s sitting on the finalizer
+        // queue holding a live COM reference until a Gen-2 collection happens to run. Releasing it immediately
+        // after extracting the raw pointer is safe: GetInterface's returned IntPtr is the underlying D3D11
+        // texture's own reference (wrapped fresh below by Vortice's ID3D11Texture2D), not owned by `access`.
         var access = WinRT.CastExtensions.As<IDirect3DDxgiInterfaceAccess>(surface);
-        Guid iid = ID3D11Texture2D_IID;
-        IntPtr texPtr = access.GetInterface(ref iid);
-        return new ID3D11Texture2D(texPtr);
+        try
+        {
+            Guid iid = ID3D11Texture2D_IID;
+            IntPtr texPtr = access.GetInterface(ref iid);
+            return new ID3D11Texture2D(texPtr);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(access);
+        }
     }
 }

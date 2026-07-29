@@ -97,6 +97,21 @@ public sealed class RecModeSettings
     public int MicVolume { get; set; } = 100;
 
     /// <summary>
+    /// A/V sync offset in milliseconds, applied to the recorded audio track. Positive delays audio (use when
+    /// audio runs ahead of the picture), negative advances it. 0 = no adjustment.
+    /// <para>
+    /// Defaults to 0 deliberately. RecMode's own measurements found a consistent direction (video lagging
+    /// audio) but with per-marker jitter of the same order as the offset itself, and only on this dev box's
+    /// GDI fallback capture path — not the WGC path most users are on. Shipping a non-zero default derived
+    /// from that would be guessing, and a wrong constant makes sync worse rather than better. This is
+    /// therefore a manual escape hatch, matching what every comparable recorder ships (OBS's per-source
+    /// "Sync Offset" is likewise manual and defaults to 0); see PROJECT_MEMORY.md's 2026-07-29 entry for the
+    /// measurements and the reasoning.
+    /// </para>
+    /// </summary>
+    public int AudioSyncOffsetMs { get; set; }
+
+    /// <summary>
     /// Per-app audio (plan §7): when set, "System audio" captures only this process's audio instead of the
     /// whole system. Persisted by process *name* (PIDs aren't stable across restarts) and re-resolved to a
     /// live PID at recording start; null/empty means full-system loopback (the default, unchanged behavior).

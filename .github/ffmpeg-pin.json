@@ -1,0 +1,7 @@
+{
+  "asset": "ffmpeg-master-latest-win64-gpl.zip",
+  "sha256": "cf6a5f1e172e16ddf5b3772148cb313c337ef3a2adbabe5725cab23c2f632d80",
+  "releaseCreatedUtc": "2026-07-20T12:05:34Z",
+  "pinnedOn": "2026-07-28",
+  "note": "BtbN FFmpeg-Builds publishes no versioned/dated tags for its win64-gpl build - 'latest' is a single release whose asset BtbN silently replaces in place on every rebuild, which is what let release.yml re-pin ffmpeg on every single release with no gate at all. This file pins the exact SHA-256 of the asset independently downloaded and verified on pinnedOn (see release.yml's 'Verify ffmpeg build matches the pinned hash' step, which fails the release if the live asset no longer matches). When BtbN republishes 'latest' with new content, that step fails on purpose - independently verify the new zip's hash (do not just copy BtbN's own checksums.sha256, since that only proves the download wasn't corrupted, not that the content is what you intend to ship) and update this file deliberately to accept it."
+}

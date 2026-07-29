@@ -76,18 +76,9 @@ public sealed partial class RecordViewModel
             // A saved profile whose name matches a built-in is an edit of that built-in (see SaveProfile) —
             // show the edited version in the built-in's usual slot rather than duplicating it further down
             // the list, so "editing a default profile" reads as editing it in place, not creating a copy.
-            foreach (RecordingProfile builtIn in RecordingProfiles.BuiltIn)
+            foreach (RecordingProfile p in RecordingProfiles.Merge(RecordingProfiles.BuiltIn, _settings.Current.CustomProfiles))
             {
-                RecordingProfile? overriding = _settings.Current.CustomProfiles
-                    .FirstOrDefault(p => string.Equals(p.Name, builtIn.Name, StringComparison.OrdinalIgnoreCase));
-                Profiles.Add(overriding ?? builtIn);
-            }
-            foreach (RecordingProfile p in _settings.Current.CustomProfiles)
-            {
-                if (!RecordingProfiles.BuiltIn.Any(b => string.Equals(b.Name, p.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    Profiles.Add(p);
-                }
+                Profiles.Add(p);
             }
 
             string? savedName = _settings.Current.SelectedProfileName;
@@ -191,7 +182,17 @@ public sealed partial class RecordViewModel
         // the user to invent a new name just to tweak a built-in preset.
         string defaultName = SelectedProfile is { } current && !ReferenceEquals(current, _customSentinel)
             ? current.Name : "My profile";
-        string? name = _profilePrompt.Prompt(defaultName);
+        string? name;
+        IsModalPromptOpen = true;
+        try
+        {
+            name = _profilePrompt.Prompt(defaultName);
+        }
+        finally
+        {
+            IsModalPromptOpen = false;
+        }
+
         if (string.IsNullOrWhiteSpace(name))
         {
             return;

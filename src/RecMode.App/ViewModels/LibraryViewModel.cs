@@ -135,27 +135,21 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         bool videos = _showVideos;
         try
         {
-            var files = await Task.Run(() => ScanFiles(dir, videos, cancellation.Token), cancellation.Token);
+            // Building each LibraryItem — including the thumbnail decode — happens entirely inside this
+            // background Task.Run now, not just the file scan. TryLoadThumbnail's BitmapImage is Frozen
+            // before it's returned, which is exactly what makes this safe: a frozen Freezable is immutable
+            // and thread-safe to hand to the UI thread afterward. Previously only ScanFiles ran off-thread,
+            // and the per-file loop (including a full JPEG/PNG decode per screenshot) ran back on the UI
+            // thread — defeating the ListBox's own VirtualizingPanel (declared in LibraryView.xaml) since
+            // every item was decoded up front regardless of how many were ever actually scrolled into view.
+            // A user with ~500 screenshots (F11 is a one-key hotkey; this accumulates fast) froze the window
+            // for several seconds just opening the Screenshots tab.
+            var items = await Task.Run(() => BuildItems(dir, videos, cancellation.Token), cancellation.Token);
             if (cancellation.IsCancellationRequested || !ReferenceEquals(cancellation, _loadCancellation)) return;
 
-            if (videos)
+            foreach (LibraryItem item in items)
             {
-                _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
-            }
-            IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =
-                videos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();
-            foreach (FileInfo f in files)
-            {
-                RecMode.Core.Library.LibraryIndexEntry? entry = meta.GetValueOrDefault(f.Name);
-                Items.Add(new LibraryItem
-                {
-                    FilePath = f.FullName,
-                    DisplayName = Path.GetFileNameWithoutExtension(f.Name),
-                    Meta = BuildMeta(f, entry),
-                    IsImage = !videos,
-                    Thumbnail = videos ? null : TryLoadThumbnail(f.FullName),
-                    IndexEntry = entry,
-                });
+                Items.Add(item);
             }
 
             if (_pendingSelectPath is { } selectPath)
@@ -186,6 +180,42 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
             .Where(f => !f.Name.EndsWith(".recording.mkv", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(f => f.LastWriteTime)
             .ToList();
+    }
+
+    /// <summary>Scans the directory and builds every <see cref="LibraryItem"/> — thumbnail decode included —
+    /// entirely off the UI thread. See the call site in <see cref="LoadAsync"/> for why this is safe.</summary>
+    private List<LibraryItem> BuildItems(string directory, bool videos, CancellationToken ct)
+    {
+        List<FileInfo> files = ScanFiles(directory, videos, ct);
+
+        if (videos)
+        {
+            _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
+        }
+        IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =
+            videos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();
+
+        var items = new List<LibraryItem>(files.Count);
+        foreach (FileInfo f in files)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                break;
+            }
+
+            RecMode.Core.Library.LibraryIndexEntry? entry = meta.GetValueOrDefault(f.Name);
+            items.Add(new LibraryItem
+            {
+                FilePath = f.FullName,
+                DisplayName = Path.GetFileNameWithoutExtension(f.Name),
+                Meta = BuildMeta(f, entry),
+                IsImage = !videos,
+                Thumbnail = videos ? null : TryLoadThumbnail(f.FullName),
+                IndexEntry = entry,
+            });
+        }
+
+        return items;
     }
 
     private void Open(LibraryItem? item)
@@ -300,7 +330,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
     private string CurrentDirectory() => _showVideos
         ? _paths.ResolveUserPath(_settings.Current.OutputFolder) ?? _paths.RecordingsDirectory
-        : _settings.Current.ScreenshotFolder ?? _paths.ScreenshotsDirectory;
+        : _paths.ResolveUserPath(_settings.Current.ScreenshotFolder) ?? _paths.ScreenshotsDirectory;
 
     private void Run(Action action, string code, string message)
     {

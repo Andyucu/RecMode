@@ -134,7 +134,7 @@ public sealed class AudioMixer : IAudioMixer
         _mic?.ClearBuffer();
     }
 
-    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token)
+    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0)
     {
         const int chunkFloats = 4096; // interleaved stereo floats
         float[] sysBuf = new float[chunkFloats];
@@ -144,16 +144,53 @@ public sealed class AudioMixer : IAudioMixer
 
         long floatsWritten = 0;
 
+        // A/V sync offset, applied as real samples at the front of the stream (see IAudioMixer.PumpUntil).
+        // Positive: prepend silence, pushing every real sample that much later relative to video. Negative:
+        // discard that much leading audio, pulling the rest earlier. Computed once, up front — applying a
+        // shift mid-stream would be an audible discontinuity, not a sync correction.
+        (long silenceRemaining, long discardRemaining) = AudioSyncOffset.ComputePlan(offsetMs, Rate, Chans);
+        long silencePrepended = silenceRemaining;
+
+        if (silenceRemaining > 0)
+        {
+            Array.Clear(outBytes);
+            while (silenceRemaining > 0 && !token.IsCancellationRequested)
+            {
+                int n = (int)Math.Min(silenceRemaining, chunkFloats);
+                pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
+                silenceRemaining -= n;
+                floatsWritten += n;
+            }
+        }
+
         while (!token.IsCancellationRequested)
         {
             double elapsed = Math.Max(0, segmentElapsed().TotalSeconds);
-            long targetFloats = (long)(elapsed * Rate * Chans);
+            // The prepended silence counts toward what's already been written, so the elapsed-driven target
+            // has to include it — otherwise the pump would think it was that far ahead and stall until real
+            // time caught up, re-introducing exactly the desync this is correcting.
+            long targetFloats = (long)(elapsed * Rate * Chans) + silencePrepended;
             targetFloats -= targetFloats % Chans; // keep stereo-aligned
 
             while (floatsWritten < targetFloats)
             {
                 int n = (int)Math.Min(targetFloats - floatsWritten, chunkFloats);
                 Mix(sysBuf, micBuf, mixBuf, n);
+
+                if (discardRemaining > 0)
+                {
+                    // Mixed (so the capture buffers stay drained in lockstep with the clock) but not written:
+                    // this is the leading audio being dropped to pull the rest earlier.
+                    long dropped = Math.Min(discardRemaining, n);
+                    discardRemaining -= dropped;
+                    floatsWritten += dropped;
+                    if (dropped == n)
+                    {
+                        continue;
+                    }
+                    n -= (int)dropped;
+                }
+
                 Buffer.BlockCopy(mixBuf, 0, outBytes, 0, n * 4);
                 pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
                 floatsWritten += n;

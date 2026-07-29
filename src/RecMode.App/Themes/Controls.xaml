@@ -99,8 +99,36 @@
         </Setter>
     </Style>
 
-    <!-- Controls inherit the same high-quality text settings for generated button, menu, and combo content. -->
+    <!-- Controls inherit the same high-quality text settings for generated button, menu, and combo content.
+         Only actually reaches a Button/ComboBox/etc. when nothing overrides its Style property with one of
+         the app's own explicitly-keyed styles below (SecondaryButton, AppComboBox, ...) — which is every
+         control that actually appears in the app, so in practice this implicit style is a no-op today (an
+         explicit Style="{StaticResource ...}" always wins over implicit-by-type lookup). The Window-level
+         style further down is what actually makes those controls' generated text antialiased, via ordinary
+         attached-property inheritance down each window's visual tree — kept here anyway as a harmless
+         fallback for any future control that ends up with no explicit Style. -->
     <Style TargetType="Control">
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Implicit (unkeyed) Window style: every RecMode window (ShellWindow, CompactWindow, and every
+         transient overlay/dialog — countdown, toolbar, region-select, annotation, save-profile, schedule-edit,
+         etc.) is a plain <Window> with no Style attribute of its own, so this reaches every one of them
+         automatically. Attached properties like TextOptions.* and UseLayoutRounding are INHERITED down the
+         visual tree from wherever they're set — the TextBlock/Control styles above only ever reached content
+         that happens to literally be a TextBlock; anything else (a TextBox's own editable text, a MenuItem's
+         AccessText header, a Slider's auto-generated tooltip) only gets antialiased text if some ancestor in
+         its own window sets these properties. Before this, only ShellWindow (which happens to set the same
+         five properties directly on its own <Window> tag) got that inheritance — every other window's
+         non-TextBlock text quietly fell back to WPF's un-antialiased-looking defaults (TextFormattingMode
+         Display, TextRenderingMode Auto/ClearType). A window that sets these as local values (ShellWindow)
+         is unaffected — a local value always wins over a Style setter, so this is a no-op there and a real
+         fix everywhere else. -->
+    <Style TargetType="Window">
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
         <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />

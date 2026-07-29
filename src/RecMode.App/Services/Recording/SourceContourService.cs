@@ -71,7 +71,19 @@ public sealed class SourceContourService(
         _winEventProc = OnWindowEvent;
         record.PropertyChanged += OnPropertyChanged;
         hotkeys.Pressed += OnHotkeyPressed;
+        hotkeys.Cleared += OnHotkeysCleared;
         Update();
+    }
+
+    /// <summary>A hotkey remap (or the hotkey-capture UI opening) wipes every global hotkey process-wide,
+    /// including our own clear-region Esc — without this, <see cref="_clearRegionHotkeyId"/> stayed at its
+    /// stale (now-unregistered) value, so <see cref="UpdateClearRegionHotkey"/>'s "already registered" guard
+    /// silently skipped re-registering it, and Esc stopped clearing the region selection until some other
+    /// state change happened to toggle it off and back on.</summary>
+    private void OnHotkeysCleared()
+    {
+        _clearRegionHotkeyId = -1;
+        Update(); // recomputes the exact same register condition Update() already applies, and re-registers
     }
 
     private void OnWindowEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
@@ -108,6 +120,7 @@ public sealed class SourceContourService(
             case nameof(RecordViewModel.IsActivePage):
             case nameof(RecordViewModel.IsWindowMinimized):
             case nameof(RecordViewModel.IsWindowVisible):
+            case nameof(RecordViewModel.IsModalPromptOpen):
                 Update();
                 break;
         }
@@ -127,6 +140,11 @@ public sealed class SourceContourService(
         // by up to one tick right after Start()/Stop(), which matters for a drag that starts the instant
         // recording begins; coordinator.IsRecording never has that delay.
         bool isRecording = coordinator.IsRecording;
+        // Deliberately NOT the shared PreviewEligibility.CanRun predicate: this overlay is its own topmost
+        // window, not one of the preview/meter surfaces that predicate gates, so it doesn't check
+        // "hostsPreviewSurfaces" (Compact still wants its region contour/drag-retarget even though Compact
+        // shows no preview image) and it stays visible through the whole recording (the other predicate
+        // always evaluates false while recording, since preview itself stops then).
         bool visible = isRecording || (record.IsActivePage && !record.IsWindowMinimized && record.IsWindowVisible);
         CaptureTarget? target = visible
             ? (isRecording ? record.ActiveCaptureTarget : record.CurrentSelectionTarget)
@@ -162,7 +180,11 @@ public sealed class SourceContourService(
             StopFollowing();
         }
 
-        UpdateClearRegionHotkey(register: target.Kind == CaptureKind.Region && !isRecording);
+        // Suspended while a RecMode-owned modal is open (the region picker, the Save-profile prompt) — that
+        // global Esc registration would otherwise steal the Esc keypress the modal's own Cancel handling
+        // needs, since RegisterHotKey intercepts it before it ever reaches the modal window regardless of
+        // which window has focus.
+        UpdateClearRegionHotkey(register: target.Kind == CaptureKind.Region && !isRecording && !record.IsModalPromptOpen);
     }
 
     private void UpdateClearRegionHotkey(bool register)
@@ -292,6 +314,7 @@ public sealed class SourceContourService(
     {
         record.PropertyChanged -= OnPropertyChanged;
         hotkeys.Pressed -= OnHotkeyPressed;
+        hotkeys.Cleared -= OnHotkeysCleared;
         UpdateClearRegionHotkey(register: false);
         Hide();
     }

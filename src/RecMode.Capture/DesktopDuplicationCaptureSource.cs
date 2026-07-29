@@ -29,7 +29,31 @@ namespace RecMode.Capture;
 /// </summary>
 internal sealed class DesktopDuplicationCaptureSource : IDisposable
 {
-    private readonly List<(IDXGIOutputDuplication Duplication, int OffsetX, int OffsetY)> _outputs = [];
+    private const int DxgiErrorAccessLost = unchecked((int)0x887A0026);
+    private const int DxgiErrorWaitTimeout = unchecked((int)0x887A0027);
+
+    /// <summary>Backoff between re-<c>DuplicateOutput</c> attempts after access loss, so a prolonged secure-
+    /// desktop transition (or anything else that keeps returning ACCESS_LOST) doesn't turn every ~16ms
+    /// <see cref="AcquireNextFrame"/> call into a failing DuplicateOutput syscall.</summary>
+    private static readonly TimeSpan AccessLostRetryInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>One monitor's live duplication state. <see cref="Duplication"/> is mutable — access loss
+    /// (DXGI_ERROR_ACCESS_LOST, a routine return on secure-desktop transitions, Ctrl+Alt+Del, display
+    /// mode/resolution changes, and monitor sleep/wake, not an error condition) disposes and re-acquires it
+    /// in place via the retained <see cref="Output"/>, rather than failing the whole capture source. Before
+    /// this, any of those routine events permanently ended All-Displays capture for the rest of the recording
+    /// (the pacer just kept duplicating the last good frame) — e.g. a 1s UAC prompt 30s into a 20-minute
+    /// recording produced 19.5 minutes of a frozen desktop.</summary>
+    private sealed class OutputState(IDXGIOutput1 output, IDXGIOutputDuplication? duplication, int offsetX, int offsetY)
+    {
+        public IDXGIOutput1 Output { get; } = output;
+        public IDXGIOutputDuplication? Duplication { get; set; } = duplication;
+        public int OffsetX { get; } = offsetX;
+        public int OffsetY { get; } = offsetY;
+        public long NextRetryTicks { get; set; }
+    }
+
+    private readonly List<OutputState> _outputs = [];
     private readonly ID3D11Texture2D _canvas;
 
     /// <summary>Device created on the adapter that actually owns the target monitors — callers (the NV12/BGRA
@@ -42,10 +66,9 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
 
     public DesktopDuplicationCaptureSource(IReadOnlyList<MonitorInfo> monitors)
     {
-        int minX = monitors.Min(m => m.X);
-        int minY = monitors.Min(m => m.Y);
-        VirtualWidth = monitors.Max(m => m.X + m.Width) - minX;
-        VirtualHeight = monitors.Max(m => m.Y + m.Height) - minY;
+        VirtualDesktopLayout.Bounds bounds = VirtualDesktopLayout.Compute(monitors);
+        VirtualWidth = bounds.Width;
+        VirtualHeight = bounds.Height;
 
         using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
 
@@ -111,25 +134,32 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
             {
                 using (output)
                 {
+                    // output1 is retained (not disposed here) so a later access-loss can re-DuplicateOutput
+                    // from the same IDXGIOutput1 instead of failing the whole source — disposed in Dispose().
+                    IDXGIOutput1 output1 = output.QueryInterface<IDXGIOutput1>();
+                    (int offsetX, int offsetY) = VirtualDesktopLayout.OffsetOf(match, bounds);
                     try
                     {
-                        using IDXGIOutput1 output1 = output.QueryInterface<IDXGIOutput1>();
                         IDXGIOutputDuplication duplication = output1.DuplicateOutput(Device);
-                        _outputs.Add((duplication, match.X - minX, match.Y - minY));
+                        _outputs.Add(new OutputState(output1, duplication, offsetX, offsetY));
                     }
                     catch (Exception ex)
                     {
                         // Already duplicated by another process, or no desktop attached right now — that
-                        // monitor's region just won't update (documented scope cut above).
+                        // monitor's region just won't update (documented scope cut above). Still keep output1
+                        // around: AcquireNextFrame retries DuplicateOutput on its own backoff, so a transient
+                        // "already duplicated" at startup can still recover once the other duplicator lets go.
                         Log.Warning(ex, "Desktop Duplication failed for monitor at ({X},{Y}); that region won't update",
                             match.X, match.Y);
+                        _outputs.Add(new OutputState(output1, null, offsetX, offsetY));
                     }
                 }
             }
         }
 
-        if (_outputs.Count == 0)
+        if (_outputs.All(o => o.Duplication is null))
         {
+            foreach (OutputState o in _outputs) { o.Output.Dispose(); }
             Context.Dispose();
             Device.Dispose();
             throw new InvalidOperationException("Desktop Duplication could not open any selected display output.");
@@ -150,22 +180,80 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
             BindFlags = BindFlags.ShaderResource | BindFlags.RenderTarget,
             CPUAccessFlags = CpuAccessFlags.None,
         };
-        _canvas = Device.CreateTexture2D(canvasDesc);
+        try
+        {
+            _canvas = Device.CreateTexture2D(canvasDesc);
+        }
+        catch
+        {
+            // Reachable for real: an oversized virtual desktop (several 4K+ monitors side by side can exceed
+            // D3D11's max texture dimension) or a transient GPU-memory failure both throw here, after every
+            // output above has already been successfully duplicated — DXGI output duplication is exclusive
+            // per output, so leaving these live (the constructor never finishes, so Dispose() never runs)
+            // meant every later All-Displays attempt hit "already duplicated" on every output for the rest of
+            // the process, permanently stuck on the GDI fallback from what was really just one bad texture
+            // allocation.
+            foreach (OutputState o in _outputs)
+            {
+                o.Duplication?.Dispose();
+                o.Output.Dispose();
+            }
+            Context.Dispose();
+            Device.Dispose();
+            throw;
+        }
     }
 
-    /// <summary>Pulls the next composited frame (each output's <c>AcquireNextFrame</c> blocks up to
-    /// <paramref name="timeoutMs"/>) and returns the shared canvas texture, valid until the next call.</summary>
+    /// <summary>Pulls the next composited frame and returns the shared canvas texture, valid until the next
+    /// call. Only the <em>first</em> output's <c>AcquireNextFrame</c> gets the full <paramref name="timeoutMs"/>
+    /// wait; every other output uses a near-zero timeout instead of also blocking up to the full amount —
+    /// looping N outputs each with the full timeout meant a pull cost up to N × timeoutMs when every monitor
+    /// was idle (a 3-monitor All-Displays capture could cap out around 30fps even with a 60fps target, and a
+    /// 4th monitor made it worse — the more monitors, the worse "All Displays" got). One monitor still gets a
+    /// real, efficient blocking wait each pull so the loop doesn't busy-spin when the whole desktop is idle.
+    /// An output that currently has no live duplication (never acquired one, or just lost access) is skipped
+    /// for this pull — its region of the canvas simply keeps its last composited pixels, same as a monitor
+    /// with no new frame this cycle.</summary>
     public ID3D11Texture2D AcquireNextFrame(int timeoutMs)
     {
-        foreach ((IDXGIOutputDuplication duplication, int offsetX, int offsetY) in _outputs)
+        bool isFirst = true;
+        foreach (OutputState state in _outputs)
         {
-            Result hr = duplication.AcquireNextFrame((uint)timeoutMs, out OutduplFrameInfo _, out IDXGIResource resource);
+            uint thisTimeoutMs = isFirst ? (uint)timeoutMs : 0;
+            isFirst = false;
+
+            if (state.Duplication is null)
+            {
+                TryReacquire(state);
+                if (state.Duplication is null)
+                {
+                    continue;
+                }
+            }
+
+            Result hr = state.Duplication.AcquireNextFrame(thisTimeoutMs, out OutduplFrameInfo _, out IDXGIResource resource);
             if (!hr.Success)
             {
-                // Only the documented wait timeout is harmless. Access loss means the duplication is no
-                // longer usable (lock/unlock, RDP/display-mode changes) and must restart through fallback.
-                if (hr.Code == unchecked((int)0x887A0027)) // DXGI_ERROR_WAIT_TIMEOUT
+                if (hr.Code == DxgiErrorWaitTimeout)
+                {
+                    continue; // no new frame this cycle — harmless, keep the duplication
+                }
+
+                if (hr.Code == DxgiErrorAccessLost)
+                {
+                    // Routine, not fatal: secure-desktop transitions (UAC/Ctrl+Alt+Del), display mode/resolution
+                    // changes, and monitor sleep/wake all surface as ACCESS_LOST. The duplication itself is
+                    // permanently dead once this happens, but the output can simply be re-duplicated — previously
+                    // this was treated as fatal for the whole source, permanently freezing that region (or, via
+                    // WgcCaptureEngine/WgcPreviewEngine's Faulted handling, the whole capture) for the rest of the
+                    // recording over something as brief as a one-second UAC prompt.
+                    Log.Warning("Desktop Duplication lost access for the output at ({X},{Y}); will retry", state.OffsetX, state.OffsetY);
+                    state.Duplication.Dispose();
+                    state.Duplication = null;
+                    state.NextRetryTicks = 0; // retry immediately next pull, not after the backoff
                     continue;
+                }
+
                 throw new InvalidOperationException($"Desktop Duplication failed (0x{hr.Code:X8}).");
             }
 
@@ -174,13 +262,36 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
                 using (resource)
                 using (ID3D11Texture2D tex = resource.QueryInterface<ID3D11Texture2D>())
                 {
-                    Context.CopySubresourceRegion(_canvas, 0, (uint)offsetX, (uint)offsetY, 0, tex, 0, null);
+                    Context.CopySubresourceRegion(_canvas, 0, (uint)state.OffsetX, (uint)state.OffsetY, 0, tex, 0, null);
                 }
             }
-            finally { duplication.ReleaseFrame(); }
+            finally { state.Duplication.ReleaseFrame(); }
         }
 
         return _canvas;
+    }
+
+    /// <summary>Attempts to re-<c>DuplicateOutput</c> a monitor whose duplication was lost, honouring
+    /// <see cref="AccessLostRetryInterval"/> so a still-locked/still-transitioning desktop doesn't turn every
+    /// pull into a failing syscall.</summary>
+    private void TryReacquire(OutputState state)
+    {
+        long now = Environment.TickCount64;
+        if (now < state.NextRetryTicks)
+        {
+            return;
+        }
+
+        try
+        {
+            state.Duplication = state.Output.DuplicateOutput(Device);
+        }
+        catch (Exception ex)
+        {
+            state.NextRetryTicks = now + (long)AccessLostRetryInterval.TotalMilliseconds;
+            Log.Debug(ex, "Desktop Duplication re-acquire failed for the output at ({X},{Y}); will retry in {Ms}ms",
+                state.OffsetX, state.OffsetY, AccessLostRetryInterval.TotalMilliseconds);
+        }
     }
 
     /// <summary>Disposes the duplications and the canvas. Does not dispose <see cref="Device"/>/<see cref="Context"/>
@@ -188,9 +299,10 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
     /// which the calling engine (<see cref="WgcCaptureEngine"/>/<see cref="WgcPreviewEngine"/>) disposes itself.</summary>
     public void Dispose()
     {
-        foreach ((IDXGIOutputDuplication duplication, _, _) in _outputs)
+        foreach (OutputState state in _outputs)
         {
-            duplication.Dispose();
+            state.Duplication?.Dispose();
+            state.Output.Dispose();
         }
         _outputs.Clear();
         _canvas.Dispose();

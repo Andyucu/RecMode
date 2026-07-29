@@ -31,8 +31,12 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private byte[] _scratch = [];
     private bool _hasLatest;
     private long _capturedFrames;
-    private long _minFrameIntervalTicks;
-    private long _lastConvertedTicks;
+    private readonly FrameRateLimiter _rateLimiter = new(Stopwatch.Frequency);
+
+    /// <summary>Passive video-path latency measurement (see <see cref="CaptureLatencyTracker"/>). Diagnostic
+    /// only — logged, never acted on. 10s windows keep it to ~6 log lines a minute during a recording, which
+    /// is enough resolution to see drift over a long capture without flooding the log.</summary>
+    private readonly CaptureLatencyTracker _latencyTracker = new(TimeSpan.FromSeconds(10));
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
     private double _brightness;
@@ -62,8 +66,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             throw new InvalidOperationException("Capture is already running.");
         }
 
-        _minFrameIntervalTicks = targetFps > 0 ? Stopwatch.Frequency / targetFps : 0;
-        _lastConvertedTicks = 0;
+        _rateLimiter.SetTargetFps(targetFps);
 
         if (!CaptureCapabilities.IsSupported())
         {
@@ -169,19 +172,25 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             // that rate was pure waste (e.g. up to ~84 of every 144 conversions/sec at 1440p60 on a 144 Hz
             // display, immediately overwritten before the pacer ever consumed them). Still calls
             // TryGetNextFrame above unconditionally so the WGC frame pool keeps cycling normally.
-            if (_minFrameIntervalTicks > 0)
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (!_rateLimiter.ShouldAccept(nowTicks))
             {
-                long now = Stopwatch.GetTimestamp();
-                if (_lastConvertedTicks != 0 && now - _lastConvertedTicks < _minFrameIntervalTicks)
-                {
-                    return;
-                }
-                _lastConvertedTicks = now;
+                return;
             }
+
+            // Passive video-path latency measurement (diagnostic only — nothing acts on it). Read here,
+            // right before the GPU convert, so it captures WGC delivery latency without including our own
+            // convert+readback cost, which the pacer's own timing already covers. One property read and a
+            // few adds per accepted frame; no allocation, no extra syscall (Stopwatch.GetTimestamp was
+            // already called just above by the rate limiter — reused rather than re-read so the two can't
+            // disagree). See CaptureLatencyTracker for why this exists and what it can't tell us.
+            _latencyTracker.Record(frame.SystemRelativeTime, nowTicks);
 
             using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
             converter.Convert(tex, _scratch);
         }
+
+        ReportLatencyIfDue();
 
         lock (_sync)
         {
@@ -190,6 +199,23 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         }
 
         Interlocked.Increment(ref _capturedFrames);
+    }
+
+    /// <summary>Logs one window of video-path capture latency, if a window's worth has accumulated. Called
+    /// outside the <c>_disposeGuard</c> critical section deliberately — Serilog's file sink can block, and
+    /// this lock also serialises the GPU convert for every frame, so logging inside it would put I/O on the
+    /// capture hot path.
+    /// <para>
+    /// Logged at Information (not Debug) on purpose: the entire point is that someone running RecMode on a
+    /// real WGC-capable machine — which this dev environment is not — can hand back an ordinary log file and
+    /// have the numbers already in it, without needing to reconfigure log levels first.
+    /// </para></summary>
+    private void ReportLatencyIfDue()
+    {
+        if (_latencyTracker.TryTakeReport(Stopwatch.GetTimestamp(), out CaptureLatencyStats stats))
+        {
+            Log.Information("Capture latency (compositor-render to convert): {Stats}", stats);
+        }
     }
 
     private void OnCaptureItemClosed(GraphicsCaptureItem sender, object? args)
@@ -258,14 +284,9 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
                 // Same throttle as OnFrameArrived (WGC path) — AcquireNextFrame returns as soon as the
                 // desktop changes, which can be far faster than the recording/preview's own target fps.
-                if (_minFrameIntervalTicks > 0)
+                if (!_rateLimiter.ShouldAccept(Stopwatch.GetTimestamp()))
                 {
-                    long now = Stopwatch.GetTimestamp();
-                    if (_lastConvertedTicks != 0 && now - _lastConvertedTicks < _minFrameIntervalTicks)
-                    {
-                        continue;
-                    }
-                    _lastConvertedTicks = now;
+                    continue;
                 }
 
                 converter!.Convert(canvas, _scratch);

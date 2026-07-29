@@ -7,9 +7,10 @@ namespace RecMode.Capture.Webcam;
 /// </summary>
 public sealed class WebcamPreviewEngine : IPreviewEngine
 {
-    private static readonly TimeSpan MinFrameInterval = TimeSpan.FromMilliseconds(33); // ~30 fps, matches WgcPreviewEngine
+    private const int TargetFps = 30; // matches WgcPreviewEngine
 
     private readonly Lock _sync = new();
+    private readonly FrameRateLimiter _rateLimiter = new(System.Diagnostics.Stopwatch.Frequency);
     private WebcamCaptureSource? _source;
     private Thread? _thread;
     private volatile bool _stopping;
@@ -65,6 +66,7 @@ public sealed class WebcamPreviewEngine : IPreviewEngine
         _source = source;
         _stopping = false;
         IsRunning = true;
+        _rateLimiter.SetTargetFps(TargetFps);
         _thread = new Thread(PollLoop) { IsBackground = true, Name = "recmode-webcam-preview" };
         _thread.Start();
     }
@@ -76,8 +78,6 @@ public sealed class WebcamPreviewEngine : IPreviewEngine
     {
         WebcamCaptureSource source = _source!;
         byte[] bgra = []; // grown on first frame by TryGetLatestFrame, then reused — this thread owns it
-        long lastFrameTicks = 0;
-        long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
 
         // Event-driven rather than polled (§3.9) — same change as WebcamCaptureEngine.PollLoop; see its
         // comment. Waiting on the camera's own frame event means no wakeups and no redundant rescaling
@@ -100,12 +100,10 @@ public sealed class WebcamPreviewEngine : IPreviewEngine
                     continue;
                 }
 
-                long now = System.Diagnostics.Stopwatch.GetTimestamp();
-                if (lastFrameTicks != 0 && now - lastFrameTicks < minTicks)
+                if (!_rateLimiter.ShouldAccept(System.Diagnostics.Stopwatch.GetTimestamp()))
                 {
                     continue;
                 }
-                lastFrameTicks = now;
 
                 ScaleBgra(bgra, w, h, Width, Height, _scratch);
                 lock (_sync)

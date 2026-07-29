@@ -31,7 +31,15 @@ internal static class WgcSessionFactory
         try
         {
             (device, context) = CaptureInterop.CreateDevice();
-            IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
+            // The WinRT IDirect3DDevice wrapper is only needed transiently to hand off to
+            // Direct3D11CaptureFramePool.CreateFreeThreaded below — it isn't stored in Session and was never
+            // disposed on any path, success or failure. It holds its own native reference to the underlying
+            // ID3D11Device, so even after Stop() disposes `device` explicitly, that reference kept the device
+            // alive until this wrapper happened to be GC-finalized — worse than a one-time leak, since a
+            // preview restart (the 400ms resize debounce) creates a fresh device on every one. The frame pool
+            // takes its own independent reference when it's created, so disposing this immediately afterward
+            // doesn't affect it.
+            using IDirect3DDevice winrt = CaptureInterop.CreateWinRtDevice(device);
             GraphicsCaptureItem item = CaptureInterop.CreateItem(target);
             // HDR sources: request the frame pool's native FP16 scRGB format instead of 8-bit BGRA, so the
             // captured texture carries the real linear HDR values DWM composited (not an already-clamped 8bpc

@@ -37,6 +37,13 @@ public sealed record FfmpegJob
     /// mode supports it (see <see cref="FfmpegArgsBuilder.SupportsBitrateGuardrail"/>). Off by default here —
     /// the app-level default lives in <c>RecModeSettings.BitrateGuardrailEnabled</c>.</summary>
     public bool BitrateGuardrailEnabled { get; init; }
+
+    /// <summary>Set for a Monitor/Window/Region/AllDisplays source (anything that isn't a webcam feed) — drives
+    /// SVT-AV1's screen-content tools (§3.3: "screen/window/region sources"; generalized here to every
+    /// non-webcam source, since AllDisplays is exactly as much screen content as a single monitor is, and the
+    /// only real distinction SVT-AV1's screen-content mode cares about is "rendered UI/text" vs. "camera
+    /// video"). Ignored by every encoder except libsvtav1.</summary>
+    public bool IsScreenContent { get; init; } = true;
 }
 
 /// <summary>
@@ -73,8 +80,23 @@ public static class FfmpegArgsBuilder
             ? $"-threads {job.CpuThreadCap} "
             : "";
 
+        // -pix_fmt yuv420p forces ffmpeg to insert a CPU colour-conversion pass on every frame — the input is
+        // already NV12 (the one GPU copy chain this pipeline exists to keep, per §3.9), and NVENC/AMF/QSV/
+        // libx264 all take NV12 natively (it's the preferred/native format for the three hardware encoders,
+        // and libx264 lists nv12 among its own supported pix_fmts). Only libx265 and libsvtav1 genuinely need
+        // the conversion — emitting the flag unconditionally meant a full NV12→YUV420P swscale pass on every
+        // frame even for encoders that would otherwise take the pipe's bytes as-is (~660 MB/s of pointless
+        // memory traffic at 1440p60), which the encoder then often converts straight back to NV12 internally.
+        string pixFmt = job.Encoder.FfmpegId is "libx265" or "libsvtav1" ? "-pix_fmt yuv420p " : "";
+
+        // MP4/MOV need the hvc1 codec tag for HEVC, or the default hev1 ffmpeg writes is refused by several
+        // real players (QuickTime, iOS, Safari, Windows Photos' HEVC path) even though the bitstream is fine.
+        string tag = job.Encoder.Codec == VideoCodec.Hevc && job.Container is MediaContainer.Mp4 or MediaContainer.Mov
+            ? "-tag:v hvc1 "
+            : "";
+
         return $"-hide_banner -loglevel warning {videoIn} {audioIn} {audioMap} " +
-               $"{threads}{encoder} -pix_fmt yuv420p {audioEnc} {faststart} -y \"{job.OutputPath}\"";
+               $"{threads}{encoder} {pixFmt}{tag}{audioEnc} {faststart} -y \"{job.OutputPath}\"";
     }
 
     /// <summary>Rejects an <see cref="FfmpegJob"/> that would produce a malformed or nonsensical command line,
@@ -306,7 +328,13 @@ public static class FfmpegArgsBuilder
             // near-universally correct under virtualization; the encode-speed cost versus AVX-512 is modest,
             // and reliability matters more than that margin for a screen recorder. Confirmed accepted by the
             // bundled SVT-AV1 build (logs "[asm level selected : up to avx2]" instead of "avx512icl").
-            "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c} -svtav1-params asm=avx2",
+            // scm=1 forces SVT-AV1's screen-content tools (palette mode + intra block copy) on for
+            // Monitor/Window/Region/AllDisplays sources — real screen recordings are full of flat colour runs
+            // and repeated UI/text SVT-AV1's ordinary inter/intra prediction doesn't specifically exploit; off
+            // (scm=0) for webcam-as-source, which is ordinary camera video with none of that structure. This
+            // was recorded as shipped in CLAUDE.md §3.3 well before it was actually implemented — confirmed via
+            // a snapshot test that pinned scm's absence from the arg string.
+            "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c} -svtav1-params asm=avx2:scm={(job.IsScreenContent ? 1 : 0)}",
 
             "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" =>
                 $"-c:v {encoder.FfmpegId} -preset {NvencPreset(effort)} -rc vbr -cq {c}",

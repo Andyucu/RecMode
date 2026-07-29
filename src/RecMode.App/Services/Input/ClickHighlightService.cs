@@ -46,7 +46,7 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
             return;
         }
 
-        _overlay = new ClickRippleOverlay();
+        _overlay = new ClickRippleOverlay(record.ActiveCaptureTarget);
         _overlay.Show();
         hook.Clicked += OnClicked;
         hook.Install();

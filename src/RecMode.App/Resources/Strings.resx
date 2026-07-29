@@ -153,6 +153,11 @@
   <data name="Settings_AudioFormatDesc" xml:space="preserve"><value>Applied to every captured audio track</value></data>
   <data name="Settings_AudioBitrate" xml:space="preserve"><value>Audio bitrate</value></data>
   <data name="Settings_AudioBitrateDesc" xml:space="preserve"><value>Higher is better quality and a larger file</value></data>
+  <data name="Settings_AudioSyncOffset" xml:space="preserve"><value>Audio sync offset</value></data>
+  <data name="Settings_AudioSyncOffsetTooltip" xml:space="preserve"><value>Shift recorded audio relative to the picture. Increase if the sound runs ahead of the video, decrease if it lags behind.</value></data>
+  <data name="Settings_AudioSyncOffsetInSync" xml:space="preserve"><value>No adjustment — audio is recorded exactly as captured</value></data>
+  <data name="Settings_AudioSyncOffsetDelayed" xml:space="preserve"><value>Audio is delayed — use this when the sound runs ahead of the picture</value></data>
+  <data name="Settings_AudioSyncOffsetAdvanced" xml:space="preserve"><value>Audio is advanced — use this when the sound lags behind the picture</value></data>
   <data name="Settings_SaveTo" xml:space="preserve"><value>Save recordings to</value></data>
   <data name="Settings_Pattern" xml:space="preserve"><value>File name pattern</value></data>
   <data name="Settings_PatternDesc" xml:space="preserve"><value>Tokens: {date} {time} {source}</value></data>

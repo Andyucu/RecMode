@@ -176,7 +176,7 @@ public sealed partial class RecordViewModel
     private void StartMetering()
     {
         // §3.9: same combined guard as StartPreview — see SetWindowVisible.
-        if (!_isActivePage || IsWindowMinimized || !IsWindowVisible || !_hostsPreviewSurfaces)
+        if (!PreviewEligibility.CanRun(_isActivePage, IsWindowMinimized, IsWindowVisible, _hostsPreviewSurfaces))
         {
             return;
         }

@@ -53,6 +53,14 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
         _thread.Start();
     }
 
+    // A single failed PrintWindow/BitBlt (the captured window redrawing, briefly losing its DWM surface,
+    // minimizing, or a transient UAC/secure-desktop transition) used to end capture for good — the catch sat
+    // outside the while loop, so one bad frame exited the thread, and TryGetLatestFrame kept happily returning
+    // the last good frame forever afterward with no visible sign anything was wrong: a valid-looking recording
+    // that's actually a frozen still image for its remaining duration. This tolerates a run of failures before
+    // treating it as a real, sustained fault — ~1s at the fallback's 30fps.
+    private const int MaxConsecutiveFrameFailures = 30;
+
     private void CaptureLoop()
     {
         nint screen = IntPtr.Zero, dc = IntPtr.Zero, bitmap = IntPtr.Zero, old = IntPtr.Zero;
@@ -70,16 +78,27 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
             old = SelectObject(dc, bitmap);
             long intervalTicks = System.Diagnostics.Stopwatch.Frequency / FallbackFramesPerSecond;
             long nextFrame = System.Diagnostics.Stopwatch.GetTimestamp();
+            int consecutiveFailures = 0;
             while (!_stopping)
             {
-                CaptureBgra(dc, bits, bgra, srcStride);
-                Bgra8ToNv12Converter.Convert(bgra, _bounds.Width, _bounds.Height, _dstW, _dstH, nv12);
-                lock (_sync)
+                try
                 {
-                    Buffer.BlockCopy(nv12, 0, _latest, 0, nv12.Length);
-                    _hasLatest = true;
+                    CaptureBgra(dc, bits, bgra, srcStride);
+                    Bgra8ToNv12Converter.Convert(bgra, _bounds.Width, _bounds.Height, _dstW, _dstH, nv12);
+                    lock (_sync)
+                    {
+                        Buffer.BlockCopy(nv12, 0, _latest, 0, nv12.Length);
+                        _hasLatest = true;
+                    }
+                    CapturedFrameCount++;
+                    consecutiveFailures = 0;
                 }
-                CapturedFrameCount++;
+                catch (Exception) when (++consecutiveFailures < MaxConsecutiveFrameFailures)
+                {
+                    // Transient — keep serving the last good frame (unchanged) and retry next tick instead of
+                    // ending capture for good over one bad grab.
+                }
+
                 nextFrame += intervalTicks;
                 long remaining = nextFrame - System.Diagnostics.Stopwatch.GetTimestamp();
                 if (remaining > 0) Thread.Sleep(Math.Max(1, (int)(remaining * 1000 / System.Diagnostics.Stopwatch.Frequency)));

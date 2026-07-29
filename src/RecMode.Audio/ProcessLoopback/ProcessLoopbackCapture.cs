@@ -143,17 +143,47 @@ public sealed class ProcessLoopbackCapture : IWaveIn
 
     public void Dispose()
     {
-        StopRecording();
+        _stopping = true;
+        // Same bounded-join-then-defer pattern as RecordingCoordinator.SafeTeardown, for the same reason:
+        // the previous code called StopRecording() (a bounded Join(1000), ignoring whether it actually
+        // succeeded) and then unconditionally released both COM objects regardless — if the pump thread was
+        // still running (possibly mid-way through a blocking WASAPI call using exactly these objects), that
+        // raced an in-flight call against ReleaseComObject, producing an InvalidComObjectException on the
+        // still-running thread (or worse) instead of a clean stop.
+        bool pumpStopped = _pumpThread is null || _pumpThread.Join(1000);
+        try { _audioClient?.Stop(); } catch (Exception) { }
+
+        if (pumpStopped)
+        {
+            ReleaseComObjects();
+            return;
+        }
+
+        Thread orphanedThread = _pumpThread!;
+        IAudioCaptureClient? captureClient = _captureClient;
+        IAudioClient? audioClient = _audioClient;
+        _captureClient = null;
+        _audioClient = null;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            orphanedThread.Join();
+            try { if (captureClient is not null) Marshal.ReleaseComObject(captureClient); } catch (Exception) { }
+            try { if (audioClient is not null) Marshal.ReleaseComObject(audioClient); } catch (Exception) { }
+        });
+    }
+
+    private void ReleaseComObjects()
+    {
         if (_captureClient is not null)
         {
             Marshal.ReleaseComObject(_captureClient);
+            _captureClient = null;
         }
         if (_audioClient is not null)
         {
             Marshal.ReleaseComObject(_audioClient);
+            _audioClient = null;
         }
-        _captureClient = null;
-        _audioClient = null;
     }
 
     /// <summary>Activates the process-loopback virtual audio device, returning a raw (AddRef'd) <c>IAudioClient</c> pointer.</summary>

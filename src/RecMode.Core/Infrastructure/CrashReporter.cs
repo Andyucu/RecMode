@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 
 namespace RecMode.Core.Infrastructure;
 
@@ -6,6 +7,12 @@ namespace RecMode.Core.Infrastructure;
 public sealed class CrashReporter : ICrashReporter
 {
     private const string SessionMarkerName = "session.open";
+
+    // Crash logs are tiny but minidumps are not (§3.6's "with data segments" dump is well beyond a triage-sized
+    // mini dump); with no pruning at all, a machine that crashes repeatedly over months would accumulate them
+    // forever in Data\logs\crash with nothing to stop it. Kept generous since these are the one artifact that
+    // actually explains a crash after the fact.
+    private const int MaxKeptCrashArtifacts = 20;
 
     private readonly IAppPaths _paths;
     private readonly IMinidumpWriter _minidump;
@@ -37,6 +44,38 @@ public sealed class CrashReporter : ICrashReporter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Non-fatal: crash detection is best-effort.
+        }
+
+        PruneOldCrashArtifacts();
+    }
+
+    /// <summary>Keeps only the newest <see cref="MaxKeptCrashArtifacts"/> crash-*.log/crash-*.dmp files, oldest
+    /// first. Runs once per launch rather than after every crash, so a single session that somehow produced
+    /// many crash reports doesn't churn through deletes mid-run.</summary>
+    private void PruneOldCrashArtifacts()
+    {
+        try
+        {
+            if (!Directory.Exists(_paths.CrashDumpDirectory))
+            {
+                return;
+            }
+
+            IEnumerable<string> logs = Directory.EnumerateFiles(_paths.CrashDumpDirectory, "crash-*.log");
+            IEnumerable<string> dumps = Directory.EnumerateFiles(_paths.CrashDumpDirectory, "crash-*.dmp");
+
+            foreach (string path in logs.Concat(dumps)
+                .Select(p => new FileInfo(p))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .Skip(MaxKeptCrashArtifacts)
+                .Select(f => f.FullName))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort: pruning failure shouldn't block startup.
         }
     }
 

@@ -36,8 +36,11 @@
                         Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" Margin="6,0,0,0" />
             </Grid>
 
-            <!-- Source tiles -->
-            <Grid Margin="0,0,0,12">
+            <!-- Source tiles. IsEnabled="{Binding Record.CanEditSettings}" (mirrors RecordView.xaml's Source
+                 card): without this, clicking a different tile mid-recording flipped the source-kind flags
+                 and desynced the whole UI (CurrentTarget(), the Screenshot button) from what the coordinator
+                 was actually still capturing, even though the recording itself can't retarget live. -->
+            <Grid Margin="0,0,0,12" IsEnabled="{Binding Record.CanEditSettings}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="6" />
@@ -74,7 +77,8 @@
             <!-- Which window to record (Window source only) — the tile above only picks the source kind, this
                  picks the actual window; without it Compact silently recorded whatever window happened to
                  enumerate first. -->
-            <Grid Margin="0,0,0,12" Visibility="{Binding Record.IsWindowSource, Converter={StaticResource BoolToVisibility}}">
+            <Grid Margin="0,0,0,12" Visibility="{Binding Record.IsWindowSource, Converter={StaticResource BoolToVisibility}}"
+                  IsEnabled="{Binding Record.CanEditSettings}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -137,6 +141,40 @@
                 <TextBlock Grid.Column="3" Text="{Binding Record.ElapsedText}" Style="{StaticResource MonoText}"
                            FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" />
             </Grid>
+
+            <!-- Error/warning snackbar (§3.6 RecoverableWarning/BlockingError channel) — ShellWindow has always
+                 had this, but Compact never did, so every warning/error (a bad output folder, low disk, being
+                 on battery, "that recording source isn't available any more", a hotkey collision) was silently
+                 invisible in this layout: the recording just quietly failed to start and StatusText reverted
+                 to "Ready" with no explanation anywhere on screen. SizeToContent="Height" means the window
+                 simply grows to fit this in, rather than needing the absolutely-positioned overlay ShellWindow
+                 uses over its much larger, fixed content area. -->
+            <Border Visibility="{Binding SnackbarVisible, Converter={StaticResource BoolToVisibility}}"
+                    Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,10,0,0"
+                    AutomationProperties.LiveSetting="Assertive">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SnackbarIsError}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource CriticalBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding SnackbarMessage}" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   FontSize="11" MaxWidth="300" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </StackPanel>
+                    <Button Content="{x:Static res:Strings.Shell_Dismiss}" Command="{Binding DismissSnackbarCommand}"
+                            Style="{StaticResource SecondaryButton}" HorizontalAlignment="Right"
+                            Height="24" Padding="10,0" Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
         </StackPanel>
     </Border>
 </Window>

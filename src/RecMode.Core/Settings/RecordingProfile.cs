@@ -70,4 +70,33 @@ public static class RecordingProfiles
             SystemAudioEnabled = true, MicrophoneEnabled = true, AudioCodec = AudioCodec.Flac, AudioBitrateKbps = 192,
         },
     ];
+
+    /// <summary>
+    /// Builds the Record screen's actual profile list: every built-in, in its shipped order, with a
+    /// same-named entry from <paramref name="customProfiles"/> (case-insensitive) shown in its slot instead —
+    /// i.e. an in-place override — followed by any remaining custom profiles that don't override a built-in.
+    /// Pure and order-preserving so it's directly testable without a <c>RecordViewModel</c>/DI/settings-file
+    /// round-trip; extracted after being found duplicated logic with zero tests despite driving user-visible,
+    /// persisted state (which profile a user thinks they're editing).
+    /// </summary>
+    public static List<RecordingProfile> Merge(IReadOnlyList<RecordingProfile> builtIns, IReadOnlyList<RecordingProfile> customProfiles)
+    {
+        var merged = new List<RecordingProfile>(builtIns.Count + customProfiles.Count);
+        foreach (RecordingProfile builtIn in builtIns)
+        {
+            RecordingProfile? overriding = customProfiles
+                .FirstOrDefault(p => string.Equals(p.Name, builtIn.Name, StringComparison.OrdinalIgnoreCase));
+            merged.Add(overriding ?? builtIn);
+        }
+
+        foreach (RecordingProfile p in customProfiles)
+        {
+            if (!builtIns.Any(b => string.Equals(b.Name, p.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                merged.Add(p);
+            }
+        }
+
+        return merged;
+    }
 }

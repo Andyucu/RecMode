@@ -59,8 +59,17 @@ public interface IAudioMixer : IDisposable
     /// Writes mixed f32le to <paramref name="pipe"/> paced to <paramref name="segmentElapsed"/> (the current
     /// segment's active time, which excludes paused spans) so audio pauses in lockstep with video and stays synced;
     /// pads silence on underflow. Returns bytes written.
+    /// <para>
+    /// <paramref name="offsetMs"/> shifts the audio track relative to video, for the user-configurable A/V
+    /// sync offset (<c>RecModeSettings.AudioSyncOffsetMs</c>). Positive delays audio (prepends that much
+    /// silence — the correct direction when video lags audio); negative advances it (discards that much of
+    /// the leading audio). Implemented here as literal samples rather than as an ffmpeg container-level
+    /// timestamp shift (<c>-itsoffset</c>) deliberately: safe-recording remuxes MKV→MP4 with <c>-c copy</c>,
+    /// and a container start-offset's survival across that rewrite is undocumented and player-dependent
+    /// (MP4 expresses it as an edit list, which some players ignore outright). Real samples always survive.
+    /// </para>
     /// </summary>
-    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token);
+    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0);
 }
 
 /// <summary>

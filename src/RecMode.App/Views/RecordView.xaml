@@ -33,7 +33,12 @@
                 </Grid.RowDefinitions>
 
                 <!-- Source picker -->
-                <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                <!-- IsEnabled="{Binding CanEditSettings}" (mirrors the Video card further down): without this,
+                     clicking a different source tile mid-recording flipped IsScreenSource/etc. and the whole
+                     UI (region info, the toolbar's Screenshot button reading CurrentTarget()) desynced from
+                     what the coordinator was actually still capturing, even though the recording itself can't
+                     retarget live. -->
+                <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16" IsEnabled="{Binding CanEditSettings}">
                     <StackPanel>
                         <TextBlock Text="{x:Static res:Strings.Record_SourceHeader}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
                         <StackPanel Orientation="Horizontal">
@@ -155,6 +160,7 @@
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
             <Border Style="{StaticResource Card}">
+                <StackPanel>
                 <StackPanel IsEnabled="{Binding CanEditSettings}">
                     <TextBlock Text="{x:Static res:Strings.Record_Video}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
 
@@ -247,6 +253,15 @@
                                 ToolTip="{x:Static res:Strings.Record_QualityArchiveTooltip}" />
                     </StackPanel>
 
+                </StackPanel>
+
+                <!-- Deliberately OUTSIDE the CanEditSettings-gated panel above: RecordViewModel.Brightness's
+                     setter has a live path (_coordinator.SetBrightness(value) while IsRecording) precisely so
+                     the capture can be brightened/darkened without stopping — but nesting this control inside
+                     that panel disabled it the moment recording started, leaving the one setting with a real
+                     live-adjustment path unreachable from the UI while recording, which is the only time
+                     anyone would actually want to nudge it. -->
+                <StackPanel>
                     <Grid Margin="0,12,0,2">
                         <TextBlock x:Name="BrightnessLabelText" Text="{x:Static res:Strings.Record_Brightness}" Style="{StaticResource CaptionText}" HorizontalAlignment="Left" />
                         <TextBlock Text="{Binding BrightnessLabel}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
@@ -255,6 +270,7 @@
                             AutomationProperties.LabeledBy="{Binding ElementName=BrightnessLabelText}"
                             ToolTip="{x:Static res:Strings.Record_BrightnessTooltip}"
                             IsSnapToTickEnabled="True" TickFrequency="1" />
+                </StackPanel>
                 </StackPanel>
             </Border>
 

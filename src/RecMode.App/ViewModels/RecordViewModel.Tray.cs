@@ -63,7 +63,7 @@ public sealed partial class RecordViewModel
             return;
         }
 
-        StartRecordingFromCli(); // no pre-roll countdown — a tray click means "now," same as CLI automation
+        _ = StartRecordingFromCli(); // no pre-roll countdown — a tray click means "now," same as CLI automation
     }
 
     /// <summary>Re-applies a target's source-kind/selection so <see cref="CurrentTarget"/> resolves back to
@@ -78,6 +78,13 @@ public sealed partial class RecordViewModel
             case CaptureKind.Region:
                 SelectedMonitor = Monitors.FirstOrDefault(m => m.Handle == target.Handle) ?? SelectedMonitor;
                 _region = target.Region;
+                // Every other _region write (PickRegion, CompleteRegionDrag) raises these two — this one
+                // didn't, so picking an older Region target from tray → Recent left the Record screen showing
+                // whatever region was previously displayed (wrong size, wrong quality-based size estimate)
+                // until some unrelated change happened to refresh it, even though the recording itself used
+                // the correct (just-applied) region.
+                OnPropertyChanged(nameof(RegionLabel));
+                OnPropertyChanged(nameof(QualityLabel));
                 break;
             case CaptureKind.Webcam:
                 SelectedWebcamDevice = WebcamDevices.FirstOrDefault(d => d.Id == target.WebcamDeviceId) ?? SelectedWebcamDevice;
@@ -119,6 +126,6 @@ public sealed partial class RecordViewModel
         OnPropertyChanged(nameof(ShowFollowWindow));
         OnPropertyChanged(nameof(ShowRegionInfo));
         OnPropertyChanged(nameof(ShowWebcamOverlayCard));
-        RecordCommand.NotifyCanExecuteChanged();
+        NotifyCaptureCommandsCanExecuteChanged();
     }
 }

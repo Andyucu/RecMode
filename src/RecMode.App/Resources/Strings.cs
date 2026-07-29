@@ -120,6 +120,11 @@ public static class Strings
     public static string Settings_AudioFormatDesc => Get(nameof(Settings_AudioFormatDesc));
     public static string Settings_AudioBitrate => Get(nameof(Settings_AudioBitrate));
     public static string Settings_AudioBitrateDesc => Get(nameof(Settings_AudioBitrateDesc));
+    public static string Settings_AudioSyncOffset => Get(nameof(Settings_AudioSyncOffset));
+    public static string Settings_AudioSyncOffsetTooltip => Get(nameof(Settings_AudioSyncOffsetTooltip));
+    public static string Settings_AudioSyncOffsetInSync => Get(nameof(Settings_AudioSyncOffsetInSync));
+    public static string Settings_AudioSyncOffsetDelayed => Get(nameof(Settings_AudioSyncOffsetDelayed));
+    public static string Settings_AudioSyncOffsetAdvanced => Get(nameof(Settings_AudioSyncOffsetAdvanced));
     public static string Settings_SaveTo => Get(nameof(Settings_SaveTo));
     public static string Settings_Pattern => Get(nameof(Settings_Pattern));
     public static string Settings_PatternDesc => Get(nameof(Settings_PatternDesc));

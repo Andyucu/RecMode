@@ -68,6 +68,22 @@ public static class FilenameBuilder
         return path;
     }
 
+    // Legacy DOS device names: Win32's CreateFile (which ffmpeg — a plain Win32 process — calls without the
+    // \\?\ prefix .NET itself uses internally) resolves these to the device regardless of what follows, so
+    // both "NUL.mp4" AND "NUL.2026-07-28.mkv" open the NUL device, not a file named that — Win32 matches a
+    // reserved name against the path component up to its *first* dot, ignoring every dot after (confirmed
+    // against documented Win32 path-parsing behavior). .NET's own File.Exists/File.WriteAllText don't hit
+    // this (they use the \\?\-prefixed path APIs), so a pattern that expands to one of these — including via
+    // a pattern like "NUL.{date}", not just the bare device name — produces a "successful" recording that
+    // silently doesn't exist on disk. Matched against the stem only (before the extension BuildFileName
+    // appends), and only the portion of that stem up to its own first dot.
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
     private static string Sanitize(string name)
     {
         // Heap-allocated rather than stackalloc'd: name's length traces back to the free-text filename
@@ -82,6 +98,13 @@ public static class FilenameBuilder
         }
 
         string result = new string(buffer, 0, n).Trim();
-        return result.Length == 0 ? "RecMode" : result;
+        if (result.Length == 0)
+        {
+            return "RecMode";
+        }
+
+        int firstDot = result.IndexOf('.');
+        string leadingComponent = firstDot < 0 ? result : result[..firstDot];
+        return ReservedDeviceNames.Contains(leadingComponent) ? $"_{result}" : result;
     }
 }

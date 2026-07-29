@@ -70,6 +70,17 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
 
     private void OnClicked(int screenX, int screenY)
     {
+        // Both features drive the same GPU crop (RecordingCoordinator.SetZoomTarget) with no coordination
+        // between them. Without this guard, clicking the toolbar's "Zoom" button and dragging out a manual
+        // zoom region — both real clicks — would still arm this service's idle timer, which then silently
+        // reset the crop to full frame ~2.5s later: the recording visibly un-zoomed while ZoomButtonText/
+        // IsManualZooming stayed "Exit Zoom"/true, so the button and the Esc hotkey then toggled out of a
+        // mode that wasn't actually active anymore.
+        if (record.IsManualZooming)
+        {
+            return;
+        }
+
         RegionRect? zoomRect = coordinator.ComputeZoomRect(screenX, screenY, ZoomFactor);
         if (zoomRect is null)
         {
@@ -78,7 +89,10 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
 
         coordinator.SetZoomTarget(zoomRect);
         _idleTimer?.Dispose();
-        _idleTimer = new Timer(_ => coordinator.SetZoomTarget(null), null, IdleTimeout, Timeout.InfiniteTimeSpan);
+        // Also re-checked here, not just in OnClicked above: a timer armed by an auto-zoom click can still be
+        // pending when the user starts a manual zoom a moment later, and firing this unconditionally would
+        // reset the crop out from under that manual session just the same as an unguarded click would.
+        _idleTimer = new Timer(_ => { if (!record.IsManualZooming) coordinator.SetZoomTarget(null); }, null, IdleTimeout, Timeout.InfiniteTimeSpan);
     }
 
     private void Stop()

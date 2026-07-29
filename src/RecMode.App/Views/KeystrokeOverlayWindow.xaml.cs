@@ -7,19 +7,29 @@ namespace RecMode.App.Views;
 
 /// <summary>
 /// Fullscreen keystroke-visualizer overlay: shows the most recent hotkey combo (e.g. "Ctrl + Z") as a pill
-/// near the bottom of the primary monitor, fading in/out. Click-through (WS_EX_TRANSPARENT) so it never
-/// intercepts input, non-activating, and deliberately NOT excluded from capture — the whole point is that the
-/// combo is visible in the recording, mirroring <see cref="ClickRippleOverlay"/>'s approach.
+/// near the bottom of whatever is actually being recorded, fading in/out. Click-through (WS_EX_TRANSPARENT) so
+/// it never intercepts input, non-activating, and deliberately NOT excluded from capture — the whole point is
+/// that the combo is visible in the recording, mirroring <see cref="ClickRippleOverlay"/>'s approach (and now
+/// its target-resolution too — this used to always cover the primary monitor regardless of which one was
+/// actually being recorded, so it silently rendered on the wrong display for any non-primary source).
 /// </summary>
 public partial class KeystrokeOverlayWindow : Window
 {
-    private readonly MonitorInfo _monitor;
+    private readonly RegionRect _bounds;
 
-    public KeystrokeOverlayWindow()
+    public KeystrokeOverlayWindow(CaptureTarget? target)
     {
         InitializeComponent();
-        IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-        _monitor = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+        if (target is not null && CaptureCapabilities.TryGetScreenBounds(target, out RegionRect bounds))
+        {
+            _bounds = bounds;
+        }
+        else
+        {
+            IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
+            MonitorInfo mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            _bounds = new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+        }
 
         SourceInitialized += OnSourceInitialized;
     }
@@ -28,7 +38,7 @@ public partial class KeystrokeOverlayWindow : Window
     {
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         OverlayWindowStyle.ApplyClickThrough(hwnd);
-        OverlayWindowStyle.SetBounds(hwnd, _monitor.X, _monitor.Y, _monitor.Width, _monitor.Height);
+        OverlayWindowStyle.SetBounds(hwnd, _bounds.X, _bounds.Y, _bounds.Width, _bounds.Height);
     }
 
     /// <summary>Shows (or replaces) the current combo, restarting the pop-in/hold/fade-out cycle.</summary>

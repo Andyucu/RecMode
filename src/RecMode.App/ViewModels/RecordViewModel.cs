@@ -117,6 +117,38 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
+        // Settings' "Encoding defaults" page (container/codec/backend) writes straight to _settings.Current,
+        // but SelectedFormat/SelectedEncoder here were only ever read once — in this constructor and the
+        // one-time LoadDevices() — so changing the default on the Settings page while the Record screen was
+        // already open (this view model is a DI singleton, constructed once for the app's lifetime) silently
+        // had no effect until a full restart. Worse, touching the Record screen's own Format combo at all
+        // would then write the *stale* cached value straight back over whatever the user had just set in
+        // Settings. Never resynced while actually recording — the container/encoder of a file being written
+        // right now can't change out from under it.
+        settings.SettingsChanged += OnSettingsChangedRefreshEncodingDefaults;
+    }
+
+    private void OnSettingsChangedRefreshEncodingDefaults(object? sender, EventArgs e)
+    {
+        if (_coordinator.IsRecording)
+        {
+            return;
+        }
+
+        if (Formats.Contains(_settings.Current.Container))
+        {
+            SelectedFormat = _settings.Current.Container;
+        }
+
+        if (_devicesLoaded)
+        {
+            EncoderInfo? matching = Encoders.FirstOrDefault(
+                e => e.Codec == _settings.Current.Codec && e.Backend == _settings.Current.Backend);
+            if (matching is not null)
+            {
+                SelectedEncoder = matching;
+            }
+        }
     }
 
     public ObservableCollection<MonitorInfo> Monitors { get; } = [];
@@ -164,7 +196,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 OnPropertyChanged(nameof(ShowWindowPicker));
                 OnPropertyChanged(nameof(ShowWebcamOverlayCard));
                 RestartPreview();
-                RecordCommand.NotifyCanExecuteChanged();
+                NotifyCaptureCommandsCanExecuteChanged();
             }
         }
     }
@@ -181,7 +213,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 OnPropertyChanged(nameof(ShowFollowWindow));
                 OnPropertyChanged(nameof(ShowWebcamOverlayCard));
                 RestartPreview();
-                RecordCommand.NotifyCanExecuteChanged();
+                NotifyCaptureCommandsCanExecuteChanged();
             }
         }
     }
@@ -198,7 +230,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
             OnPropertyChanged(nameof(ShowRegionInfo));
             OnPropertyChanged(nameof(ShowWebcamOverlayCard));
-            RecordCommand.NotifyCanExecuteChanged();
+            NotifyCaptureCommandsCanExecuteChanged();
             if (!value || _selectingRegion)
             {
                 return;
@@ -233,7 +265,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             {
                 OnPropertyChanged(nameof(ShowWebcamOverlayCard));
                 RestartPreview();
-                RecordCommand.NotifyCanExecuteChanged();
+                NotifyCaptureCommandsCanExecuteChanged();
             }
         }
     }
@@ -250,8 +282,17 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         }
 
         _selectingRegion = true;
-        RegionRect? picked = _regionPicker.Pick(mon);
-        _selectingRegion = false;
+        IsModalPromptOpen = true;
+        RegionRect? picked;
+        try
+        {
+            picked = _regionPicker.Pick(mon);
+        }
+        finally
+        {
+            _selectingRegion = false;
+            IsModalPromptOpen = false;
+        }
 
         if (picked is { } r)
         {
@@ -264,7 +305,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             OnPropertyChanged(nameof(RegionLabel));
             OnPropertyChanged(nameof(QualityLabel));
             RestartPreview();
-            RecordCommand.NotifyCanExecuteChanged();
+            NotifyCaptureCommandsCanExecuteChanged();
         }
         else if (revertOnCancel)
         {
@@ -370,13 +411,13 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public MonitorInfo? SelectedMonitor
     {
         get => _selectedMonitor;
-        set { if (SetProperty(ref _selectedMonitor, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
+        set { if (SetProperty(ref _selectedMonitor, value)) { RestartPreview(); NotifyCaptureCommandsCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
     }
 
     public WindowInfo? SelectedWindow
     {
         get => _selectedWindow;
-        set { if (SetProperty(ref _selectedWindow, value)) { RestartPreview(); RecordCommand.NotifyCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
+        set { if (SetProperty(ref _selectedWindow, value)) { RestartPreview(); NotifyCaptureCommandsCanExecuteChanged(); OnPropertyChanged(nameof(QualityLabel)); } }
     }
 
     public EncoderInfo? SelectedEncoder
@@ -391,7 +432,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 _settings.RequestSave();
                 OnPropertyChanged(nameof(HardwareBadge));
                 OnPropertyChanged(nameof(QualityLabel));
-                RecordCommand.NotifyCanExecuteChanged();
+                NotifyCaptureCommandsCanExecuteChanged();
             }
         }
     }
@@ -805,7 +846,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// order the two flags settle in.</summary>
     private void TryResumeAfterVisibilityChange()
     {
-        if (!_isActivePage || _isWindowMinimized || !_isWindowVisible || !_hostsPreviewSurfaces)
+        if (!PreviewEligibility.CanRun(_isActivePage, _isWindowMinimized, _isWindowVisible, _hostsPreviewSurfaces))
         {
             return;
         }
@@ -829,6 +870,15 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// to observe. Kept as a separate field rather than converting the existing one, so this is a pure addition
     /// with zero risk to the established preview/metering lifecycle logic that already reads the plain field.</summary>
     public bool IsActivePage { get => _isActivePageObservable; private set => SetProperty(ref _isActivePageObservable, value); }
+
+    /// <summary>True while a RecMode-owned modal (the region picker, the Save-profile name prompt) is open via
+    /// a blocking <c>ShowDialog()</c>. <see cref="Services.SourceContourService"/> observes this to suspend its
+    /// global "clear region" Esc hotkey for the duration — without it, that hotkey (registered whenever a
+    /// Region source is merely selected, not just while actively dragging one) silently steals the Esc
+    /// keypress the modal's own Cancel handling needs, so pressing Esc to dismiss the region picker or the
+    /// Save-profile dialog instead cleared the region and reverted to Screen while the modal stayed open.</summary>
+    public bool IsModalPromptOpen { get => _modalPromptOpenObservable; private set => SetProperty(ref _modalPromptOpenObservable, value); }
+    private bool _modalPromptOpenObservable;
 
     /// <summary>The capture target the Record screen currently has selected (Screen/Window/Region, whichever
     /// tile is active) — the same resolution <see cref="RecordCommand"/> itself uses to decide what a press of
@@ -921,9 +971,22 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         {
             Windows.Add(w);
         }
-        SelectedWindow = SelectedWindow is null
+
+        WindowInfo? next = SelectedWindow is null
             ? Windows.FirstOrDefault()
             : WindowFollowResolver.Resolve(SelectedWindow, Windows) ?? Windows.FirstOrDefault();
+
+        // Assigns the backing field directly rather than going through the SelectedWindow property: every
+        // caller of LoadWindows() already restarts the preview itself right after calling this (either
+        // explicitly or via the IsWindowSource setter), so going through the property too meant every
+        // IsWindowSource-flip-to-Window rebuilt the whole capture/preview pipeline twice in a row.
+        if (!Equals(next, _selectedWindow))
+        {
+            _selectedWindow = next;
+            OnPropertyChanged(nameof(SelectedWindow));
+            OnPropertyChanged(nameof(QualityLabel));
+            NotifyCaptureCommandsCanExecuteChanged();
+        }
     }
 
     private WindowInfo? CurrentWindow()
@@ -984,6 +1047,18 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             SelectedEncoder = match;
             _autoSelectedEncoder = match;
         }
+    }
+
+    /// <summary>Refreshes both capture commands' enabled state — they share the same "is there a resolved
+    /// source (and, for Record, an encoder)" precondition, but only <see cref="RecordCommand"/> used to be
+    /// notified at each of these call sites. <see cref="ScreenshotCommand"/>'s button could then show enabled
+    /// while <see cref="CurrentTarget"/> had actually gone null (e.g. switching to Region before any region is
+    /// picked) — clicking it silently did nothing — or stay disabled after becoming valid again until some
+    /// unrelated re-query happened to run.</summary>
+    private void NotifyCaptureCommandsCanExecuteChanged()
+    {
+        RecordCommand.NotifyCanExecuteChanged();
+        ScreenshotCommand.NotifyCanExecuteChanged();
     }
 
     private EncoderInfo? PickDefaultEncoder()

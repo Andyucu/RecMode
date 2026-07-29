@@ -43,7 +43,7 @@ public sealed class ScreenshotService(IAppPaths paths, ISettingsService settings
 
         try
         {
-            string dir = settings.Current.ScreenshotFolder ?? paths.ScreenshotsDirectory;
+            string dir = paths.ResolveUserPath(settings.Current.ScreenshotFolder) ?? paths.ScreenshotsDirectory;
             Directory.CreateDirectory(dir);
             string name = FilenameBuilder.BuildFileName(
                 settings.Current.FilenamePattern, DateTimeOffset.Now, "Screenshot", "", "png");

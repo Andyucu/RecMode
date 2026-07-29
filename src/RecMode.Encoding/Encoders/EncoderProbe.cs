@@ -35,6 +35,17 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors, 
     internal sealed record DiskCache(string FfmpegPath, long SizeBytes, long WriteTimeTicks, List<string> AvailableIds,
         string MachineName = "");
 
+    /// <summary>Normalizes an ffmpeg path to the same portable/relative form <see cref="IAppPaths.ToPortableSetting"/>
+    /// uses for user-chosen folders: relative to <see cref="IAppPaths.AppDirectory"/> when it lives inside the
+    /// app folder, absolute otherwise. The bundled ffmpeg (the overwhelming common case, §3.5) always lives
+    /// inside the app folder, so this is what lets the encoder cache still hit after a portable install is
+    /// moved to a different drive letter — comparing the raw absolute path meant every single drive-letter
+    /// change (a USB stick assigned a different letter on a different machine, or even the same machine after
+    /// other drives were plugged in) silently re-ran the entire multi-second trial-encode pass, even though
+    /// the actual ffmpeg.exe bytes were identical.</summary>
+    private static string NormalizeFfmpegPath(IAppPaths paths, string ffmpegPath) =>
+        paths.ToPortableSetting(ffmpegPath) ?? ffmpegPath;
+
     /// <summary>True if <paramref name="cache"/> was written for exactly this ffmpeg binary on this machine —
     /// same path, same size, same last-write time, same <see cref="Environment.MachineName"/>. Pure and
     /// side-effect-free so it's directly unit-testable without needing a real ffmpeg.exe on disk (the caller
@@ -56,7 +67,24 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors, 
 
     private List<EncoderInfo> Probe()
     {
-        FfmpegResolution ff = locator.Resolve();
+        FfmpegResolution ff;
+        try
+        {
+            // IFfmpegLocator.Resolve() documents "never throws," but the underlying hash-verification I/O
+            // (reading a 100+ MB binary that File.Exists just confirmed exists) can still fail between the
+            // existence check and the actual read — an AV scanner or backup agent holding the file open
+            // without share access is a real, not theoretical, way to hit this. This call is reachable from
+            // the UI thread (the Record screen's first paint), so defend the documented contract here too,
+            // not only inside the locator itself.
+            ff = locator.Resolve();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            errors.Warn("encoder.probe-ffmpeg-unreadable", "Couldn't detect encoders — ffmpeg couldn't be read.",
+                "Another program may have the file open. Try again in a moment.", ex);
+            return [];
+        }
+
         if (!ff.IsAvailable || ff.FfmpegPath is null)
         {
             errors.Warn("encoder.probe-no-ffmpeg", "Couldn't detect encoders — ffmpeg is unavailable.",
@@ -131,7 +159,8 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors, 
 
             DiskCache? cache = JsonSerializer.Deserialize<DiskCache>(File.ReadAllText(paths.EncoderCachePath), CacheJsonOptions);
             var info = new FileInfo(ffmpegPath);
-            if (!info.Exists || !CacheMatches(cache, ffmpegPath, info.Length, info.LastWriteTimeUtc.Ticks, Environment.MachineName))
+            string normalizedPath = NormalizeFfmpegPath(paths, ffmpegPath);
+            if (!info.Exists || !CacheMatches(cache, normalizedPath, info.Length, info.LastWriteTimeUtc.Ticks, Environment.MachineName))
             {
                 return false; // missing, mismatched, ffmpeg was replaced/updated, or this is a different machine
             }
@@ -160,7 +189,7 @@ public sealed class EncoderProbe(IFfmpegLocator locator, IErrorReporter errors, 
         try
         {
             var info = new FileInfo(ffmpegPath);
-            var cache = new DiskCache(ffmpegPath, info.Length, info.LastWriteTimeUtc.Ticks,
+            var cache = new DiskCache(NormalizeFfmpegPath(paths, ffmpegPath), info.Length, info.LastWriteTimeUtc.Ticks,
                 encoders.Select(e => e.FfmpegId).ToList(), Environment.MachineName);
             Directory.CreateDirectory(paths.DataDirectory);
             // Same shared atomic write as SettingsService/LibraryIndex - a process kill mid-write must not

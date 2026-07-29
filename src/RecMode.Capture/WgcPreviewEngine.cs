@@ -12,11 +12,17 @@ namespace RecMode.Capture;
 /// </summary>
 public sealed class WgcPreviewEngine : IPreviewEngine
 {
-    private static readonly TimeSpan MinFrameInterval = TimeSpan.FromMilliseconds(33); // ~30 fps
+    private const int TargetFps = 30;
 
     private int _maxPreviewWidth = 1280;
     private int _maxPreviewHeight = 720;
 
+    // Guards against re-entrant Stop() calls: OnCaptureItemClosed queues Stop() on the thread pool, which can
+    // race a user-initiated Stop()/Start() (e.g. closing the previewed window right as the user navigates
+    // away). Without this, both could observe IsRunning == true and both run the teardown below, double-
+    // releasing the same D3D11 COM objects — an access violation that kills the process. Identical fix to
+    // the one WgcCaptureEngine.Stop() already has, for the same reason.
+    private readonly Lock _stopLock = new();
     private readonly Lock _sync = new();
     // Held for the whole duration of OnFrameArrived's GPU work, and taken (empty critical section) by Stop()
     // after unsubscribing but before disposing the scaler/context/device — see WgcCaptureEngine, which has
@@ -39,7 +45,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     private byte[] _latest = [];
     private byte[] _scratch = [];
     private bool _hasLatest;
-    private long _lastFrameTicks;
+    private readonly FrameRateLimiter _rateLimiter = new(System.Diagnostics.Stopwatch.Frequency);
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
     private double _brightness;
@@ -80,7 +86,8 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
             _scaler.SetWebcamOverlay(_webcamSource, _webcamRect); _scaler.SetBrightness(_brightness);
             Width = dstW; Height = dstH; Stride = _scaler.Stride; ByteSize = _scaler.ByteSize;
-            _latest = new byte[ByteSize]; _scratch = new byte[ByteSize]; _hasLatest = false; _lastFrameTicks = 0; IsRunning = true;
+            _latest = new byte[ByteSize]; _scratch = new byte[ByteSize]; _hasLatest = false; IsRunning = true;
+            _rateLimiter.SetTargetFps(TargetFps);
         }
         catch
         {
@@ -107,13 +114,10 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             }
 
             // Throttle to ≤ 30 fps — cheap early-out before the GPU scale + readback.
-            long now = System.Diagnostics.Stopwatch.GetTimestamp();
-            long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
-            if (_lastFrameTicks != 0 && now - _lastFrameTicks < minTicks)
+            if (!_rateLimiter.ShouldAccept(System.Diagnostics.Stopwatch.GetTimestamp()))
             {
                 return;
             }
-            _lastFrameTicks = now;
 
             using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
             scaler.Scale(tex, _scratch);
@@ -152,7 +156,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         _latest = new byte[ByteSize];
         _scratch = new byte[ByteSize];
         _hasLatest = false;
-        _lastFrameTicks = 0;
+        _rateLimiter.SetTargetFps(TargetFps);
 
         _ddaStopping = false;
         _ddaThreadExited.Reset();
@@ -176,14 +180,11 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         ID3D11Device? device = _device;
         try
         {
-            long minTicks = (long)(MinFrameInterval.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
             while (!_ddaStopping)
             {
                 ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16);
 
-                long now = System.Diagnostics.Stopwatch.GetTimestamp();
-                if (_lastFrameTicks != 0 && now - _lastFrameTicks < minTicks) continue;
-                _lastFrameTicks = now;
+                if (!_rateLimiter.ShouldAccept(System.Diagnostics.Stopwatch.GetTimestamp())) continue;
 
                 scaler!.Scale(canvas, _scratch);
                 lock (_sync) { (_scratch, _latest) = (_latest, _scratch); _hasLatest = true; }
@@ -230,49 +231,52 @@ public sealed class WgcPreviewEngine : IPreviewEngine
 
     public void Stop()
     {
-        if (!IsRunning && _session is null)
+        lock (_stopLock)
         {
-            return;
-        }
+            if (!IsRunning && _session is null)
+            {
+                return;
+            }
 
-        IsRunning = false;
-        if (_framePool is not null)
-        {
-            _framePool.FrameArrived -= OnFrameArrived;
-        }
+            IsRunning = false;
+            if (_framePool is not null)
+            {
+                _framePool.FrameArrived -= OnFrameArrived;
+            }
 
-        // Barrier against an OnFrameArrived call already dispatched when the unsubscribe above took effect —
-        // it blocks here until that callback finishes its GPU work, so the disposals below can't pull the
-        // scaler/context/device out from under it. Same mechanism as WgcCaptureEngine.Stop().
-        lock (_disposeGuard) { }
+            // Barrier against an OnFrameArrived call already dispatched when the unsubscribe above took effect —
+            // it blocks here until that callback finishes its GPU work, so the disposals below can't pull the
+            // scaler/context/device out from under it. Same mechanism as WgcCaptureEngine.Stop().
+            lock (_disposeGuard) { }
 
-        _ddaStopping = true;
-        bool wasDda = _ddaThread is not null;
-        if (wasDda && !_ddaThreadExited.Wait(TimeSpan.FromSeconds(5)))
-        {
-            // The DDA thread disposes its own resources in its finally block whenever it does exit, so
-            // leaving them alive here is the safe choice — but it used to be silent, which made a stuck
-            // duplication thread undiagnosable. (WgcCaptureEngine raises Faulted for the same case; preview
-            // has no error channel of its own, so log instead.)
-            Log.Warning("The preview desktop-duplication thread did not stop within 5 seconds; its resources will be released once it does");
-        }
+            _ddaStopping = true;
+            bool wasDda = _ddaThread is not null;
+            if (wasDda && !_ddaThreadExited.Wait(TimeSpan.FromSeconds(5)))
+            {
+                // The DDA thread disposes its own resources in its finally block whenever it does exit, so
+                // leaving them alive here is the safe choice — but it used to be silent, which made a stuck
+                // duplication thread undiagnosable. (WgcCaptureEngine raises Faulted for the same case; preview
+                // has no error channel of its own, so log instead.)
+                Log.Warning("The preview desktop-duplication thread did not stop within 5 seconds; its resources will be released once it does");
+            }
 
-        _session?.Dispose();
-        _framePool?.Dispose();
-        if (!wasDda)
-        {
-            _ddaSource?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
+            _session?.Dispose();
+            _framePool?.Dispose();
+            if (!wasDda)
+            {
+                _ddaSource?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
+            }
+            if (_item is not null) _item.Closed -= OnCaptureItemClosed;
+            _session = null;
+            _item = null;
+            _framePool = null;
+            _ddaSource = null;
+            _ddaThread = null;
+            _scaler = null;
+            _context = null;
+            _device = null;
+            _hasLatest = false;
         }
-        if (_item is not null) _item.Closed -= OnCaptureItemClosed;
-        _session = null;
-        _item = null;
-        _framePool = null;
-        _ddaSource = null;
-        _ddaThread = null;
-        _scaler = null;
-        _context = null;
-        _device = null;
-        _hasLatest = false;
     }
 
     public void Dispose() => Stop();
