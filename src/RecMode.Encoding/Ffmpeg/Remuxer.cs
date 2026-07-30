@@ -17,6 +17,9 @@ public static class Remuxer
     /// Photos' HEVC path) refuse to play in an MP4/MOV container even though the bitstream itself is fine.
     /// Null (the orphan-recovery caller, which doesn't know a since-crashed session's codec without probing the
     /// file) preserves the previous behavior.</summary>
+    /// <summary><paramref name="timeoutMs"/> is a no-progress stall window, not a total budget — see
+    /// <see cref="FfmpegProcessWait"/>. A 1-hour recording's remux can be tens of GB of I/O and legitimately
+    /// take much longer than any fixed total budget; a genuinely hung ffmpeg is still caught this fast.</summary>
     public static bool RemuxToMp4(string ffmpegPath, string sourcePath, string mp4Path, VideoCodec? sourceCodec = null, int timeoutMs = 30000)
     {
         if (!File.Exists(ffmpegPath) || !File.Exists(sourcePath))
@@ -52,13 +55,12 @@ public static class Remuxer
             process.ErrorDataReceived += static (_, _) => { };
             process.BeginErrorReadLine();
 
-            if (!process.WaitForExit(timeoutMs))
+            if (!FfmpegProcessWait.WaitWithStallDetection(process, temporaryPath, TimeSpan.FromMilliseconds(timeoutMs), out int exitCode))
             {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
                 return false;
             }
 
-            if (process.ExitCode != 0 || !File.Exists(temporaryPath))
+            if (exitCode != 0 || !File.Exists(temporaryPath))
             {
                 return false;
             }
@@ -69,7 +71,8 @@ public static class Remuxer
             temporaryPath = null;
             return true;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
+            or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             return false;
         }

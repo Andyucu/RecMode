@@ -34,6 +34,9 @@ public sealed class AudioMixer : IAudioMixer
     public AudioLevel SystemLevel => _system?.Level ?? AudioLevel.Silent;
     public AudioLevel MicLevel => _mic?.Level ?? AudioLevel.Silent;
 
+    public bool SystemFaulted => _system?.Faulted ?? false;
+    public bool MicFaulted => _mic?.Faulted ?? false;
+
     public AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null, bool meteringOnly = false)
     {
         if (IsRunning)
@@ -177,11 +180,12 @@ public sealed class AudioMixer : IAudioMixer
                 int n = (int)Math.Min(targetFloats - floatsWritten, chunkFloats);
                 Mix(sysBuf, micBuf, mixBuf, n);
 
+                long dropped = 0;
                 if (discardRemaining > 0)
                 {
                     // Mixed (so the capture buffers stay drained in lockstep with the clock) but not written:
                     // this is the leading audio being dropped to pull the rest earlier.
-                    long dropped = Math.Min(discardRemaining, n);
+                    dropped = Math.Min(discardRemaining, n);
                     discardRemaining -= dropped;
                     floatsWritten += dropped;
                     if (dropped == n)
@@ -191,7 +195,14 @@ public sealed class AudioMixer : IAudioMixer
                     n -= (int)dropped;
                 }
 
-                Buffer.BlockCopy(mixBuf, 0, outBytes, 0, n * 4);
+                // Copy from mixBuf[dropped..], not mixBuf[0..]: Mix() above always fills mixBuf starting at
+                // index 0 for the full original chunk length, so once a partial discard trims the leading
+                // `dropped` samples off, the samples actually being KEPT start at that offset, not at 0.
+                // Copying from 0 wrote the very samples meant to be dropped and silently lost the tail of the
+                // chunk instead — a splice discontinuity (an audible click) a fraction of a second into every
+                // recording made with a negative AudioSyncOffsetMs, on exactly the one chunk where the discard
+                // ends partway through.
+                Buffer.BlockCopy(mixBuf, (int)dropped * 4, outBytes, 0, n * 4);
                 pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
                 floatsWritten += n;
             }

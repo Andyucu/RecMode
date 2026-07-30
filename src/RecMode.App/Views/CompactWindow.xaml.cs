@@ -19,6 +19,17 @@ public partial class CompactWindow : Window
         DataContext = viewModel;
         Loaded += OnLoaded;
         IsVisibleChanged += OnIsVisibleChanged;
+        Activated += OnActivatedChanged;
+        Deactivated += OnActivatedChanged;
+    }
+
+    // Same reasoning as ShellWindow.OnActivatedChanged — both windows share one RecordViewModel instance.
+    private void OnActivatedChanged(object? sender, EventArgs e)
+    {
+        if (DataContext is ShellViewModel shell)
+        {
+            shell.Record.SetWindowActive(IsActive);
+        }
     }
 
     // Same §3.9 wiring as ShellWindow.OnIsVisibleChanged — both windows share one RecordViewModel instance

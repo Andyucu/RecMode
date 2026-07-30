@@ -73,7 +73,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             SettingsMigrator.Migrate(obj);
             Current = obj.Deserialize<RecModeSettings>(JsonOptions) ?? new RecModeSettings();
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
             RecoverCorruptFile(path, ex);
             Current = new RecModeSettings();

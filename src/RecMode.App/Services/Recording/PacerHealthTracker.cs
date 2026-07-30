@@ -36,6 +36,7 @@ public sealed class PacerHealthTracker
     // tracker whose first behind-frame landed on tick 0 could never start its clock at all.
     private long? _behindSince;
     private bool _degradeReported;
+    private double _graceBonusSeconds;
 
     /// <param name="ticksPerSecond">Frequency of the timestamps passed to <see cref="Evaluate"/> —
     /// <c>Stopwatch.Frequency</c> in production, an arbitrary value in tests.</param>
@@ -55,10 +56,17 @@ public sealed class PacerHealthTracker
     /// auto-split segment rotation, or a downgrade's own rotation — so that gap isn't attributed to encoder
     /// throughput. Forgetting this on the auto-split path is exactly the bug that shipped once already.
     /// </summary>
-    public void ResetAfterRotation()
+    /// <param name="pauseDuration">How long the rotation itself blocked the pacer, if known. The pacer's
+    /// Elapsed-driven catch-up (§3.3 CFR policy) has to write that entire gap's worth of frames back-to-back
+    /// the instant it resumes — a burst proportional to the pause, not a fixed cost — so a fixed grace window
+    /// here can still fire Degrade/Downgrade for a perfectly healthy encoder on a long rotation (a slow disk
+    /// remux, in particular) even with the reset above. Extending the grace window by the pause length itself
+    /// gives the catch-up burst roughly as long to drain as the gap that created it.</param>
+    public void ResetAfterRotation(TimeSpan? pauseDuration = null)
     {
         _behindSince = null;
         IsBehind = false;
+        _graceBonusSeconds = pauseDuration is { } d && d.TotalSeconds > 0 ? d.TotalSeconds : 0;
     }
 
     /// <summary>
@@ -83,6 +91,7 @@ public sealed class PacerHealthTracker
             {
                 _behindSince = null;
                 IsBehind = false;
+                _graceBonusSeconds = 0; // caught up: any post-rotation grace has served its purpose
             }
 
             return PacerHealthAction.None;
@@ -94,7 +103,12 @@ public sealed class PacerHealthTracker
             return PacerHealthAction.None;
         }
 
-        double behindSeconds = (nowTicks - behindSince) / (double)_ticksPerSecond;
+        double rawBehindSeconds = (nowTicks - behindSince) / (double)_ticksPerSecond;
+        // The bonus discounts the post-rotation catch-up burst out of BOTH thresholds consistently — applying
+        // it only to the Degrade check (above) would leave the Downgrade check's fixed threshold unprotected,
+        // so a long-enough rotation could still fire Downgrade the instant Degrade unlocks (raw behind time
+        // already past DowngradeAfterSeconds by then), defeating the whole point of the grace extension.
+        double behindSeconds = Math.Max(0, rawBehindSeconds - _graceBonusSeconds);
         if (behindSeconds <= _degradeAfterSeconds)
         {
             return PacerHealthAction.None;

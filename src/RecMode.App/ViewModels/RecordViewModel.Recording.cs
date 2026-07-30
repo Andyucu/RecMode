@@ -20,7 +20,30 @@ public sealed partial class RecordViewModel
     // countdown on top of the first, ultimately calling _coordinator.Start(...) twice.
     private bool _startInFlight;
 
+    // Set while a stop is requested (F9/tray/--stop) during the _startInFlight window, so StartRecording's
+    // own completion continuation can honour it the instant the in-flight start actually finishes, instead
+    // of the request being silently discarded — see RequestStop's doc comment.
+    private volatile bool _stopRequestedDuringStart;
+
     private void ToggleRecord()
+    {
+        if (_coordinator.IsRecording || _startInFlight)
+        {
+            RequestStop();
+            return;
+        }
+
+        _ = StartRecording(withCountdown: true); // interactive start (button/hotkey/tray) honours the countdown setting
+    }
+
+    /// <summary>Stops an in-progress recording, or — if a start is still in flight (mid pre-roll countdown,
+    /// mid pre-flight/webcam-activation/encoder-fallback, all of which can legitimately take several seconds)
+    /// — arms a stop for the instant that start actually completes, rather than silently discarding the
+    /// request. Previously, F9/the tray item/CLI <c>--stop</c> all checked <c>IsRecording</c> directly: during
+    /// the whole async start window that reads false, so <c>RecMode --record</c> immediately followed by
+    /// <c>RecMode --stop</c> (a documented CLI automation contract) dropped the stop entirely and the
+    /// recording ran until something else stopped it, with no feedback that anything had gone wrong.</summary>
+    public void RequestStop()
     {
         if (_coordinator.IsRecording)
         {
@@ -35,15 +58,12 @@ public sealed partial class RecordViewModel
             // own TryClaimFinalize/_finalizationCompleted guards already handle a second concurrent Stop()
             // call safely (a rapid double-click just blocks the second background Task instead of the UI).
             System.Threading.Tasks.Task.Run(() => _coordinator.Stop());
-            return;
         }
-
-        if (_startInFlight)
+        else if (_startInFlight)
         {
-            return; // already starting (e.g. mid pre-roll countdown) — ignore the extra press
+            _stopRequestedDuringStart = true;
         }
-
-        _ = StartRecording(withCountdown: true); // interactive start (button/hotkey/tray) honours the countdown setting
+        // Otherwise: genuinely idle, nothing to stop and nothing in flight to arm — a correct no-op.
     }
 
     /// <summary>Starts recording without the pre-roll countdown — for CLI automation (<c>--record</c>), which
@@ -72,18 +92,32 @@ public sealed partial class RecordViewModel
         }
 
         _startInFlight = true;
-        StopPreview(); // preview and recording use separate sessions; don't run both (§3.9)
-
-        if (withCountdown)
+        try
         {
-            int seconds = _settings.Current.CountdownSeconds;
-            MonitorInfo? mon = SelectedMonitor ?? Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
-            if (seconds > 0 && mon is not null && !_countdown.Run(mon, seconds))
+            StopPreview(); // preview and recording use separate sessions; don't run both (§3.9)
+
+            if (withCountdown)
             {
-                _startInFlight = false;
-                StartPreview(); // cancelled during countdown; bring preview back
-                return Task.FromResult(false);
+                int seconds = _settings.Current.CountdownSeconds;
+                MonitorInfo? mon = SelectedMonitor ?? Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
+                if (seconds > 0 && mon is not null && !_countdown.Run(mon, seconds))
+                {
+                    _startInFlight = false;
+                    StartPreview(); // cancelled during countdown; bring preview back
+                    return Task.FromResult(false);
+                }
             }
+        }
+        catch
+        {
+            // _startInFlight is only otherwise cleared inside startTask's ContinueWith below, which this
+            // method hasn't reached yet at this point — StopPreview() (real COM/D3D11 teardown) or
+            // _countdown.Run() (pumps a modal message loop) throwing here used to leave it permanently true:
+            // every future Record button/F9/tray/CLI/scheduled attempt silently no-ops for the rest of the
+            // session, with no error shown (the exception itself is still reported via the normal unhandled-
+            // exception path this rethrow feeds).
+            _startInFlight = false;
+            throw;
         }
 
         // RecordingCoordinator.Start() runs off the dispatcher. It does the whole pre-flight — including an
@@ -122,9 +156,20 @@ public sealed partial class RecordViewModel
                             StatusText = Resources.Strings.Record_StatusRecording;
                             StatsText = "";
                             LastRecordingPath = null; // the title-bar "jump to Library" link only points at a finished recording
+
+                            // Honour a stop that arrived while this start was still in flight (see
+                            // RequestStop) — the recording exists for a moment, then stops immediately,
+                            // rather than the stop request having been silently dropped and the recording
+                            // running indefinitely.
+                            if (_stopRequestedDuringStart)
+                            {
+                                _stopRequestedDuringStart = false;
+                                System.Threading.Tasks.Task.Run(() => _coordinator.Stop());
+                            }
                         }
                         else
                         {
+                            _stopRequestedDuringStart = false; // start failed/was cancelled — nothing to stop
                             StatusText = Resources.Strings.Record_StatusReady;
                             StartPreview(); // start failed; bring preview back
                         }

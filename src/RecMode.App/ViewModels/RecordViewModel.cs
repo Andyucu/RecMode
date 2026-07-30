@@ -172,13 +172,18 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// sensible value without dragging — the same anchors <see cref="FfmpegArgsBuilder.QualityTier"/> names.</summary>
     public IRelayCommand<string> SetQualityPresetCommand { get; }
 
-    /// <summary>Captures a still of the current source (F11 / button). Runs on the UI thread.</summary>
+    /// <summary>Captures a still of the current source (F11 / button). The actual WGC grab, PNG encode, and
+    /// file write now run off the UI thread (see <see cref="ScreenshotService.Capture"/>'s doc comment) —
+    /// previously this method ran synchronously on the UI thread, which for a full-resolution 4K/ultrawide
+    /// recording froze the recording toolbar's repaint and every low-level mouse/keyboard hook behind it
+    /// (F11 itself is delivered via a global hotkey on this same UI-thread message pump) for the whole
+    /// capture+encode+write duration.</summary>
     public void TakeScreenshot()
     {
         CaptureTarget? target = CurrentTarget();
         if (target is not null)
         {
-            _screenshots.Capture(target);
+            _ = System.Threading.Tasks.Task.Run(() => _screenshots.Capture(target));
             if (SelectedMonitor is { } mon)
             {
                 _screenshotFlash.Flash(mon);
@@ -863,6 +868,22 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     private bool _isWindowVisible;
     public bool IsWindowVisible { get => _isWindowVisible; private set => SetProperty(ref _isWindowVisible, value); }
+
+    // Defaults true: a headless/test construction (no WPF Window ever calls SetWindowActive) must not
+    // silently disable anything gated on this — see SourceContourService's use, which only NARROWS an
+    // existing "visible" check, so a stale-true default here is safe (it just means "no foreground
+    // information available", not "definitely foreground").
+    private bool _isWindowActive = true;
+    /// <summary>OS foreground-activation state, as distinct from <see cref="IsWindowVisible"/> (shown vs.
+    /// hidden) and <see cref="IsWindowMinimized"/> — a window can be fully visible, not minimized, and still
+    /// not be the foreground window (the user alt-tabbed away, or it's just sitting on another monitor).
+    /// <see cref="Services.SourceContourService"/> needs this distinction specifically: registering a global
+    /// Esc hotkey while RecMode isn't the foreground app hijacks Esc for every other application on the
+    /// machine, which "visible and not minimized" alone doesn't rule out.</summary>
+    public bool IsWindowActive { get => _isWindowActive; private set => SetProperty(ref _isWindowActive, value); }
+
+    /// <summary>Called by the shell's <c>Window.Activated</c>/<c>Deactivated</c> handlers.</summary>
+    public void SetWindowActive(bool active) => IsWindowActive = active;
 
     private bool _isActivePageObservable;
     /// <summary>Mirrors the private <c>_isActivePage</c> field (set in <see cref="OnNavigatedTo"/>/

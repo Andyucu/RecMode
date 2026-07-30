@@ -52,12 +52,19 @@ public sealed class KeystrokeVisualizerService(RecordViewModel record, ISettings
         hook.Install();
     }
 
+    // OnKeyDown runs synchronously ON the UI thread's own message dispatch, as part of the WH_KEYBOARD_LL
+    // hook procedure itself — see ClickHighlightService.OnClicked's identical comment for why. ShowCombo
+    // builds two DoubleAnimationUsingKeyFrames and starts three animations on the live overlay window;
+    // running that inline here would delay system-wide keyboard processing for as long as it takes.
+    // KeystrokeFormatter.Format is cheap pure string formatting and stays inline; only the actual overlay
+    // work is deferred to a later, separate dispatcher pass so this hook procedure returns immediately.
     private void OnKeyDown(uint vk, bool ctrl, bool alt, bool shift, bool win)
     {
         string? combo = KeystrokeFormatter.Format(vk, ctrl, alt, shift, win);
         if (combo is not null)
         {
-            _overlay?.ShowCombo(combo);
+            System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Render, () => _overlay?.ShowCombo(combo));
         }
     }
 

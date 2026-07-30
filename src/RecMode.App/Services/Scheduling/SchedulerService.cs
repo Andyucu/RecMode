@@ -139,7 +139,15 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             if (item.Recurrence == ScheduleRecurrence.Once) item.Enabled = false;
             settings.Save();
             _scheduledRecordingActive = true;
-            _scheduledStopAt = now.AddMinutes(Math.Max(1, item.DurationMinutes));
+            // Anchored to DateTimeOffset.Now (captured HERE, once recording has actually started), not to the
+            // tick's own `now` — that timestamp precedes the whole await above, which covers pre-flight
+            // (including an 8 MB disk-speed probe that "takes seconds on a mapped network share", per this
+            // method's own comment) and the encoder fallback chain. Anchoring to the tick time under-ran a
+            // schedule's duration by however long that startup took — a 5-minute schedule on a slow output
+            // could record only ~4:50, silently, with no indication the duration was ever wrong. `now` above
+            // is deliberately still used for LastFiredUtc/LastFiredOccurrence, which are occurrence identity
+            // (which scheduled slot fired), not duration.
+            _scheduledStopAt = DateTimeOffset.Now.AddMinutes(Math.Max(1, item.DurationMinutes));
         }
         else
         {

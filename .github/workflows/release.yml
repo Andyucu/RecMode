@@ -72,6 +72,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\ffmpeg-bin" | Out-Null
           Copy-Item "$($bin.Directory.FullName)\*" "$env:RUNNER_TEMP\ffmpeg-bin" -Force
 
+          # GPLv3 conveyance (§4/§6) requires the License to travel with the binaries. BtbN's own LICENSE.txt
+          # + README.txt sit one level above bin/ in the archive, so the blanket "*" copy above silently drops
+          # them - every prior release shipped the GPL ffmpeg.exe with no copy of its license anywhere in the
+          # zip. Fail loudly rather than ship that again if BtbN ever changes their archive layout.
+          $ffmpegRoot = $bin.Directory.Parent.FullName
+          $ffmpegLicense = Join-Path $ffmpegRoot 'LICENSE.txt'
+          $ffmpegReadme = Join-Path $ffmpegRoot 'README.txt'
+          if (-not (Test-Path $ffmpegLicense)) { throw "BtbN archive layout changed: LICENSE.txt not found at $ffmpegLicense - fix this step before releasing a GPL binary with no license attached." }
+          Copy-Item $ffmpegLicense "$env:RUNNER_TEMP\ffmpeg-bin" -Force
+          if (Test-Path $ffmpegReadme) { Copy-Item $ffmpegReadme "$env:RUNNER_TEMP\ffmpeg-bin" -Force }
+
           # Pin the exact build actually shipped, computed here at release time — not hand-maintained, since
           # 'latest' from BtbN is a moving target and the previous manifest.json mechanism was never wired
           # into this workflow at all (it only ever existed as unfed runtime-verification code; tools/ is

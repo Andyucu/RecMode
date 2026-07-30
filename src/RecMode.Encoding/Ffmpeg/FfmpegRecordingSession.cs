@@ -162,10 +162,12 @@ public sealed class FfmpegRecordingSession : IDisposable
     /// <summary>Cancels a producer currently blocked on the video pipe without tearing down session resources.</summary>
     public void RequestStop() => _writeCancellation.Cancel();
 
-    /// <summary>Signals clean EOF, waits for ffmpeg to finalize the container, and returns the result.</summary>
-    public RecordingResult StopAndFinalize(TimeSpan timeout)
+    /// <summary>Signals clean EOF, waits for ffmpeg to finalize the container, and returns the result.
+    /// <paramref name="stallTimeout"/> is a no-progress window, not a total budget — see
+    /// <see cref="FfmpegProcessWait"/> for why a fixed total budget used to destroy large recordings by
+    /// killing ffmpeg mid-<c>+faststart</c> rewrite.</summary>
+    public RecordingResult StopAndFinalize(TimeSpan stallTimeout)
     {
-        Stopwatch deadline = Stopwatch.StartNew();
         RequestStop();
 
         if (_pipe is not null)
@@ -192,16 +194,7 @@ public sealed class FfmpegRecordingSession : IDisposable
         int exitCode = -1;
         if (_ffmpeg is not null)
         {
-            int remainingMs = Math.Max(0, (int)(timeout - deadline.Elapsed).TotalMilliseconds);
-            if (_ffmpeg.WaitForExit(remainingMs))
-            {
-                exitCode = _ffmpeg.ExitCode;
-            }
-            else
-            {
-                try { _ffmpeg.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-                _ffmpeg.WaitForExit(2000);
-            }
+            FfmpegProcessWait.WaitWithStallDetection(_ffmpeg, OutputPath, stallTimeout, out exitCode);
         }
 
         bool success = exitCode == 0 && File.Exists(OutputPath);

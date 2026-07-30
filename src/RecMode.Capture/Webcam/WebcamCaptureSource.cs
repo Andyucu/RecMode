@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Serilog;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
 using Windows.Media.Capture;
@@ -81,6 +82,24 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
     }
 
     private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
+    {
+        // This is a WinRT native-to-managed callback: an exception escaping it is converted into an HRESULT
+        // for the native caller and never surfaces as a managed unhandled exception — silently swallowed,
+        // not merely "not our thread." A mid-session format renegotiation or device unplug can make
+        // TryAcquireLatestFrame/LockBuffer/the IMemoryBufferByteAccess cast throw; without this guard that
+        // vanished with no log line, and the webcam overlay (documented best-effort, never blocking the
+        // recording) just silently stopped updating instead of at least being diagnosable from the log.
+        try
+        {
+            OnFrameArrivedCore(sender);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Webcam frame conversion failed");
+        }
+    }
+
+    private void OnFrameArrivedCore(MediaFrameReader sender)
     {
         using MediaFrameReference? frame = sender.TryAcquireLatestFrame();
         SoftwareBitmap? bitmap = frame?.VideoMediaFrame?.SoftwareBitmap;

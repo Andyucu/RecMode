@@ -52,7 +52,18 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
         hook.Install();
     }
 
-    private void OnClicked(int x, int y) => _overlay?.AddRipple(x, y);
+    // OnClicked runs synchronously ON the UI thread's own message dispatch, as part of the WH_MOUSE_LL hook
+    // procedure itself (SetWindowsHookEx callbacks for a hook installed with dwThreadId=0/current-thread run
+    // inline with that thread's message pump, not on a separate thread) — this callback IS the thing standing
+    // between the OS and every other application's mouse input. AddRipple allocates a WPF Ellipse/
+    // ScaleTransform/three DoubleAnimations and mutates the live visual tree; running that inline here delays
+    // system-wide mouse processing for as long as it takes, and if the UI thread is ever also stalled on
+    // something else (e.g. a synchronous screenshot capture), every click system-wide queues up behind it.
+    // BeginInvoke defers the actual overlay work to a later, separate pass through the dispatcher queue, so
+    // this hook procedure itself returns to the OS immediately.
+    private void OnClicked(int x, int y) =>
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Render, () => _overlay?.AddRipple(x, y));
 
     private void Hide()
     {

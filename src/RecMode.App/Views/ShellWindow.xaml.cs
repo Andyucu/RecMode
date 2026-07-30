@@ -32,7 +32,17 @@ public partial class ShellWindow : Window
         SourceInitialized += OnSourceInitialized;
         StateChanged += OnStateChanged;
         IsVisibleChanged += OnIsVisibleChanged;
+        Activated += OnActivatedChanged;
+        Deactivated += OnActivatedChanged;
         _theme.Changed += ApplyBackdrop;
+    }
+
+    private void OnActivatedChanged(object? sender, EventArgs e)
+    {
+        if (DataContext is ShellViewModel shell)
+        {
+            shell.Record.SetWindowActive(IsActive);
+        }
     }
 
     // Distinct from OnStateChanged/minimize: fires on Show()/Hide() too, including ShellPresenter hiding this

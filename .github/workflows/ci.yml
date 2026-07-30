@@ -11,7 +11,8 @@ jobs:
   # excluded from version control (see CLAUDE.md's standing "never stage/commit" list), so it doesn't exist in
   # this checkout at all — RecMode.slnx (the committed solution) has no test projects for the same reason
   # (RecMode.local.slnx, also untracked, is what a local dev build/test run actually uses). The suite is run
-  # locally via ./build.ps1 before every release; this workflow only builds+packages what's actually pushed.
+  # locally via ./build.ps1 before every release, but nothing here enforces that - this workflow has no test
+  # gate of its own and only builds+packages what's actually pushed.
   build:
     runs-on: windows-latest
     steps:
@@ -62,7 +63,17 @@ jobs:
       - name: Portable packaging smoke test
         shell: pwsh
         run: |
-          dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/portable-smoke
+          # Must match the actual shipped publish invocation (release.yml / publish-portable.ps1) - self-
+          # contained, win-x64, R2R, RecModePortable=true. The previous version of this step published
+          # framework-dependent with none of those switches, so it could never have caught an R2R/crossgen
+          # failure, a missing win-x64-specific asset, or a broken `portable.marker` glob (which would make a
+          # shipped build silently write to %APPDATA%/%USERPROFILE%\Videos instead of .\Data\.\Recordings) -
+          # any of those would pass this step green and first surface in release.yml or in a user's hands.
+          dotnet publish src/RecMode.App/RecMode.App.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishReadyToRun=true -p:RecModePortable=true -o artifacts/portable-smoke
           if (-not (Test-Path artifacts/portable-smoke/RecMode.exe)) {
             throw "Portable build did not produce RecMode.exe"
+          }
+          if (-not (Test-Path artifacts/portable-smoke/portable.marker)) {
+            throw "Portable build did not produce portable.marker - AppPaths would resolve to %APPDATA% instead of .\Data, breaking the portable-first guarantee."
           }

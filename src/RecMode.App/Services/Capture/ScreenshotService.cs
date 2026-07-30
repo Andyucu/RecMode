@@ -15,7 +15,11 @@ public sealed class ScreenshotService(IAppPaths paths, ISettingsService settings
     /// <summary>Raised (on the UI thread) with the saved path after a successful capture.</summary>
     public event Action<string>? Captured;
 
-    /// <summary>Captures <paramref name="target"/> to a PNG. Must be called on the UI (STA) thread for the clipboard copy.</summary>
+    /// <summary>Captures <paramref name="target"/> to a PNG. Safe to call from any thread — the clipboard
+    /// copy (the one step that needs an STA thread) is internally marshaled to the UI thread's dispatcher
+    /// rather than requiring the caller to already be on it, so this can run off the UI thread via
+    /// <c>Task.Run</c> (see <see cref="RecordViewModel.TakeScreenshot"/>) without blocking it for the whole
+    /// capture+PNG-encode+file-write duration.</summary>
     public string? Capture(CaptureTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -68,15 +72,22 @@ public sealed class ScreenshotService(IAppPaths paths, ISettingsService settings
         }
     }
 
-    private static void TrySetClipboard(BitmapSource bmp)
-    {
-        try
+    // Marshaled to the UI/STA thread via BeginInvoke rather than called inline: Clipboard.SetImage requires
+    // an STA thread, but Capture() itself no longer requires one — RecordViewModel.TakeScreenshot now runs
+    // Capture() via Task.Run (a thread-pool/MTA thread) so the UI thread isn't blocked for the whole capture+
+    // PNG-encode+file-write duration, which used to freeze the recording toolbar and every low-level input
+    // hook behind it for a full-resolution 4K/ultrawide grab. This is the one remaining piece of the method
+    // that genuinely needs the UI thread.
+    private static void TrySetClipboard(BitmapSource bmp) =>
+        Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            Clipboard.SetImage(bmp);
-        }
-        catch (Exception)
-        {
-            // Clipboard can be transiently locked by another app; the file is still saved.
-        }
-    }
+            try
+            {
+                Clipboard.SetImage(bmp);
+            }
+            catch (Exception)
+            {
+                // Clipboard can be transiently locked by another app; the file is still saved.
+            }
+        });
 }

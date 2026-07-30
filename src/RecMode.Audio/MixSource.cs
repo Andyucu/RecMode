@@ -38,6 +38,14 @@ internal sealed class MixSource : IDisposable
 
     public AudioLevel Level => Muted ? AudioLevel.Silent : new AudioLevel(_rms, _peak);
 
+    /// <summary>True once the underlying WASAPI capture has stopped due to a genuine device failure (device
+    /// unplugged, exclusive-mode conflict, endpoint invalidated) rather than a normal Stop() call. Previously
+    /// this was logged only — the mixer silently kept "reading" (zero-filled) silence from the dead source
+    /// for the rest of the recording, producing a valid-but-silent stream with no indication anything failed
+    /// (the same failure shape as the historical full-system-audio-silence bug, just triggered mid-recording
+    /// instead of at start). Polled by the recording pacer so it can actually surface a warning.</summary>
+    public bool Faulted { get; private set; }
+
     /// <summary>
     /// Resolves a WASAPI capture's reported format to one whose <see cref="WaveFormat.Encoding"/> can be
     /// trusted. Mix formats — full-system loopback in particular, since <c>WasapiLoopbackCapture.WaveFormat</c>
@@ -67,7 +75,13 @@ internal sealed class MixSource : IDisposable
 
         _buffer = new BufferedWaveProvider(WaveFormat.CreateIeeeFloatWaveFormat(f.SampleRate, f.Channels))
         {
-            BufferDuration = TimeSpan.FromSeconds(2),
+            // Metering-only mixers never drain this (nothing ever calls ReadMixed), so keep it minimal — it
+            // only bounds memory, not preserves audio, for a buffer nobody reads. A real recording mixer's
+            // pump thread stops briefly during a segment rotation (finalize + safe-remux + new-encoder-start
+            // can legitimately take tens of seconds on a slow disk); WASAPI capture itself never stops, so
+            // without real headroom here that whole gap of genuine audio silently discards via
+            // DiscardOnBufferOverflow instead of landing a few seconds late once the pump resumes.
+            BufferDuration = meteringOnly ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(60),
             DiscardOnBufferOverflow = true,
         };
 
@@ -100,6 +114,7 @@ internal sealed class MixSource : IDisposable
         if (e.Exception is not null)
         {
             Log.Warning(e.Exception, "Audio capture stopped unexpectedly");
+            Faulted = true;
         }
     }
 

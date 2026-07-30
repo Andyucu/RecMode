@@ -36,6 +36,10 @@ public interface ILibraryIndex
     /// <summary>Removes the metadata when its recording is deleted.</summary>
     void Remove(string fileName);
 
+    /// <summary>Points an existing entry at its file's new name after an on-disk rename, preserving its
+    /// metadata. No-op if <paramref name="oldFileName"/> isn't indexed (e.g. a plain filesystem-only entry).</summary>
+    void Rename(string oldFileName, string newFileName);
+
     /// <summary>Prunes entries for recordings no longer present in the active recording folder.</summary>
     void PruneMissing(ISet<string> fileNames);
 }
@@ -105,6 +109,27 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
             {
                 Write(entries);
             }
+        }
+    }
+
+    public void Rename(string oldFileName, string newFileName)
+    {
+        lock (_lock)
+        {
+            List<LibraryIndexEntry> entries = Load();
+            int i = entries.FindIndex(e => string.Equals(e.FileName, oldFileName, StringComparison.OrdinalIgnoreCase));
+            if (i < 0)
+            {
+                return;
+            }
+
+            // Renaming onto an already-indexed name (a genuine collision, not the normal case) drops the
+            // stale duplicate the same way Add() already does for its own re-index case, rather than leaving
+            // two entries for one file name.
+            entries.RemoveAll(e => string.Equals(e.FileName, newFileName, StringComparison.OrdinalIgnoreCase));
+            i = entries.FindIndex(e => string.Equals(e.FileName, oldFileName, StringComparison.OrdinalIgnoreCase));
+            entries[i] = entries[i] with { FileName = newFileName };
+            Write(entries);
         }
     }
 

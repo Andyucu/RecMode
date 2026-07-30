@@ -476,9 +476,16 @@ public sealed class RecordingCoordinator : IDisposable
                     dstW, dstH, _settings.Current.WebcamSizePercent, _settings.Current.WebcamPosition);
                 _capture!.SetWebcamOverlay(_webcamCapture, new RegionRect(wx, wy, ww, wh));
             }
-            catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or COMException)
+            catch (Exception ex)
             {
+                // Deliberately broad: this is documented as best-effort, never blocking the recording, but a
+                // narrower filter (InvalidOperationException/UnauthorizedAccessException/COMException) missed
+                // FileNotFoundException — what MediaCapture.InitializeAsync actually throws for a device ID
+                // that's since been unplugged — which escaped into Start()'s own catch and blocked the entire
+                // recording instead of just warning, reachable headlessly via --tray + hotkey or a schedule
+                // where the "No camera detected" UI guard never runs.
                 _webcamCapture = null;
+                Log.Warning(ex, "Webcam overlay failed to start");
                 _errors.Warn("record.webcam-unavailable", "The webcam overlay couldn't be started.",
                     "Recording will continue without the picture-in-picture.");
             }
@@ -600,14 +607,22 @@ public sealed class RecordingCoordinator : IDisposable
         return true;
     }
 
-    /// <summary>Raised from the capture engine's background (DDA) thread when it hits an unrecoverable
-    /// error but has already shut itself down safely. The recording keeps running in a degraded state
-    /// (frames simply stop updating) rather than crashing the process — surface it so the user knows.</summary>
+    /// <summary>Raised from the capture engine's background (DDA/WGC) thread when it hits an unrecoverable
+    /// error (or the captured window/display was closed) but has already shut itself down safely. Ends the
+    /// recording rather than letting it keep running: once the capture engine is dead, PaceLoop has no way to
+    /// produce a new frame, so it would otherwise silently duplicate the last one, at full fps, for the rest
+    /// of the recording — a full-length file that's frozen from this instant on, with nothing to tell the
+    /// user. Stopping means they get a shorter but honest recording of what was actually captured.</summary>
     private void OnCaptureFaulted(object? sender, Exception ex)
     {
-        _errors.Warn("record.capture-faulted", "The screen capture stopped unexpectedly.",
-            "Recording may continue without new frames. Stop and restart the recording if this persists.");
         Log.Warning(ex, "Capture engine faulted");
+        _errors.Warn("record.capture-faulted", "The screen capture stopped — the recording was ended.",
+            "The captured window or display was closed, or the capture device was lost. What was recorded up to this point is saved.");
+
+        if (_stateMachine.IsBusy)
+        {
+            System.Threading.Tasks.Task.Run(Stop); // never call Stop() inline from this callback's own thread
+        }
     }
 
     /// <summary>Builds the <see cref="FfmpegJob"/> for the first segment and snapshots everything the rest
@@ -700,6 +715,7 @@ public sealed class RecordingCoordinator : IDisposable
         // full-system capture, which the user didn't ask for — same philosophy as AudioMixer.Start's
         // own activation-failure fallback.
         int? perAppPid = null;
+        bool perAppTargetMissing = false;
         string? targetName = _settings.Current.PerAppAudioProcessName;
         if (captureSystem && !string.IsNullOrEmpty(targetName))
         {
@@ -711,7 +727,14 @@ public sealed class RecordingCoordinator : IDisposable
             }
             else
             {
+                // Deliberately zeroed BEFORE calling Start (fail closed — see below), which means
+                // AudioMixerStartResult.SystemRequested/SystemDegraded can never observe the original
+                // request: they'd read false/false regardless of whether the target was actually missing,
+                // silently swallowing the exact warning this whole fail-closed path exists to surface. Track
+                // it here instead and warn directly, with a message that actually names the missing process
+                // rather than the generic one below.
                 captureSystem = false;
+                perAppTargetMissing = true;
             }
         }
 
@@ -722,7 +745,13 @@ public sealed class RecordingCoordinator : IDisposable
 
         // A requested audio source that failed to start is not fatal — recording continues without it —
         // but silently dropping it would leave the user wondering why the file has no audio.
-        if (startResult.SystemDegraded)
+        if (perAppTargetMissing)
+        {
+            _errors.Warn("record.audio-system-unavailable",
+                $"System audio couldn't be captured — \"{targetName}\" isn't running.",
+                "The recording will continue without system audio.");
+        }
+        else if (startResult.SystemDegraded)
         {
             _errors.Warn("record.audio-system-unavailable",
                 "System audio couldn't be captured for this recording.",
@@ -876,13 +905,20 @@ public sealed class RecordingCoordinator : IDisposable
 
     public bool IsPaused => _stateMachine.State == RecordingState.Paused;
 
-    /// <summary>Applies per-source gains (0..1) to the live recording mixer, so volume changes take effect mid-recording.</summary>
-    public void SetAudioGains(float systemGain, float micGain)
+    /// <summary>Applies per-source gains (0..1) and mute state to the live recording mixer, so volume/mute
+    /// changes take effect mid-recording. Mute is propagated here (not just as gain=0) because
+    /// <see cref="IAudioMixer"/>'s meters read <c>Muted</c> directly and are otherwise computed from the raw
+    /// pre-gain capture — without this, muting mid-recording left the meter still bouncing at full deflection
+    /// even though nothing was being recorded, actively misrepresenting the one indicator that's documented
+    /// as the mic test.</summary>
+    public void SetAudioGains(float systemGain, float micGain, bool systemMuted = false, bool micMuted = false)
     {
         if (_mixer is { } mixer)
         {
             mixer.SystemGain = systemGain;
             mixer.MicGain = micGain;
+            mixer.SystemMuted = systemMuted;
+            mixer.MicMuted = micMuted;
         }
     }
 
@@ -1064,6 +1100,12 @@ public sealed class RecordingCoordinator : IDisposable
         long lastDiskCheck = Stopwatch.GetTimestamp();
         long lastSplitCheck = Stopwatch.GetTimestamp();
         long lastWindowCheck = Stopwatch.GetTimestamp();
+        long lastStaleCaptureCheck = Stopwatch.GetTimestamp();
+        long lastCapturedFrames = _capture.CapturedFrameCount;
+        long capturedFramesChangedAt = Stopwatch.GetTimestamp();
+        long lastAudioFaultCheck = Stopwatch.GetTimestamp();
+        bool systemAudioFaultWarned = false;
+        bool micAudioFaultWarned = false;
 
         _ = timeBeginPeriod(1);
         try
@@ -1148,9 +1190,9 @@ public sealed class RecordingCoordinator : IDisposable
                         // flickered back to "healthy" every single tick from then on even though the encoder
                         // was still — and would keep — falling behind real time, misreporting the exact case
                         // §3.6's recording-health signal exists to catch.
-                        if (AttemptDowngrade())
+                        if (AttemptDowngrade() is { } downgradeRotationDuration)
                         {
-                            health.ResetAfterRotation(); // fresh grace period for the new encoder
+                            health.ResetAfterRotation(downgradeRotationDuration); // fresh, gap-sized grace period for the new encoder
                         }
                         break;
                 }
@@ -1195,6 +1237,60 @@ public sealed class RecordingCoordinator : IDisposable
                     }
                 }
 
+                // Stale-capture watchdog: defense-in-depth alongside OnCaptureFaulted. Faulted covers the
+                // engine's own known unrecoverable-error and window-closed paths, but if the capture engine
+                // ever stops producing new frames without raising it (a case Faulted doesn't cover), PaceLoop
+                // would otherwise duplicate the same last frame forever with nothing to catch it —
+                // CapturedFrameCount exists on every engine specifically so something reads it. 10 s with zero
+                // new frames captured is well past any legitimate stall (a black/static desktop still
+                // produces new — merely unchanged-looking — frames; this checks the count, not the content).
+                if (now - lastStaleCaptureCheck >= Stopwatch.Frequency) // ~1 Hz
+                {
+                    lastStaleCaptureCheck = now;
+                    long capturedNow = _capture.CapturedFrameCount;
+                    if (capturedNow != lastCapturedFrames)
+                    {
+                        lastCapturedFrames = capturedNow;
+                        capturedFramesChangedAt = now;
+                    }
+                    else if (now - capturedFramesChangedAt > 10 * Stopwatch.Frequency)
+                    {
+                        _errors.Warn("record.capture-stalled",
+                            "The screen capture stopped producing new frames — the recording was ended.",
+                            "What was recorded up to this point is saved.");
+                        _stopRequested = true;
+                        System.Threading.Tasks.Task.Run(Stop); // never call Stop() inline from the pacer thread
+                        break;
+                    }
+                }
+
+                // Mid-recording audio device failure (§3.6 DegradedState): a genuine WASAPI capture failure
+                // (device unplugged, exclusive-mode conflict, endpoint invalidated) used to be logged only —
+                // the mixer keeps "reading" zero-filled silence from the dead source for the rest of the
+                // recording with no indication anything failed, the same failure shape as the historical
+                // full-system-audio-silence bug, just triggered mid-recording instead of at start. Recording
+                // continues (video is unaffected and the other audio source, if any, is fine) — this only
+                // surfaces the warning once per source, it doesn't stop anything.
+                if (_mixer is not null && now - lastAudioFaultCheck >= Stopwatch.Frequency) // ~1 Hz
+                {
+                    lastAudioFaultCheck = now;
+                    if (!systemAudioFaultWarned && _mixer.SystemFaulted)
+                    {
+                        systemAudioFaultWarned = true;
+                        _errors.Warn("record.audio-system-failed",
+                            "System audio stopped mid-recording.",
+                            "The rest of the recording will have no system audio. Check the log for details.");
+                    }
+
+                    if (!micAudioFaultWarned && _mixer.MicFaulted)
+                    {
+                        micAudioFaultWarned = true;
+                        _errors.Warn("record.audio-mic-failed",
+                            "The microphone stopped mid-recording.",
+                            "The rest of the recording will have no microphone audio. Check the log for details.");
+                    }
+                }
+
                 // Auto-pause safety guard, disk half (§3.6): pause rather than stop outright before a full disk
                 // corrupts the finish — pausing writes no more frames (so it can't make the problem worse) but
                 // keeps the recording resumable once space is freed, instead of force-finalizing it. Pause()
@@ -1219,7 +1315,9 @@ public sealed class RecordingCoordinator : IDisposable
                     lastSplitCheck = now;
                     if (TryGetSegmentSize(out long segSize) && segSize >= _autoSplitThresholdBytes)
                     {
+                        long rotationStart = Stopwatch.GetTimestamp();
                         RotateSegment();
+                        TimeSpan rotationDuration = Stopwatch.GetElapsedTime(rotationStart);
 
                         // A rotation blocks this thread for however long finalize+safe-remux+encoder-restart
                         // takes, during which framesWritten falls behind Elapsed·fps through no fault of the
@@ -1228,8 +1326,11 @@ public sealed class RecordingCoordinator : IDisposable
                         // "the encoder can't keep up," firing the Degraded toast or even the hw→sw downgrade
                         // for a perfectly healthy encoder on every large-file auto-split. Resetting here gives
                         // it a fresh grace window measured from after the rotation, same as the mid-stream
-                        // hw→sw downgrade path already does for its own rotation just below.
-                        health.ResetAfterRotation();
+                        // hw→sw downgrade path already does for its own rotation just below — sized to the
+                        // rotation's own actual duration (not a fixed window), since the catch-up burst the
+                        // pacer must drain afterward is itself proportional to how long the rotation took (a
+                        // slow-disk remux can take far longer than any fixed grace window would assume).
+                        health.ResetAfterRotation(rotationDuration);
                         _encoderBehind = false;
                     }
                 }
@@ -1543,6 +1644,19 @@ public sealed class RecordingCoordinator : IDisposable
             return;
         }
 
+        // Stop() (UI thread/tray/hotkey) can also arrive during TryStartAnyEncoder itself — starting an
+        // encoder tries each fallback candidate in turn and can legitimately take several seconds. The check
+        // above only covers the finalize/remux/library-write gap; without this one too, a Stop() landing in
+        // this narrower window still leaves a brand-new segment session open that will never receive a
+        // frame, producing the same spurious zero-byte file the check above exists to prevent.
+        if (_stopRequested)
+        {
+            _session.Dispose();
+            TryDelete(_recordingPath);
+            _session = null;
+            return;
+        }
+
         if (forcedChain is not null)
         {
             _encoderChain = forcedChain; // keep any later rotation (e.g. auto-split) on the downgraded encoder
@@ -1563,29 +1677,30 @@ public sealed class RecordingCoordinator : IDisposable
     /// <see cref="_testForceDowngrade"/> test seam (<c>--selftest-downgrade</c>), which exercises the exact
     /// same rotation path without needing a genuinely overloaded encoder.
     /// </summary>
-    /// <summary>Returns true only if a rotation to a software encoder actually happened. Callers must not
-    /// treat a false return as "healthy again" — it means downgrade was already attempted this recording, the
-    /// active encoder isn't hardware, or no software fallback exists for this codec/container, none of which
-    /// changes whether the encoder is still falling behind.</summary>
-    private bool AttemptDowngrade()
+    /// <summary>Returns the rotation's wall-clock duration only if a rotation to a software encoder actually
+    /// happened; null otherwise. Callers must not treat a null return as "healthy again" — it means downgrade
+    /// was already attempted this recording, the active encoder isn't hardware, or no software fallback
+    /// exists for this codec/container, none of which changes whether the encoder is still falling behind.</summary>
+    private TimeSpan? AttemptDowngrade()
     {
         if (_downgradeAttempted || _activeEncoder is not { IsHardware: true } activeEncoder)
         {
-            return false;
+            return null;
         }
 
         _downgradeAttempted = true;
         List<EncoderInfo> swChain = _fallbackChain.BuildSoftwareOnly(activeEncoder, _jobTemplate!.Container);
         if (swChain.Count == 0)
         {
-            return false; // no software encoder available for this codec — nothing to fall back to
+            return null; // no software encoder available for this codec — nothing to fall back to
         }
 
         _errors.Warn("record.encoder-downgrade",
             "Switching to software encoding — the hardware encoder couldn't keep up.",
             "This uses more CPU but should stay in sync with real time.");
+        long rotationStart = Stopwatch.GetTimestamp();
         RotateSegment(swChain);
-        return true;
+        return Stopwatch.GetElapsedTime(rotationStart);
     }
 
     /// <summary>Test-only seam (mirrors the temporary --selftest-* hooks): forces the hw→sw downgrade path
@@ -1602,7 +1717,18 @@ public sealed class RecordingCoordinator : IDisposable
             var session = new FfmpegRecordingSession(_ffmpegPath!);
             try
             {
-                session.Start(template with { Encoder = enc }, frameBytes);
+                // Fresh pipe names per candidate, not just per rotation: a prior candidate's session that
+                // timed out waiting for ffmpeg to connect (Start's own 8s bound) has already been Dispose()d,
+                // but that Kill() doesn't wait for exit, so the OS pipe instance for its name may not be freed
+                // yet — reusing the same name for the next candidate could then hit CreateNamedPipe's
+                // "all pipe instances are busy" before ffmpeg even gets a chance to fail cleanly.
+                FfmpegJob job = template with
+                {
+                    Encoder = enc,
+                    PipeName = $"recmode_vid_{Guid.NewGuid():N}",
+                    AudioPipeName = template.AudioPipeName is null ? null : $"recmode_aud_{Guid.NewGuid():N}",
+                };
+                session.Start(job, frameBytes);
                 if (i > 0)
                 {
                     _errors.Warn("record.encoder-fallback",
@@ -1611,7 +1737,7 @@ public sealed class RecordingCoordinator : IDisposable
                 _activeEncoder = enc;
                 return session;
             }
-            catch (Exception ex) when (ex is EncoderStartException or InvalidOperationException)
+            catch (Exception ex) when (ex is EncoderStartException or InvalidOperationException or IOException)
             {
                 Log.Warning(ex, "Encoder {Enc} failed to start; trying next", enc.FfmpegId);
                 session.Dispose();
@@ -1710,6 +1836,20 @@ public sealed class RecordingCoordinator : IDisposable
 
     private void SafeTeardown()
     {
+        // Mirrors Stop()'s own ordering (cancel the pipe write, signal the pacer, THEN wait for it) before
+        // touching anything the pacer might still be using. Without this, an exception thrown between the
+        // pacer thread's launch and the end of Start() (e.g. ClearBuffers/StartAudioPumpThread failing) would
+        // reach this method while the pacer thread was still alive on _capture/_session — disposing live
+        // D3D11/COM/pipe objects out from under a thread actively calling into them, which is a genuine
+        // access-violation risk, not just a managed NRE.
+        _stopRequested = true;
+        try { _session?.RequestStop(); } catch (ObjectDisposedException) { }
+        if (_pacer is not null && _pacer != Thread.CurrentThread)
+        {
+            _pacer.Join();
+        }
+        _pacer = null;
+
         try { _audioStop?.Cancel(); } catch (Exception) { }
         bool audioThreadStopped = true;
         try { audioThreadStopped = _audioThread is null || _audioThread.Join(1000); } catch (Exception) { }

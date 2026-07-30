@@ -92,6 +92,20 @@ public static class ScreenshotCapturer
             using GraphicsCaptureSession session = framePool.CreateCaptureSession(item);
             session.StartCapture();
             got.Wait(2000);
+
+            // Stop delivery BEFORE the barrier below, not just wait-then-barrier: got.Wait(2000) can time out
+            // (return false) with no callback ever having been dispatched, and the FrameArrived subscription
+            // is still live at that point — WGC can still deliver a frame right at/after the 2s mark. Without
+            // disposing the session/pool here first, that late callback would enter the disposeGuard lock
+            // completely uncontested and reach Readback() using device/context objects the enclosing `using`
+            // blocks are about to release the moment this method returns — a use-after-dispose that's a COM
+            // access violation on a threadpool thread (an uncatchable process crash), not just a bad result.
+            // WinRT IClosable types tolerate a repeat Dispose() from the `using` blocks above as a no-op.
+            session.Dispose();
+            framePool.Dispose();
+
+            // Drains any callback that had already started (and taken the lock) before the disposal above
+            // could take effect.
             lock (disposeGuard) { }
             return result;
         }

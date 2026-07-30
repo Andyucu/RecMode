@@ -219,9 +219,6 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
         bool isFirst = true;
         foreach (OutputState state in _outputs)
         {
-            uint thisTimeoutMs = isFirst ? (uint)timeoutMs : 0;
-            isFirst = false;
-
             if (state.Duplication is null)
             {
                 TryReacquire(state);
@@ -230,6 +227,17 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
                     continue;
                 }
             }
+
+            // isFirst must only be consumed by an output that actually reaches a real AcquireNextFrame call
+            // below, not by loop position. Consuming it earlier (for an output skipped above because it has
+            // no live duplication) handed the real blocking wait to nothing — every remaining output,
+            // including ones with a perfectly live duplication, then got timeoutMs=0 for the rest of this
+            // pull, and this repeats every pull for as long as that one output stays duplication-less (which
+            // is indefinitely for an unplugged monitor). The pump loop then calls this in a tight loop with no
+            // real wait at all, spinning a full CPU core — precisely what the single-real-wait design above
+            // exists to avoid.
+            uint thisTimeoutMs = isFirst ? (uint)timeoutMs : 0;
+            isFirst = false;
 
             Result hr = state.Duplication.AcquireNextFrame(thisTimeoutMs, out OutduplFrameInfo _, out IDXGIResource resource);
             if (!hr.Success)
@@ -266,6 +274,15 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
                 }
             }
             finally { state.Duplication.ReleaseFrame(); }
+        }
+
+        if (isFirst)
+        {
+            // isFirst is still true only if not one single output reached a real AcquireNextFrame call this
+            // pull (every output is duplication-less right now, e.g. every monitor lost access at once) — in
+            // that case nothing above ever waited at all, so sleep the timeout ourselves rather than let the
+            // pump loop spin a full core calling this in a tight, wait-free cycle until something reacquires.
+            Thread.Sleep(Math.Max(1, timeoutMs));
         }
 
         return _canvas;

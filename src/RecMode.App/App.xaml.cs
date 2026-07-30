@@ -112,7 +112,12 @@ public partial class App : Application
             })
             .Build();
 
-        // Settings load (with migration + corrupt recovery), then crash-safety wiring.
+        // Crash-safety wiring must come before settings load: a settings file bad enough to escape Load()'s
+        // own recovery (e.g. malformed JSON that parses but throws on materialization) must not crash the
+        // process before a handler exists to catch it.
+        _crash = _host.Services.GetRequiredService<ICrashReporter>();
+        RegisterGlobalExceptionHandlers();
+
         var settingsService = _host.Services.GetRequiredService<ISettingsService>();
         settingsService.Load();
 
@@ -171,8 +176,6 @@ public partial class App : Application
             settingsService.Save();
         }
 
-        _crash = _host.Services.GetRequiredService<ICrashReporter>();
-        RegisterGlobalExceptionHandlers();
         _crash.MarkSessionStarted();
 
         if (_crash.PreviousSessionCrashed)
@@ -304,9 +307,14 @@ public partial class App : Application
             _ = record.StartRecordingFromCli(); // automation starts immediately (no pre-roll countdown)
         }
 
-        if (options.Stop && coordinator.IsRecording)
+        if (options.Stop)
         {
-            record.RecordCommand.Execute(null); // toggles off
+            // Not gated on coordinator.IsRecording: RecordViewModel.RequestStop() already no-ops when
+            // there's genuinely nothing to stop, and — unlike that guard — also handles the case where a
+            // start is still in flight (pre-flight/webcam/encoder startup can take several seconds), so
+            // `RecMode --record` immediately followed by `RecMode --stop` reliably stops the recording
+            // instead of silently dropping the stop because IsRecording hadn't flipped true yet.
+            record.RequestStop();
         }
 
         // A second launch (or a plain re-launch with no action) surfaces the existing window, unless it

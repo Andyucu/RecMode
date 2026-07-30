@@ -181,6 +181,21 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             return;
         }
 
+        // A modifier-less chord is only sane for a function key (F1-F24, VK 0x70-0x87) — the one class of
+        // key that isn't also normal typing input. Nothing here or in HotkeyChord.TryParse previously
+        // rejected a bare letter/digit/Space/Enter/Tab/Backspace: capturing "S" for Screenshot, say (an
+        // entirely plausible stray keypress inside the 15s capture window) registered and persisted, and from
+        // then on pressing S in ANY application on the machine never reached the focused window — it silently
+        // fired RecMode's screenshot instead. Space/Enter/Tab additionally broke the Settings UI's own
+        // keyboard operation, including the very "Change" button flow used to fix the mistake.
+        bool isFunctionKey = captured.VirtualKey is >= 0x70 and <= 0x87;
+        if (captured.Modifiers == 0 && !isFunctionKey)
+        {
+            _errors.Warn("hotkey.invalid", "That shortcut needs a modifier.",
+                "Add Ctrl, Alt, Shift, or Win (for example Ctrl+Shift+R) — or use a function key like F9 on its own.");
+            return;
+        }
+
         if (IsDuplicateHotkey(_capturingHotkey, captured))
         {
             _errors.Warn("hotkey.duplicate", "That shortcut is already assigned.", "Choose a different shortcut for each action.");

@@ -1,10 +1,9 @@
 # Third-party licenses
 
 RecMode itself is licensed under the GNU General Public License v3.0 in the top-level `LICENSE`
-file. This folder holds notices for the third-party components
-RecMode depends on or ships alongside, which remain under their own separate licenses regardless of
-RecMode's own license. Note: as of this writing the **About** screen does not yet read from this folder —
-wiring that up is tracked as a follow-up (see `README.md`).
+file. This folder holds notices for the third-party components RecMode depends on or ships alongside, which
+remain under their own separate licenses regardless of RecMode's own license. The **About** screen's License
+button opens this folder directly (`AboutViewModel.OpenLicense` → `AppPaths.LicensesDirectory`).
 
 ## ffmpeg (bundled binary, staged at build/publish time — not committed to this repo)
 RecMode invokes `ffmpeg.exe` as a separate process; it is not statically linked.
@@ -15,7 +14,10 @@ RecMode invokes `ffmpeg.exe` as a separate process; it is not statically linked.
 `-lgpl` variant, which RecMode does not use). Source availability for that exact build: BtbN's releases page
 links each build to the exact upstream ffmpeg commit it was built from — see
 https://github.com/BtbN/FFmpeg-Builds/releases and https://github.com/FFmpeg/FFmpeg for the corresponding
-upstream source. Full GPLv3 text: https://www.gnu.org/licenses/gpl-3.0.txt.
+upstream source. Full GPLv3 text: https://www.gnu.org/licenses/gpl-3.0.txt. BtbN's own `LICENSE.txt`/
+`README.txt` are now copied alongside `ffmpeg.exe`/`ffprobe.exe` into every release's `ffmpeg/` folder
+(release.yml) — a prior version of this workflow's blanket `bin\*` copy silently dropped them, since they
+live one directory above `bin\` in BtbN's archive.
 
 As of this writing the workflow also **computes and ships a fresh `ffmpeg.manifest.json`** (SHA-256 of
 `ffmpeg.exe`/`ffprobe.exe`, plus the exact version string `ffmpeg -version` reports for that download) next

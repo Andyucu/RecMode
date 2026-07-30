@@ -120,6 +120,7 @@ public sealed class SourceContourService(
             case nameof(RecordViewModel.IsActivePage):
             case nameof(RecordViewModel.IsWindowMinimized):
             case nameof(RecordViewModel.IsWindowVisible):
+            case nameof(RecordViewModel.IsWindowActive):
             case nameof(RecordViewModel.IsModalPromptOpen):
                 Update();
                 break;
@@ -183,8 +184,14 @@ public sealed class SourceContourService(
         // Suspended while a RecMode-owned modal is open (the region picker, the Save-profile prompt) — that
         // global Esc registration would otherwise steal the Esc keypress the modal's own Cancel handling
         // needs, since RegisterHotKey intercepts it before it ever reaches the modal window regardless of
-        // which window has focus.
-        UpdateClearRegionHotkey(register: target.Kind == CaptureKind.Region && !isRecording && !record.IsModalPromptOpen);
+        // which window has focus. Also suspended while RecMode isn't the OS foreground app — "visible and
+        // not minimized" doesn't rule out the user having alt-tabbed away or the window just sitting on
+        // another monitor, and a global RegisterHotKey(0, VK_ESCAPE) intercepts Esc for every OTHER
+        // application on the machine (and silently reverts the Region source) the instant it's foreground
+        // instead, regardless of which window has focus — reachable simply by leaving Record open on Region
+        // in the background, not just while a modal is up.
+        UpdateClearRegionHotkey(register: target.Kind == CaptureKind.Region && !isRecording &&
+            !record.IsModalPromptOpen && record.IsWindowActive);
     }
 
     private void UpdateClearRegionHotkey(bool register)

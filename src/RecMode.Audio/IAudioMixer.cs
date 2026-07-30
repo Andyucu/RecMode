@@ -24,6 +24,12 @@ public interface IAudioMixer : IDisposable
     AudioLevel SystemLevel { get; }
     AudioLevel MicLevel { get; }
 
+    /// <summary>True once the corresponding source's capture has stopped due to a genuine device failure
+    /// (unplugged, exclusive-mode conflict, endpoint invalidated) mid-recording, not a normal Stop(). False
+    /// if that source was never started. See <see cref="MixSource.Faulted"/> for why this exists.</summary>
+    bool SystemFaulted { get; }
+    bool MicFaulted { get; }
+
     /// <summary>
     /// Starts capture/metering for the requested sources. When <paramref name="targetProcessId"/> is set and
     /// <paramref name="captureSystem"/> is true, the system source captures only that process's (and by

@@ -83,7 +83,22 @@ public sealed class WebcamPreviewEngine : IPreviewEngine
         // comment. Waiting on the camera's own frame event means no wakeups and no redundant rescaling
         // between frames, and the ≤30 fps throttle below still caps a fast camera.
         using var newFrame = new AutoResetEvent(false);
-        void OnSourceFrameArrived() => newFrame.Set();
+        void OnSourceFrameArrived()
+        {
+            try
+            {
+                newFrame.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same guard as WebcamCaptureEngine.PollLoop, for the identical reason: WinRT's
+                // MediaFrameReader.FrameArrived unsubscription below isn't guaranteed to block until an
+                // already-in-flight callback on the camera's own thread finishes — that callback can still
+                // reach here and call Set() a moment after this method's `finally` has unsubscribed and the
+                // `using` above has disposed newFrame. Harmless to drop: this loop has already exited by the
+                // time that can happen, so there's nothing left to wake up.
+            }
+        }
         source.FrameArrived += OnSourceFrameArrived;
         try
         {

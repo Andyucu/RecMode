@@ -143,6 +143,34 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
     private void OnFrameArrived(Direct3D11CaptureFramePool pool, object? args)
     {
+        // This callback is invoked by CsWinRT's native-to-managed delegate wrapper: an exception escaping it
+        // is converted into an HRESULT for the (native) caller and never reaches managed code as an unhandled
+        // exception — it is silently swallowed, not merely "not our thread." Without this try/catch, a GPU
+        // TDR / device-lost error here (e.g. from Convert's Blt+readback) vanished with no log line and no
+        // Faulted event, and the CFR pacer kept duplicating the last successfully-converted frame at full fps
+        // for the rest of the recording — a full-length file that's silently frozen from that instant on.
+        // DdaPumpLoop already guards its own GPU work the same way; this was the one capture path (the
+        // default one) that never got it.
+        try
+        {
+            OnFrameArrivedCore(pool);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "WGC frame conversion failed");
+            try
+            {
+                Faulted?.Invoke(this, ex);
+            }
+            catch (Exception)
+            {
+                // A misbehaving subscriber must not prevent this callback from returning cleanly to WinRT.
+            }
+        }
+    }
+
+    private void OnFrameArrivedCore(Direct3D11CaptureFramePool pool)
+    {
         // _disposeGuard (not _sync) wraps the GPU work here — it also doubles as Stop()'s barrier (an empty
         // critical section taken after unsubscribing this callback, before disposing the converter/context/
         // device it uses below): a call already dispatched before the unsubscribe takes effect blocks here
@@ -188,17 +216,25 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
             using ID3D11Texture2D tex = CaptureInterop.GetTexture(frame.Surface);
             converter.Convert(tex, _scratch);
+
+            // Swap under the SAME _disposeGuard critical section as the convert above, not a separate _sync
+            // block after it — the frame pool is CreateFreeThreaded (WgcSessionFactory), so FrameArrived can
+            // be dispatched concurrently, which is exactly why _disposeGuard exists. With the swap outside
+            // it, callback A could convert into _scratch and release the lock before swapping; callback B
+            // then acquires the lock and converts into the SAME _scratch (A hasn't swapped it away yet),
+            // corrupting A's still-pending write, and whichever callback swaps last can publish the OLDER
+            // converted frame as "latest" over a newer one. WgcPreviewEngine already does this correctly
+            // (swap nested inside its own _disposeGuard) — this brings the recording path in line with it.
+            lock (_sync)
+            {
+                (_scratch, _latest) = (_latest, _scratch);
+                _hasLatest = true;
+            }
+
+            Interlocked.Increment(ref _capturedFrames);
         }
 
         ReportLatencyIfDue();
-
-        lock (_sync)
-        {
-            (_scratch, _latest) = (_latest, _scratch);
-            _hasLatest = true;
-        }
-
-        Interlocked.Increment(ref _capturedFrames);
     }
 
     /// <summary>Logs one window of video-path capture latency, if a window's worth has accumulated. Called

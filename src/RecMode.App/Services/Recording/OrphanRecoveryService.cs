@@ -1,6 +1,7 @@
 using System.IO;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
+using RecMode.Core.Library;
 using RecMode.Core.Settings;
 using RecMode.Encoding.Ffmpeg;
 using Serilog;
@@ -13,7 +14,7 @@ namespace RecMode.App.Services;
 /// orphan to a playable MP4 (`-c copy`), then removes the temp — so a crash costs at most the final second,
 /// never the whole take. Runs off the UI thread; failures keep the MKV and surface a warning.
 /// </summary>
-public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths, ISettingsService settings, IErrorReporter errors)
+public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths, ISettingsService settings, IErrorReporter errors, ILibraryIndex libraryIndex)
 {
     private const string OrphanSuffix = ".recording.mkv";
 
@@ -65,6 +66,12 @@ public sealed class OrphanRecoveryService(IFfmpegLocator ffmpeg, IAppPaths paths
             {
                 TryDelete(orphan);
                 recovered++;
+                // If a failed mid-recording remux (RecordingCoordinator.Finalize/RotateSegment) already
+                // indexed this file under its .recording.mkv sentinel name, point that entry at the real
+                // recovered name instead of leaving it referencing a file that no longer exists — otherwise
+                // the Library shows a dangling entry for the deleted MKV and the freshly recovered MP4 has
+                // no metadata (codec/resolution/duration, "Record again") at all.
+                libraryIndex.Rename(Path.GetFileName(orphan), Path.GetFileName(mp4));
                 Log.Information("Recovered orphaned recording {Orphan} -> {Mp4}", Path.GetFileName(orphan), Path.GetFileName(mp4));
             }
             else

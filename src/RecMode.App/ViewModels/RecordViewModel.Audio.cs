@@ -168,9 +168,14 @@ public sealed partial class RecordViewModel
         {
             _meterMixer.SystemGain = sysGain;
             _meterMixer.MicGain = micGain;
+            // Also drive the meter's own Muted flag (not just gain=0): AudioLevel.Muted short-circuits to
+            // silent, whereas the meter's RMS/peak are otherwise computed from the raw pre-gain capture and
+            // would keep bouncing at full deflection while "muted" — the meter is documented as the mic test,
+            // so it must actually go quiet when muted.
+            _meterMixer.MicMuted = IsMicMuted;
         }
 
-        _coordinator.SetAudioGains(sysGain, micGain); // live propagation to an in-progress recording
+        _coordinator.SetAudioGains(sysGain, micGain, systemMuted: false, micMuted: IsMicMuted); // live propagation to an in-progress recording
     }
 
     private void StartMetering()
