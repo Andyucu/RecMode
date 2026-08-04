@@ -109,6 +109,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         ToggleAnnotateCommand = new RelayCommand(() => { if (_coordinator.IsRecording) IsAnnotating = !IsAnnotating; });
         ToggleManualZoomCommand = new RelayCommand(ToggleManualZoom);
         ToggleMicMuteCommand = new RelayCommand(ToggleMicMute, () => _coordinator.IsRecording && MicEnabled);
+        ToggleHighlightClicksCommand = new RelayCommand(() => IsHighlightingClicks = !IsHighlightingClicks);
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
         SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
@@ -127,6 +128,12 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         // Settings. Never resynced while actually recording — the container/encoder of a file being written
         // right now can't change out from under it.
         settings.SettingsChanged += OnSettingsChangedRefreshEncodingDefaults;
+        // Unlike encoding defaults (above), HighlightClicks CAN change mid-recording — that's the whole point
+        // of also exposing it from the floating toolbar (ClickHighlightService reacts live via its own
+        // SettingsChanged subscription). IsHighlightingClicks reads straight from _settings.Current rather
+        // than caching a field, so this just needs to repaint the binding whenever the value changes from
+        // anywhere else (the Settings screen, or a future second surface) — including while recording.
+        settings.SettingsChanged += (_, _) => OnPropertyChanged(nameof(IsHighlightingClicks));
     }
 
     private void OnSettingsChangedRefreshEncodingDefaults(object? sender, EventArgs e)
@@ -166,6 +173,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand ToggleAnnotateCommand { get; }
     public IRelayCommand ToggleManualZoomCommand { get; }
     public IRelayCommand ToggleMicMuteCommand { get; }
+    public IRelayCommand ToggleHighlightClicksCommand { get; }
     public IRelayCommand SaveProfileCommand { get; }
     public IRelayCommand DeleteProfileCommand { get; }
 
@@ -602,6 +610,29 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     }
 
     public string PauseButtonText => IsPaused ? "Resume" : "Pause";
+
+    /// <summary>The "Highlight mouse clicks" setting (§Phase 8), also exposed here — not just on the Settings
+    /// screen — so it can be flipped on/off from the floating recording toolbar mid-recording, for pinpointing
+    /// something on screen for a moment and then turning it back off, without leaving whatever's being
+    /// recorded to go find the toggle in Settings. Reads straight from <c>_settings.Current</c> rather than
+    /// caching a field, since <see cref="ClickHighlightService"/> (which actually shows/hides the ripple
+    /// overlay) reacts to the same underlying setting from a second, independent surface (the Settings
+    /// screen) that this must stay in sync with — see the constructor's <c>SettingsChanged</c> subscription.</summary>
+    public bool IsHighlightingClicks
+    {
+        get => _settings.Current.HighlightClicks;
+        set
+        {
+            if (_settings.Current.HighlightClicks == value)
+            {
+                return;
+            }
+
+            _settings.Current.HighlightClicks = value;
+            _settings.RequestSave();
+            OnPropertyChanged();
+        }
+    }
 
     private bool _isHealthy = true;
     /// <summary>False when the encoder can't keep up (recording health, §3.6) — drives the toolbar badge.</summary>

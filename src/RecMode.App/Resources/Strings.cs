@@ -270,6 +270,8 @@ public static class Strings
     public static string Toolbar_ZoomTooltip => Get(nameof(Toolbar_ZoomTooltip));
     public static string Toolbar_MuteMicTooltip => Get(nameof(Toolbar_MuteMicTooltip));
     public static string Toolbar_StopTooltip => Get(nameof(Toolbar_StopTooltip));
+    public static string Toolbar_HighlightClicksTooltip => Get(nameof(Toolbar_HighlightClicksTooltip));
+    public static string Toolbar_HighlightClicksLabel => Get(nameof(Toolbar_HighlightClicksLabel));
 
     public static string RegionSelect_Instructions => Get(nameof(RegionSelect_Instructions));
     public static string RegionSelect_Preset1080 => Get(nameof(RegionSelect_Preset1080));

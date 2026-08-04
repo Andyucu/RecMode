@@ -302,6 +302,8 @@
   <data name="Toolbar_ZoomTooltip" xml:space="preserve"><value>Drag-select an area to zoom into (Esc to exit); Screen and Region sources only</value></data>
   <data name="Toolbar_MuteMicTooltip" xml:space="preserve"><value>Mute or unmute the microphone (Ctrl+Shift+M by default, remappable in Settings)</value></data>
   <data name="Toolbar_StopTooltip" xml:space="preserve"><value>Stop the recording (F9)</value></data>
+  <data name="Toolbar_HighlightClicksTooltip" xml:space="preserve"><value>Highlight mouse clicks on screen — handy to turn on for a moment to point something out, then off again</value></data>
+  <data name="Toolbar_HighlightClicksLabel" xml:space="preserve"><value>Clicks</value></data>
 
   <data name="RegionSelect_Instructions" xml:space="preserve"><value>Drag to select a region · Esc to cancel · Enter to use</value></data>
   <data name="RegionSelect_Preset1080" xml:space="preserve"><value>1920 × 1080</value></data>
