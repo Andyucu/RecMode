@@ -61,6 +61,10 @@ public interface IAppPaths
     /// catalog encoder on every launch when the ffmpeg binary hasn't changed).</summary>
     string EncoderCachePath { get; }
 
+    /// <summary>Full path to the ffmpeg hash-verification cache file (§3.9 startup-speed: avoids re-hashing
+    /// the bundled ~280 MB ffmpeg.exe/ffprobe.exe on every launch when neither has changed).</summary>
+    string FfmpegHashCachePath { get; }
+
     /// <summary>Creates the state directories if missing. Call once at startup.</summary>
     void EnsureDirectories();
 

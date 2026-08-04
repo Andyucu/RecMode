@@ -115,6 +115,11 @@ public sealed class RecordingCoordinator : IDisposable
     /// 90-185ms), and an unbounded value would prepend arbitrarily much silence to the recording.</summary>
     private const int MaxAudioSyncOffsetMs = 500;
 
+    /// <summary>Pure, so it's directly testable without driving a real audio pump — see
+    /// <c>RecordingCoordinatorTests</c>. Extracted rather than inlining <c>Math.Clamp</c> at the call site so
+    /// a test can assert against the actual production bound, not reimplement the clamp itself.</summary>
+    internal static int ClampAudioSyncOffsetMs(int raw) => Math.Clamp(raw, -MaxAudioSyncOffsetMs, MaxAudioSyncOffsetMs);
+
     private bool _isAnnotating;
     private int _lastWindowW, _lastWindowH;
     // Set alongside _pendingRetarget only by CheckWindowResize, which — unlike SetAnnotating's own use of
@@ -789,6 +794,12 @@ public sealed class RecordingCoordinator : IDisposable
         if (_stateMachine.State is RecordingState.Recording or RecordingState.Paused)
         {
             _stateMachine.Stop();
+            // Finalize() below (remux for safe-recording, library-index write, filesystem moves) can take
+            // real time — nothing else raises progress with State==Finalizing, so without this the UI
+            // freezes on its last Recording-state snapshot for however long that takes, then jumps straight
+            // to Idle when Finished fires. One explicit tick lets the UI show a genuine "Finalizing…" state
+            // instead of silently doing nothing.
+            RaiseProgress();
         }
 
         // Cancel active pipe writes before waiting. Teardown must never dispose capture/session resources
@@ -1044,7 +1055,7 @@ public sealed class RecordingCoordinator : IDisposable
                 // The offset is read once here, at pump start, rather than per-iteration: it's applied as
                 // leading silence/discard at the head of the stream, so changing it mid-recording couldn't
                 // take effect anyway, and re-reading it would only invite a torn read of a live setting.
-                int syncOffsetMs = Math.Clamp(_settings.Current.AudioSyncOffsetMs, -MaxAudioSyncOffsetMs, MaxAudioSyncOffsetMs);
+                int syncOffsetMs = ClampAudioSyncOffsetMs(_settings.Current.AudioSyncOffsetMs);
                 _mixer!.PumpUntil(audioPipe, () =>
                 {
                     TimeSpan elapsed = _stateMachine.Elapsed - segmentStartedAt;

@@ -125,10 +125,32 @@
                     </ListBox.ItemTemplate>
             </ListBox>
 
-            <TextBlock Text="{Binding EmptyMessage}" Style="{StaticResource BodyText}"
+            <TextBlock Text="{x:Static res:Strings.Library_Loading}" Style="{StaticResource BodyText}"
                        Foreground="{DynamicResource TextSecondaryBrush}"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Items.Clear() at the start of every load makes IsEmpty momentarily true even when the load
+                 will end up populated, so this also requires !IsLoading — otherwise "No recordings yet."
+                 flashes on every tab switch/refresh before the real items arrive. -->
+            <TextBlock Text="{Binding EmptyMessage}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsEmpty}" Value="True" />
+                                    <Condition Binding="{Binding IsLoading}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </Grid>
     </Grid>
 </UserControl>

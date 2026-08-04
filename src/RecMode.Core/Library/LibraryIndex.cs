@@ -123,12 +123,17 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
                 return;
             }
 
-            // Renaming onto an already-indexed name (a genuine collision, not the normal case) drops the
-            // stale duplicate the same way Add() already does for its own re-index case, rather than leaving
-            // two entries for one file name.
-            entries.RemoveAll(e => string.Equals(e.FileName, newFileName, StringComparison.OrdinalIgnoreCase));
-            i = entries.FindIndex(e => string.Equals(e.FileName, oldFileName, StringComparison.OrdinalIgnoreCase));
-            entries[i] = entries[i] with { FileName = newFileName };
+            // The entry's full data is captured BEFORE any mutation, then both the original name and any
+            // pre-existing "already-indexed under newFileName" collision are removed in one pass and the
+            // renamed entry is added back — rather than removing-then-re-FindIndex-then-index, which threw
+            // ArgumentOutOfRangeException the instant oldFileName and newFileName were equal (case-
+            // insensitively — Windows filenames are case-insensitive): that RemoveAll deleted the very entry
+            // being renamed, since "the already-indexed name" and "the entry being renamed" were the same
+            // one, and the second FindIndex then returned -1.
+            LibraryIndexEntry renamed = entries[i] with { FileName = newFileName };
+            entries.RemoveAll(e => string.Equals(e.FileName, oldFileName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(e.FileName, newFileName, StringComparison.OrdinalIgnoreCase));
+            entries.Add(renamed);
             Write(entries);
         }
     }

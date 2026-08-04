@@ -19,7 +19,12 @@ public static class Bgra8ToNv12Converter
     // this converter (the GDI VM/RDP fallback and webcam-as-source). If -color_range (or an equivalent
     // -colorspace/-color_trc flag) is ever added to FfmpegArgsBuilder, it must declare "tv"/limited to match
     // what's actually produced here — anyone doing that should not assume it already does.
-    public static void Convert(byte[] bgra, int srcW, int srcH, int dstW, int dstH, byte[] output)
+    // ReadOnlySpan<byte>, not byte[]: lets GdiCaptureEngine read directly from the native DIB section pointer
+    // (via an unsafe span) instead of Marshal.Copy-ing the whole frame into a managed array first purely so
+    // this method could index it — 248.8 MB/s of pure memcpy at 1080p30, 884 MB/s at a large virtual desktop,
+    // for a copy nothing but this method ever reads. Existing byte[] callers (WebcamCaptureEngine, the test
+    // suite) are unaffected — arrays convert to spans implicitly.
+    public static void Convert(ReadOnlySpan<byte> bgra, int srcW, int srcH, int dstW, int dstH, byte[] output)
     {
         int ySize = dstW * dstH;
         for (int y = 0; y < dstH; y++)
@@ -44,7 +49,7 @@ public static class Bgra8ToNv12Converter
         }
     }
 
-    private static (byte B, byte G, byte R) Pixel(byte[] p, int w, int h, int dstW, int dstH, int x, int y)
+    private static (byte B, byte G, byte R) Pixel(ReadOnlySpan<byte> p, int w, int h, int dstW, int dstH, int x, int y)
     {
         int sx = Math.Min(w - 1, x * w / dstW), sy = Math.Min(h - 1, y * h / dstH);
         int i = (sy * w + sx) * 4;

@@ -91,14 +91,15 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     /// direction back).</summary>
     public LibraryItem? SelectedItem { get => _selectedItem; set => SetProperty(ref _selectedItem, value); }
 
-    /// <summary>Jump to a specific recording next time the Library loads — the title bar's "Saved
-    /// &lt;filename&gt;" status uses this to point straight at the file that just finished (see
-    /// <see cref="ShellViewModel.OpenLastRecordingCommand"/>). Forces the Videos tab since a finished
-    /// recording is always a video.</summary>
+    /// <summary>Jump to a specific recording or screenshot next time the Library loads — the title bar's
+    /// "Saved &lt;filename&gt;"/"Screenshot saved" status uses this to point straight at the file that just
+    /// finished (see <see cref="ShellViewModel.OpenLastRecordingCommand"/>). Switches to whichever tab
+    /// actually holds that file — a screenshot's own extension (.png) is how it's told apart from a
+    /// recording, since callers only ever pass a path, not a kind.</summary>
     public void RequestSelect(string filePath)
     {
         _pendingSelectPath = filePath;
-        ShowVideos = true;
+        ShowVideos = !string.Equals(Path.GetExtension(filePath), ".png", StringComparison.OrdinalIgnoreCase);
     }
 
     public void OnNavigatedTo() => _ = LoadAsync();

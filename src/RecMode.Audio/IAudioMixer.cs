@@ -9,7 +9,6 @@ namespace RecMode.Audio;
 /// </summary>
 public interface IAudioMixer : IDisposable
 {
-    bool IsRunning { get; }
     int SampleRate { get; }
     int Channels { get; }
 

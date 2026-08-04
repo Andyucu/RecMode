@@ -9,7 +9,6 @@ namespace RecMode.Capture;
 /// </summary>
 public interface IPreviewEngine : IDisposable
 {
-    bool IsRunning { get; }
     int Width { get; }
     int Height { get; }
     int Stride { get; }

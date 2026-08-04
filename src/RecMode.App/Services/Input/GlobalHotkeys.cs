@@ -90,17 +90,26 @@ public sealed class GlobalHotkeys : IDisposable
         return -1;
     }
 
+    // A probe always unregisters before returning (see CanRegister below), so it never needs a durable,
+    // unique-for-the-app's-lifetime id the way a real Register() does — it only needs an id that isn't
+    // colliding with a CURRENTLY-held real registration at the moment of the call. Consuming _nextId for
+    // this (the previous approach) permanently inflated the counter on every probe, including every
+    // keystroke of hotkey-capture UI validation, for no benefit; a fixed sentinel well above the app's small
+    // real id range (it registers at most a handful of hotkeys) avoids that while still being safe: Win32's
+    // documented range for app-defined hotkey ids is 0x0000-0xBFFF, so this is the highest value in range and
+    // real registrations — which only ever grow from _nextId's starting value of 1 — will never reach it.
+    private const int ProbeId = 0xBFFF;
+
     /// <summary>Probes whether a modifier+key combination could be registered right now, without touching any
     /// currently-registered hotkey and without raising <see cref="RegistrationFailed"/> — a probe "failing" is
     /// an expected, silent outcome the caller decides how to handle itself (e.g. hotkey-capture UI validation),
     /// not a real registration attempt gone wrong.</summary>
     public bool CanRegister(uint modifiers, uint virtualKey)
     {
-        int id = _nextId++;
-        bool ok = RegisterHotKey(_source.Handle, id, modifiers, virtualKey);
+        bool ok = RegisterHotKey(_source.Handle, ProbeId, modifiers, virtualKey);
         if (ok)
         {
-            UnregisterHotKey(_source.Handle, id);
+            UnregisterHotKey(_source.Handle, ProbeId);
         }
 
         return ok;

@@ -67,7 +67,6 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
         try
         {
             int srcStride = _bounds.Width * 4;
-            byte[] bgra = new byte[srcStride * _bounds.Height];
             byte[] nv12 = new byte[Nv12ByteSize];
             screen = GetDC(IntPtr.Zero);
             dc = CreateCompatibleDC(screen);
@@ -83,8 +82,12 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
             {
                 try
                 {
-                    CaptureBgra(dc, bits, bgra, srcStride);
-                    Bgra8ToNv12Converter.Convert(bgra, _bounds.Width, _bounds.Height, _dstW, _dstH, nv12);
+                    CaptureFrame(dc, bits);
+                    unsafe
+                    {
+                        var bgra = new ReadOnlySpan<byte>((void*)bits, srcStride * _bounds.Height);
+                        Bgra8ToNv12Converter.Convert(bgra, _bounds.Width, _bounds.Height, _dstW, _dstH, nv12);
+                    }
                     lock (_sync)
                     {
                         Buffer.BlockCopy(nv12, 0, _latest, 0, nv12.Length);
@@ -118,7 +121,12 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
         }
     }
 
-    private void CaptureBgra(nint dc, nint bits, byte[] pixels, int stride)
+    // Was CaptureBgra(dc, bits, byte[] pixels, int stride): the final step used to Marshal.Copy the whole
+    // captured frame out of the DIB section into a managed array purely so Bgra8ToNv12Converter.Convert
+    // (now ReadOnlySpan<byte>-based) could index it — 248.8 MB/s of pure memcpy at 1080p30 for a copy the
+    // converter is the only thing that ever read. The caller now wraps `bits` directly in an unsafe span
+    // instead, so there's nothing left for this method to copy into.
+    private void CaptureFrame(nint dc, nint bits)
     {
         RegionRect r = _bounds;
         nint screen = GetDC(IntPtr.Zero);
@@ -140,7 +148,6 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
 
             if (_captureCursor)
                 DrawCursor(dc, r);
-            Marshal.Copy(bits, pixels, 0, stride * r.Height);
         }
         finally
         {

@@ -96,6 +96,29 @@ public partial class App : Application
         }
 
         paths.EnsureDirectories();
+
+        // §3.5/security: a portable install extracted directly off a drive root (rather than inside the
+        // user's own profile) inherits Windows' default ACL for that location, which typically grants
+        // Authenticated Users: Modify — verified empirically. That means every other local account can read
+        // every recording/screenshot/settings file this folder holds, and write into it (including replacing
+        // the app's own bundled DLLs, since this is a self-contained publish). Detected, not silently fixed —
+        // rewriting an ACL on a folder this process doesn't necessarily own risks a half-applied change or
+        // locking the current user out of their own data, worse than the exposure itself. One-time,
+        // dismissable: this is advisory, not a hard failure, and the check only fires for portable installs
+        // (an installed build normally lives under Program Files, which standard users can't write to).
+        if (paths.IsPortable && RecMode.Core.Infrastructure.FolderAclCheck.GrantsWriteToBroadGroups(paths.AppDirectory))
+        {
+            MessageBox.Show(
+                $"RecMode's folder is readable and writable by every account on this PC:\n{paths.AppDirectory}\n\n" +
+                "This usually happens when a portable copy is extracted directly to a drive root (e.g. C:\\ or D:\\) " +
+                "instead of inside your user folder. Your recordings, screenshots, and settings are exposed to other " +
+                "accounts on this machine.\n\n" +
+                "Move this folder into your user profile (e.g. Documents or Desktop) to keep it private.",
+                "RecMode — shared location",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
         ConfigureLogging(paths);
 
         // A bare HostBuilder rather than Host.CreateDefaultBuilder(): the default pulls in config providers
@@ -336,6 +359,14 @@ public partial class App : Application
                 Path.Combine(paths.LogsDirectory, "recmode-.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 7,
+                // Without an explicit size limit, Serilog's default 1 GB-per-file cap still applies, but with
+                // no rollOnFileSizeLimit a day that hits it just silently STOPS logging for the rest of that
+                // day instead of rolling to a new file — and 7 retained files with no per-file cap at all is
+                // a theoretical 7 GB on-disk bound inside the portable app folder, which sits oddly next to
+                // this app's portable-first "nothing sprawls" story. 32 MB/file × 7 retained ≈ 224 MB worst
+                // case, and logging never silently goes dark mid-day again.
+                fileSizeLimitBytes: 32 * 1024 * 1024,
+                rollOnFileSizeLimit: true,
                 shared: true))
             .CreateLogger();
     }

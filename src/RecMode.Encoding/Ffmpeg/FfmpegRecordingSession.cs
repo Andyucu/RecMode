@@ -55,7 +55,12 @@ public sealed class FfmpegRecordingSession : IDisposable
         ArgumentNullException.ThrowIfNull(job);
         OutputPath = job.OutputPath;
 
-        _pipe = CreateSecurePipe(job.PipeName, frameBytes * 4);
+        // Capped, not a flat 4 full frames: named-pipe buffers are charged against the kernel's nonpaged
+        // pool, a scarce machine-wide resource — at 4K NV12 (~11.9 MB/frame) that was ~47.5 MB of quota for
+        // one recording, scaling with capture resolution, for a decoupling benefit that doesn't meaningfully
+        // improve past ~2 frames of headroom given the pacer writes synchronously and ffmpeg reads
+        // continuously.
+        _pipe = CreateSecurePipe(job.PipeName, Math.Min(frameBytes * 2, 8 * 1024 * 1024));
 
         if (job.AudioPipeName is not null)
         {

@@ -176,7 +176,7 @@ public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : 
     /// <see cref="ResolveBundled"/>); Verified=true only when at least one hash was actually pinned and
     /// matched — a manifest with both fields blank previously reported <c>HashVerified = true</c> despite
     /// nothing having been checked at all.</summary>
-    private static (bool Verified, RecModeError? Error) VerifyHashes(
+    private (bool Verified, RecModeError? Error) VerifyHashes(
         FfmpegManifest manifest, string ffmpegPath, string ffprobePath)
     {
         bool ffmpegPinned = !string.IsNullOrWhiteSpace(manifest.FfmpegSha256);
@@ -224,14 +224,94 @@ public sealed class FfmpegLocator(IAppPaths paths, ISettingsService settings) : 
         return (true, null);
     }
 
-    private static bool Matches(string expectedHex, string filePath) =>
-        string.Equals(ComputeSha256(filePath), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
+    private bool Matches(string expectedHex, string filePath) =>
+        string.Equals(GetOrComputeSha256(filePath), expectedHex.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string ComputeSha256(string filePath)
     {
         using FileStream stream = File.OpenRead(filePath);
         byte[] hash = SHA256.HashData(stream);
         return Convert.ToHexStringLower(hash);
+    }
+
+    private sealed record HashCacheEntry(string Path, long SizeBytes, long WriteTimeTicks, string Sha256);
+    private sealed record HashCacheFile(HashCacheEntry? Ffmpeg, HashCacheEntry? Ffprobe);
+
+    /// <summary>Hashes <paramref name="filePath"/>, or reuses a previously-computed hash from
+    /// <see cref="IAppPaths.FfmpegHashCachePath"/> if the file's path/size/last-write-time still match — the
+    /// bundled ffmpeg.exe/ffprobe.exe together run ~280 MB, and hashing both on every single launch (this
+    /// runs whenever <see cref="Resolve"/>'s own in-memory cache is cold, i.e. every fresh process, including
+    /// every <c>--tray</c> autostart boot) cost ~150-200 ms of CPU and up to ~2.4 s of cold disk I/O for no
+    /// benefit once the binary is known-good and unchanged. Best-effort: any read/write failure here just
+    /// falls back to hashing fresh, matching this class's own "never throws" contract.</summary>
+    private string GetOrComputeSha256(string filePath)
+    {
+        FileInfo info;
+        try
+        {
+            info = new FileInfo(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return ComputeSha256(filePath);
+        }
+
+        bool isFfmpeg = string.Equals(Path.GetFileName(filePath), FfmpegExe, StringComparison.OrdinalIgnoreCase);
+        HashCacheFile cacheFile = TryLoadHashCache();
+        HashCacheEntry? existing = isFfmpeg ? cacheFile.Ffmpeg : cacheFile.Ffprobe;
+
+        if (existing is { } e && string.Equals(e.Path, filePath, StringComparison.OrdinalIgnoreCase)
+            && e.SizeBytes == info.Length && e.WriteTimeTicks == info.LastWriteTimeUtc.Ticks)
+        {
+            return e.Sha256;
+        }
+
+        string hash = ComputeSha256(filePath);
+        var entry = new HashCacheEntry(filePath, info.Length, info.LastWriteTimeUtc.Ticks, hash);
+        HashCacheFile updated = isFfmpeg ? cacheFile with { Ffmpeg = entry } : cacheFile with { Ffprobe = entry };
+        TryWriteHashCache(updated);
+        return hash;
+    }
+
+    private HashCacheFile TryLoadHashCache()
+    {
+        try
+        {
+            string cachePath = paths.FfmpegHashCachePath;
+            if (!File.Exists(cachePath))
+            {
+                return new HashCacheFile(null, null);
+            }
+
+            return System.Text.Json.JsonSerializer.Deserialize<HashCacheFile>(File.ReadAllText(cachePath))
+                ?? new HashCacheFile(null, null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return new HashCacheFile(null, null);
+        }
+    }
+
+    private void TryWriteHashCache(HashCacheFile cache)
+    {
+        try
+        {
+            // App.xaml.cs normally calls IAppPaths.EnsureDirectories() well before this ever runs, but
+            // nothing about this class's own contract depends on that ordering — create the containing
+            // directory defensively rather than let a not-yet-initialized Data\ folder silently degrade this
+            // into "never actually caches, always re-hashes."
+            string? dir = Path.GetDirectoryName(paths.FfmpegHashCachePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            AtomicFileWriter.Write(paths.FfmpegHashCachePath, System.Text.Json.JsonSerializer.Serialize(cache));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort: worst case, the next launch just re-hashes.
+        }
     }
 
     private static FfmpegResolution Unavailable(FfmpegSource source, RecModeError error) => new()

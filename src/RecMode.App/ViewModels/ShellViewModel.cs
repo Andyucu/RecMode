@@ -52,7 +52,7 @@ public sealed class ShellViewModel : ObservableObject
         NavigateCommand = new RelayCommand<string>(Navigate);
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         DismissSnackbarCommand = new RelayCommand(() => SnackbarVisible = false);
-        OpenLastRecordingCommand = new RelayCommand(OpenLastRecording, () => Record.LastRecordingPath is not null);
+        OpenLastRecordingCommand = new RelayCommand(OpenLastRecording, () => LastOutputPath is not null);
         record.PropertyChanged += OnRecordPropertyChanged;
         ExpandCommand = new RelayCommand(() =>
         {
@@ -118,6 +118,12 @@ public sealed class ShellViewModel : ObservableObject
     public ICommand ExpandCommand { get; }
     public IRelayCommand OpenLastRecordingCommand { get; }
 
+    private string? _lastOutputPath;
+    /// <summary>Whichever of <see cref="RecordViewModel.LastRecordingPath"/>/<see cref="RecordViewModel.LastScreenshotPath"/>
+    /// completed most recently — the title-bar status pill's "jump to Library" target covers both, not just
+    /// recordings, since the pill's text (<see cref="RecordViewModel.StatusText"/>) already does.</summary>
+    public string? LastOutputPath { get => _lastOutputPath; private set => SetProperty(ref _lastOutputPath, value); }
+
     public object CurrentPage
     {
         get => _currentPage;
@@ -180,18 +186,27 @@ public sealed class ShellViewModel : ObservableObject
 
     private void OnRecordPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(RecordViewModel.LastRecordingPath))
+        // Both LastRecordingPath and LastScreenshotPath get explicitly reset to null at points where there's
+        // nothing to jump to yet (e.g. a new recording starting) — only a non-null value should ever move
+        // LastOutputPath, so the pill keeps pointing at the last real output instead of going dead early.
+        if (e.PropertyName == nameof(RecordViewModel.LastRecordingPath) && Record.LastRecordingPath is not null)
         {
+            LastOutputPath = Record.LastRecordingPath;
+            OpenLastRecordingCommand.NotifyCanExecuteChanged();
+        }
+        else if (e.PropertyName == nameof(RecordViewModel.LastScreenshotPath) && Record.LastScreenshotPath is not null)
+        {
+            LastOutputPath = Record.LastScreenshotPath;
             OpenLastRecordingCommand.NotifyCanExecuteChanged();
         }
     }
 
-    /// <summary>The title bar's "Saved &lt;filename&gt;" status jumps straight to that recording in the
-    /// Library — only meaningful once a recording has actually finished (see
-    /// <see cref="RecordViewModel.LastRecordingPath"/>).</summary>
+    /// <summary>The title bar's "Saved &lt;filename&gt;" status jumps straight to that recording or
+    /// screenshot in the Library — only meaningful once one has actually finished (see
+    /// <see cref="LastOutputPath"/>).</summary>
     private void OpenLastRecording()
     {
-        if (Record.LastRecordingPath is not { } path)
+        if (LastOutputPath is not { } path)
         {
             return;
         }

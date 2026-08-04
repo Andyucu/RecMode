@@ -31,6 +31,11 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private byte[] _scratch = [];
     private bool _hasLatest;
     private long _capturedFrames;
+
+    // Mirrors GdiCaptureEngine.MaxConsecutiveFrameFailures — see OnFrameArrived for why the WGC path needs
+    // the same tolerance now that a capture fault ends the recording outright.
+    private const int MaxConsecutiveFrameFailures = 30;
+    private int _consecutiveFrameFailures;
     private readonly FrameRateLimiter _rateLimiter = new(Stopwatch.Frequency);
 
     /// <summary>Passive video-path latency measurement (see <see cref="CaptureLatencyTracker"/>). Diagnostic
@@ -46,7 +51,12 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     public int OutputWidth { get; private set; }
     public int OutputHeight { get; private set; }
     public int Nv12ByteSize { get; private set; }
-    public long CapturedFrameCount => Interlocked.Read(ref _capturedFrames);
+    // MUST delegate to the software fallback, like TryGetLatestFrame and every setter below: _capturedFrames
+    // is only ever incremented by OnFrameArrivedCore (the WGC path), so on the GDI fallback it stays 0
+    // forever. RecordingCoordinator's stale-capture watchdog polls exactly this property and force-stops a
+    // recording after 10s of no increase — so without this delegation every recording on the fallback path
+    // (Win10 pre-1903, RDP/VM sessions, any WGC device-creation failure) self-terminated after ~11 seconds.
+    public long CapturedFrameCount => _softwareFallback?.CapturedFrameCount ?? Interlocked.Read(ref _capturedFrames);
     public bool SupportsZoom => _softwareFallback is null;
 
     /// <summary>True once HDR-to-SDR tone mapping (§3.6) is actually active for the current recording — only
@@ -154,10 +164,24 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         try
         {
             OnFrameArrivedCore(pool);
+            Interlocked.Exchange(ref _consecutiveFrameFailures, 0);
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "WGC frame conversion failed");
+            // Tolerate a run of transient failures before escalating, matching GdiCaptureEngine's own
+            // MaxConsecutiveFrameFailures policy and DesktopDuplicationCaptureSource's re-acquire-on-
+            // ACCESS_LOST behaviour. A display-mode change, a secure-desktop/UAC transition, or a brief
+            // device-removed-and-restored can throw here once; since OnCaptureFaulted now ENDS the recording
+            // rather than just warning, escalating on the first blip would make the default capture path
+            // strictly the least fault-tolerant of the three — a single hiccup would kill a long take.
+            if (Interlocked.Increment(ref _consecutiveFrameFailures) < MaxConsecutiveFrameFailures)
+            {
+                Log.Debug(ex, "WGC frame conversion failed (transient, continuing)");
+                return;
+            }
+
+            Log.Warning(ex, "WGC frame conversion failed {Count} times consecutively; faulting capture",
+                MaxConsecutiveFrameFailures);
             try
             {
                 Faulted?.Invoke(this, ex);

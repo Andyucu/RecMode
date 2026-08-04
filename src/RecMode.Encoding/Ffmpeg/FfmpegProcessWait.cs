@@ -14,11 +14,25 @@ namespace RecMode.Encoding.Ffmpeg;
 /// </summary>
 internal static class FfmpegProcessWait
 {
+    // A backstop, not the primary mechanism: a process that keeps nudging its CPU time or output file size
+    // just often enough to reset the stall clock — an encoder-side busy loop, or a hung network write that
+    // still burns CPU — would otherwise never be caught by stall detection alone, since "progress" per the
+    // check above is technically always true. Without SOME ceiling, that hangs Stop()'s synchronous
+    // Finalize() call forever, and since App.OnExit calls Stop() too, the whole app becomes unquittable and
+    // has to be killed from Task Manager — precisely the failure class this file exists to fix, just
+    // reintroduced via a different door. Deliberately generous (minutes, not the old 20s/30s) and scaled to
+    // how much data has actually been written, so it only ever fires on a genuinely pathological process,
+    // never on an honestly slow but real remux/finalize.
+    private static readonly TimeSpan AbsoluteCeilingBase = TimeSpan.FromMinutes(2);
+    private const double AbsoluteCeilingSecondsPerGiB = 10.0;
+
     public static bool WaitWithStallDetection(Process process, string? progressFilePath, TimeSpan stallTimeout, out int exitCode)
     {
         TimeSpan lastCpu = TimeSpan.Zero;
         long lastSize = -1;
+        long maxSizeSeen = 0;
         Stopwatch sinceProgress = Stopwatch.StartNew();
+        Stopwatch overall = Stopwatch.StartNew();
 
         while (true)
         {
@@ -47,9 +61,17 @@ internal static class FfmpegProcessWait
                 {
                     size = File.Exists(progressFilePath) ? new FileInfo(progressFilePath).Length : -1;
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
+                    // A transient ACL/lock hiccup reading our own output file (seen on some network shares)
+                    // must not itself abort an otherwise-healthy finalize — treat it as "no new size sample
+                    // this tick" rather than letting the exception escape into the caller's Finalize().
                 }
+            }
+
+            if (size > maxSizeSeen)
+            {
+                maxSizeSeen = size;
             }
 
             if (cpu > lastCpu || size != lastSize)
@@ -59,6 +81,16 @@ internal static class FfmpegProcessWait
                 sinceProgress.Restart();
             }
             else if (sinceProgress.Elapsed > stallTimeout)
+            {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                process.WaitForExit(2000);
+                exitCode = -1;
+                return false;
+            }
+
+            TimeSpan ceiling = AbsoluteCeilingBase +
+                TimeSpan.FromSeconds(maxSizeSeen / (1024.0 * 1024 * 1024) * AbsoluteCeilingSecondsPerGiB);
+            if (overall.Elapsed > ceiling)
             {
                 try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
                 process.WaitForExit(2000);

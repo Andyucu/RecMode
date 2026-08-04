@@ -53,6 +53,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private int _autoSplitSizeMb;
     private bool _startWithWindows;
     private bool _closeToTray;
+    private bool _enableCrashMinidumps;
     private bool _checkForUpdates;
     private int _cpuThreadCap;
     private bool _lowerEncoderPriority;
@@ -96,6 +97,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
         _closeToTray = s.CloseToTray;
+        _enableCrashMinidumps = s.EnableCrashMinidumps;
 
         // Capturing a hotkey suspends every global hotkey for the duration (see HotkeyBindings.Suspend) —
         // if the user abandons the capture without going through CancelCapture/CompleteCapture (Alt-Tab
@@ -565,6 +567,17 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         set => Persist(ref _closeToTray, value, v => _settings.Current.CloseToTray = v);
     }
 
+    /// <summary>Opt-in local crash minidumps (§3.6) — off by default. The setting and the writer
+    /// (<see cref="ICrashReporter"/>/<see cref="IMinidumpWriter"/>) have existed since early in the project,
+    /// but nothing in the UI ever exposed a way to turn this on; it could only be enabled by hand-editing
+    /// settings.json. Dumps are local-only and never uploaded (see <see cref="MinidumpWriter"/> — no
+    /// telemetry, ever), and only capture module data/handles/thread stacks, not the managed heap.</summary>
+    public bool EnableCrashMinidumps
+    {
+        get => _enableCrashMinidumps;
+        set => Persist(ref _enableCrashMinidumps, value, v => _settings.Current.EnableCrashMinidumps = v);
+    }
+
     private void Persist<T>(ref T field, T value, Action<T> apply)
     {
         if (SetProperty(ref field, value))
@@ -622,13 +635,14 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _layout = s.Layout;
         _startWithWindows = _startup.IsEnabled;
         _closeToTray = s.CloseToTray;
+        _enableCrashMinidumps = s.EnableCrashMinidumps;
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
             nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate),
             nameof(AudioSyncOffsetMs), nameof(AudioSyncOffsetLabelText), nameof(AudioSyncOffsetDescription), nameof(OutputFolder),
             nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
             nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),
-            nameof(SelectedLayout), nameof(StartWithWindows), nameof(CloseToTray), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
+            nameof(SelectedLayout), nameof(StartWithWindows), nameof(CloseToTray), nameof(EnableCrashMinidumps), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
             nameof(HotkeyScreenshot), nameof(HotkeyNextProfile), nameof(HotkeyMicMute) }) OnPropertyChanged(property);
     }
 }

@@ -75,15 +75,23 @@ internal sealed class MixSource : IDisposable
 
         _buffer = new BufferedWaveProvider(WaveFormat.CreateIeeeFloatWaveFormat(f.SampleRate, f.Channels))
         {
-            // Metering-only mixers never drain this (nothing ever calls ReadMixed), so keep it minimal — it
-            // only bounds memory, not preserves audio, for a buffer nobody reads. A real recording mixer's
-            // pump thread stops briefly during a segment rotation (finalize + safe-remux + new-encoder-start
-            // can legitimately take tens of seconds on a slow disk); WASAPI capture itself never stops, so
-            // without real headroom here that whole gap of genuine audio silently discards via
-            // DiscardOnBufferOverflow instead of landing a few seconds late once the pump resumes.
-            BufferDuration = meteringOnly ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(60),
             DiscardOnBufferOverflow = true,
         };
+
+        // Metering-only mixers never drain this (nothing ever calls ReadMixed), so keep it minimal — it only
+        // bounds memory, not preserves audio, for a buffer nobody reads. A real recording mixer's pump thread
+        // stops briefly during a segment rotation (finalize + safe-remux + new-encoder-start can legitimately
+        // take tens of seconds on a slow disk); WASAPI capture itself never stops, so without real headroom
+        // here that whole gap of genuine audio silently discards via DiscardOnBufferOverflow instead of
+        // landing a few seconds late once the pump resumes.
+        //
+        // Capped in BYTES, not seconds, for the recording case: BufferDuration sizes itself against this
+        // buffer's own WaveFormat, which carries the SOURCE's native channel count (f.Channels) — an 8-channel
+        // HDMI/receiver endpoint at 60s got 4x the memory of a 2-channel one for the identical nominal
+        // headroom (~184 MB vs ~44 MB for a single source), unbounded in the device's hands. 4 MiB is a flat
+        // ceiling regardless of channel count — ~10.9s at 48kHz/stereo, less at higher channel counts, but
+        // still comfortably covering a typical rotation gap without scaling with hardware.
+        _buffer.BufferLength = meteringOnly ? (int)(2 * f.SampleRate * f.Channels * 4) : 4 * 1024 * 1024;
 
         ISampleProvider sp = _buffer.ToSampleProvider();
         if (f.Channels == 1)

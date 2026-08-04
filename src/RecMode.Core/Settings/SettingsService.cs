@@ -73,7 +73,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
             SettingsMigrator.Migrate(obj);
             Current = obj.Deserialize<RecModeSettings>(JsonOptions) ?? new RecModeSettings();
         }
-        catch (Exception ex)
+        // Deliberately an explicit list, not bare Exception: this recovery path treats anything it catches as
+        // "the file is corrupt" and MOVES the real settings.json away (schedules, custom profiles, hotkey
+        // remaps, all of it) — appropriate for a genuinely malformed/inaccessible file, destructive if it's
+        // actually a code bug in SettingsMigrator or RecModeSettings materialization. A duplicate JSON
+        // property (e.g. hand-edited) throws ArgumentException rather than JsonException when
+        // System.Text.Json materializes the JsonObject — verified experimentally — so that's included
+        // alongside the file/IO exceptions; NotSupportedException covers a few JsonSerializer edge cases the
+        // same way. Anything outside this list (a genuine bug) now escapes to App.RegisterGlobalExceptionHandlers
+        // (registered before this Load() call specifically so that's safe) — logged, shown to the user, app
+        // stays alive, and — crucially — the original file is left untouched on disk rather than destroyed,
+        // so a later bugfix release can still read it.
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException
+            or ArgumentException or NotSupportedException)
         {
             RecoverCorruptFile(path, ex);
             Current = new RecModeSettings();

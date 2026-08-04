@@ -10,6 +10,7 @@ public sealed class AppPaths : IAppPaths
     public const string SettingsFileName = "settings.json";
     public const string LibraryIndexFileName = "library.json";
     public const string EncoderCacheFileName = "encoder-cache.json";
+    public const string FfmpegHashCacheFileName = "ffmpeg-hash-cache.json";
 
     private const string AppFolderName = "RecMode";
 
@@ -45,6 +46,7 @@ public sealed class AppPaths : IAppPaths
         SettingsFilePath = Path.Combine(DataDirectory, SettingsFileName);
         LibraryIndexPath = Path.Combine(DataDirectory, LibraryIndexFileName);
         EncoderCachePath = Path.Combine(DataDirectory, EncoderCacheFileName);
+        FfmpegHashCachePath = Path.Combine(DataDirectory, FfmpegHashCacheFileName);
     }
 
     /// <inheritdoc />
@@ -104,6 +106,7 @@ public sealed class AppPaths : IAppPaths
     public string SettingsFilePath { get; }
     public string LibraryIndexPath { get; }
     public string EncoderCachePath { get; }
+    public string FfmpegHashCachePath { get; }
 
     public void EnsureDirectories()
     {

@@ -152,6 +152,8 @@ public static class Strings
     public static string Settings_StartupDesc => Get(nameof(Settings_StartupDesc));
     public static string Settings_CloseToTray => Get(nameof(Settings_CloseToTray));
     public static string Settings_CloseToTrayDesc => Get(nameof(Settings_CloseToTrayDesc));
+    public static string Settings_CrashMinidumps => Get(nameof(Settings_CrashMinidumps));
+    public static string Settings_CrashMinidumpsDesc => Get(nameof(Settings_CrashMinidumpsDesc));
     public static string Settings_Updates => Get(nameof(Settings_Updates));
     public static string Settings_License => Get(nameof(Settings_License));
 
@@ -193,6 +195,7 @@ public static class Strings
     public static string Library_Refresh => Get(nameof(Library_Refresh));
     public static string Library_NoVideos => Get(nameof(Library_NoVideos));
     public static string Library_NoScreenshots => Get(nameof(Library_NoScreenshots));
+    public static string Library_Loading => Get(nameof(Library_Loading));
     public static string Schedule_Title => Get(nameof(Schedule_Title));
     public static string Schedule_New => Get(nameof(Schedule_New));
     public static string Schedule_Subtext => Get(nameof(Schedule_Subtext));
@@ -293,4 +296,5 @@ public static class Strings
     public static string Record_StatusReady => Get(nameof(Record_StatusReady));
     public static string Record_StatusStarting => Get(nameof(Record_StatusStarting));
     public static string Record_StatusRecording => Get(nameof(Record_StatusRecording));
+    public static string Record_StatusFinalizing => Get(nameof(Record_StatusFinalizing));
 }

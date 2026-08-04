@@ -117,6 +117,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
         _coordinator.ProgressChanged += OnProgress;
         _coordinator.Finished += OnFinished;
+        _screenshots.Captured += OnScreenshotCaptured;
         // Settings' "Encoding defaults" page (container/codec/backend) writes straight to _settings.Current,
         // but SelectedFormat/SelectedEncoder here were only ever read once — in this constructor and the
         // one-time LoadDevices() — so changing the default on the Settings page while the Record screen was
@@ -190,6 +191,18 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             }
         }
     }
+
+    // Runs off the UI thread (ScreenshotService.Capture is invoked via Task.Run) — must marshal before
+    // touching bound properties. Only overwrites StatusText while idle: while recording, StatusText is
+    // showing "Recording"/health state, which a screenshot taken mid-recording shouldn't clobber.
+    private void OnScreenshotCaptured(string path) => Dispatch(() =>
+    {
+        LastScreenshotPath = path;
+        if (!_coordinator.IsRecording)
+        {
+            StatusText = $"Screenshot saved: {Path.GetFileName(path)}";
+        }
+    });
 
     public bool IsScreenSource
     {
@@ -703,6 +716,11 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// <summary>Full path of the most recently finished recording, or null if none yet / a new recording has
     /// started since. Backs the title bar's "click the status to jump to that recording in the Library" link.</summary>
     public string? LastRecordingPath { get => _lastRecordingPath; private set => SetProperty(ref _lastRecordingPath, value); }
+
+    private string? _lastScreenshotPath;
+    /// <summary>Full path of the most recently saved screenshot. Mirrors <see cref="LastRecordingPath"/>'s
+    /// "jump to Library" convention (see <see cref="ShellViewModel"/>).</summary>
+    public string? LastScreenshotPath { get => _lastScreenshotPath; private set => SetProperty(ref _lastScreenshotPath, value); }
 
     /// <summary>How much room is left on the output drive — "{used} of {total}" while recording, "{free} free of {total}" at rest.</summary>
     public string DiskSpaceText { get => _diskSpaceText; private set => SetProperty(ref _diskSpaceText, value); }

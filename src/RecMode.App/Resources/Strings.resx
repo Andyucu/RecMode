@@ -185,6 +185,8 @@
   <data name="Settings_StartupDesc" xml:space="preserve"><value>Launch minimized to the tray at sign-in</value></data>
   <data name="Settings_CloseToTray" xml:space="preserve"><value>Close button minimizes to tray</value></data>
   <data name="Settings_CloseToTrayDesc" xml:space="preserve"><value>The × button hides RecMode to the tray instead of exiting</value></data>
+  <data name="Settings_CrashMinidumps" xml:space="preserve"><value>Save a crash report if RecMode stops responding</value></data>
+  <data name="Settings_CrashMinidumpsDesc" xml:space="preserve"><value>Saved locally only, never uploaded — helps diagnose a crash after the fact</value></data>
   <data name="Settings_Updates" xml:space="preserve"><value>Check for updates on launch</value></data>
   <data name="Settings_License" xml:space="preserve"><value>License</value></data>
 
@@ -226,6 +228,7 @@
   <data name="Library_Refresh" xml:space="preserve"><value>Refresh</value></data>
   <data name="Library_NoVideos" xml:space="preserve"><value>No recordings yet.</value></data>
   <data name="Library_NoScreenshots" xml:space="preserve"><value>No screenshots yet.</value></data>
+  <data name="Library_Loading" xml:space="preserve"><value>Loading…</value></data>
   <data name="Schedule_Title" xml:space="preserve"><value>Scheduled recordings</value></data>
   <data name="Schedule_New" xml:space="preserve"><value>New schedule</value></data>
   <data name="Schedule_Subtext" xml:space="preserve"><value>Recordings start automatically, even when RecMode runs in the tray. Source and encoder always follow your current Record settings; frame rate, quality, and audio follow the schedule's chosen profile, if any.</value></data>
@@ -325,4 +328,5 @@
   <data name="Record_StatusReady" xml:space="preserve"><value>Ready</value></data>
   <data name="Record_StatusStarting" xml:space="preserve"><value>Starting…</value></data>
   <data name="Record_StatusRecording" xml:space="preserve"><value>Recording</value></data>
+  <data name="Record_StatusFinalizing" xml:space="preserve"><value>Finalizing…</value></data>
 </root>

@@ -10,7 +10,6 @@ namespace RecMode.Capture;
 /// </summary>
 public interface ICaptureEngine : IDisposable
 {
-    bool IsRunning { get; }
     int OutputWidth { get; }
     int OutputHeight { get; }
 

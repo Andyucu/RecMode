@@ -92,6 +92,13 @@ public sealed partial class RecordViewModel
         }
 
         _startInFlight = true;
+        // Cleared here, at the START of every attempt, not only in the completion continuation below: the
+        // countdown-cancel and catch paths return before `startTask` is ever created, so a stop armed during
+        // THIS attempt (a second F9 or a forwarded `--stop` landing while the pre-roll countdown's nested
+        // message pump is running) would otherwise survive to fire against the NEXT, unrelated recording —
+        // stopping it instantly and producing a ~0-second file with no explanation. Scoping the flag to the
+        // start currently in flight makes that impossible.
+        _stopRequestedDuringStart = false;
         try
         {
             StopPreview(); // preview and recording use separate sessions; don't run both (§3.9)
@@ -205,6 +212,15 @@ public sealed partial class RecordViewModel
         string stats = $"{p.Fps.ToString("F0", CultureInfo.InvariantCulture)} fps · {p.Mbps.ToString("F1", CultureInfo.InvariantCulture)} Mbps · {FormatBytes(p.FileSizeBytes)}";
         StatsText = IsPaused ? "Paused" : p.IsHealthy ? stats : $"⚠ Can't keep up · {stats}";
         UpdateDiskSpaceText(p.FileSizeBytes);
+
+        // Only Stop() raises a Finalizing-state progress tick (RecordingCoordinator.Stop, right after the
+        // state machine transitions), so this only ever overwrites StatusText the one time it's actually
+        // true — OnFinished (below) replaces it with the real "Saved …"/failure text the moment finalize
+        // (remux/library-index/filesystem move) actually completes.
+        if (p.State == Core.Recording.RecordingState.Finalizing)
+        {
+            StatusText = Resources.Strings.Record_StatusFinalizing;
+        }
     });
 
     private void OnFinished(RecordingResult result) => Dispatch(() =>
