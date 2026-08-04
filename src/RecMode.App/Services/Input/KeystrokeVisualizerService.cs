@@ -50,6 +50,9 @@ public sealed class KeystrokeVisualizerService(RecordViewModel record, ISettings
         _overlay.Show();
         hook.KeyDown += OnKeyDown;
         hook.Install();
+        // See ClickHighlightService.Show()'s identical comment — this overlay needs the same Window-source
+        // substitution or it would show live on screen but never appear in the recording.
+        record.NotifyKeystrokeVisualizerActive(true);
     }
 
     // OnKeyDown runs synchronously ON the UI thread's own message dispatch, as part of the WH_KEYBOARD_LL
@@ -74,6 +77,7 @@ public sealed class KeystrokeVisualizerService(RecordViewModel record, ISettings
         hook.KeyDown -= OnKeyDown;
         _overlay?.Close();
         _overlay = null;
+        record.NotifyKeystrokeVisualizerActive(false);
     }
 
     public void Dispose()

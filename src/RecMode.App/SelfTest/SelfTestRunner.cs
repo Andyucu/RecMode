@@ -231,6 +231,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
         try
         {
             var os = host.Services.GetRequiredService<IOsCapabilities>();
+            var settings = host.Services.GetRequiredService<RecMode.Core.Settings.ISettingsService>();
             var record = host.Services.GetRequiredService<RecordViewModel>();
             record.EnsureDevicesLoaded();
             var monitors = RecMode.Capture.CaptureCapabilities.EnumerateMonitors();
@@ -254,7 +255,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             // 1) Overlays WITH exclusion off → they should appear in the WGC capture.
             var countdown = new CountdownWindow(mon, 9, os, excludeFromCapture: false);
             countdown.Show();
-            var barVisible = new RecordingToolbarWindow(record, os, excludeFromCapture: false);
+            var barVisible = new RecordingToolbarWindow(record, os, settings, excludeFromCapture: false);
             barVisible.Show();
             await Task.Delay(900);
             string visible = Save("overlays-visible.png");
@@ -262,7 +263,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             barVisible.Close();
 
             // 2) Toolbar WITH exclusion on → it should be absent from the WGC capture.
-            var barExcluded = new RecordingToolbarWindow(record, os, excludeFromCapture: true);
+            var barExcluded = new RecordingToolbarWindow(record, os, settings, excludeFromCapture: true);
             barExcluded.Show();
             await Task.Delay(900);
             string excluded = Save("overlays-excluded.png");

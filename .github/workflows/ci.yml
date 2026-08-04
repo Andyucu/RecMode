@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # NOTE: this job doesn't actually run the test suite (413 tests as of 0.9.72-beta). `tests/` is intentionally
+  # The public checkout intentionally omits the local-only test tree. If a CI mirror provides a test solution,
+  # the test step below runs it and rejects a zero-test run; otherwise the public build reports that limitation.
+  # NOTE: `tests/` is intentionally
   # excluded from version control (see CLAUDE.md's standing "never stage/commit" list), so it doesn't exist in
   # this checkout at all — RecMode.slnx (the committed solution) has no test projects for the same reason
   # (RecMode.local.slnx, also untracked, is what a local dev build/test run actually uses). The suite is run
@@ -30,6 +32,21 @@ jobs:
         run: >
           dotnet build RecMode.slnx -c Release --no-restore
           -p:TreatWarningsAsErrors=true -p:EnforceCodeStyleInBuild=true
+
+      - name: Test (when test projects are available)
+        shell: pwsh
+        run: |
+          $testSolution = if (Test-Path RecMode.local.slnx) { 'RecMode.local.slnx' } elseif (Test-Path RecMode.Tests.slnx) { 'RecMode.Tests.slnx' } else { $null }
+          if ($null -eq $testSolution) {
+            Write-Host 'No test solution is present in this public checkout; the local-only suite is not published.'
+            exit 0
+          }
+          $output = dotnet test $testSolution -c Release --no-restore --logger 'console;verbosity=minimal' 2>&1 | Tee-Object -Variable lines
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $total = 0
+          foreach ($match in [regex]::Matches(($lines -join ' '), 'Total:\s*(\d+)')) { $total += [int]$match.Groups[1].Value }
+          if ($total -eq 0) { throw "dotnet test ran zero tests against $testSolution." }
+          Write-Host "Passed $total tests."
 
       - name: Format check (advisory)
         if: always()

@@ -45,30 +45,42 @@ public sealed class ScheduleEditViewModel : ObservableObject
     /// by name (plan §7 backlog — Schedule/Profile binding).</summary>
     public IReadOnlyList<string> ProfileOptions { get; }
 
-    public string Name { get => _name; set => SetProperty(ref _name, value); }
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) { OnPropertyChanged(nameof(ErrorText)); OnPropertyChanged(nameof(IsValid)); } } }
     public ScheduleRecurrence SelectedRecurrence { get => _recurrence; set => SetProperty(ref _recurrence, value); }
-    public string Time { get => _time; set => SetProperty(ref _time, value); }
+    public string Time { get => _time; set { if (SetProperty(ref _time, value)) { OnPropertyChanged(nameof(ErrorText)); OnPropertyChanged(nameof(IsValid)); } } }
     public int DurationMinutes { get => _durationMinutes; set => SetProperty(ref _durationMinutes, value); }
     public DayOfWeek SelectedWeeklyDay { get => _selectedWeeklyDay; set => SetProperty(ref _selectedWeeklyDay, value); }
     public string SelectedProfileOption { get => _selectedProfileOption; set => SetProperty(ref _selectedProfileOption, value); }
     public DateTime OnceDate { get => _onceDate; set => SetProperty(ref _onceDate, value); }
 
     /// <summary>True when the time reads as a valid 24-hour "HH:mm".</summary>
-    public bool IsValid =>
-        !string.IsNullOrWhiteSpace(Name) &&
-        TimeOnly.TryParseExact(Time.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+    public string ErrorText => string.IsNullOrWhiteSpace(Name)
+        ? Resources.Strings.ScheduleEdit_NameRequired
+        : !TryParseTime(Time, out _) ? Resources.Strings.ScheduleEdit_InvalidTime : string.Empty;
+    public bool IsValid => string.IsNullOrEmpty(ErrorText);
+
+    private static bool TryParseTime(string value, out TimeOnly time)
+    {
+        string trimmed = value?.Trim() ?? string.Empty;
+        // Accept the user's configured short-time pattern (for example, 09:30 or 9:30 AM) and the
+        // persisted invariant form. Exact parsing keeps malformed-but-parseable values such as 9:00
+        // from slipping through a 24-hour HH:mm field on cultures whose short pattern is HH:mm.
+        string culturePattern = CultureInfo.CurrentCulture.DateTimeFormat.ShortTimePattern;
+        return TimeOnly.TryParseExact(trimmed, culturePattern, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces, out time) ||
+            TimeOnly.TryParseExact(trimmed, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
+    }
 
     /// <summary>Commits the edited fields back to <paramref name="target"/>. Call only when <see cref="IsValid"/>.</summary>
     public void ApplyTo(ScheduleItem target)
     {
         target.Name = Name.Trim();
         target.Recurrence = SelectedRecurrence;
-        target.Time = Time.Trim();
+        if (TryParseTime(Time, out var parsedTime)) target.Time = parsedTime.ToString("HH:mm", CultureInfo.InvariantCulture);
         target.DurationMinutes = DurationMinutes;
         target.WeeklyDay = SelectedRecurrence == ScheduleRecurrence.Weekly ? SelectedWeeklyDay : null;
         target.ProfileName = SelectedProfileOption == FollowRecordSettingsOption ? null : SelectedProfileOption;
         if (SelectedRecurrence == ScheduleRecurrence.Once &&
-            TimeOnly.TryParseExact(target.Time, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly time))
+            TryParseTime(target.Time, out TimeOnly time))
         {
             target.OnceAt = new DateTimeOffset(OnceDate.Date.Add(time.ToTimeSpan()), TimeZoneInfo.Local.GetUtcOffset(OnceDate.Date.Add(time.ToTimeSpan())));
         }

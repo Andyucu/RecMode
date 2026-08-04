@@ -191,6 +191,11 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
         if (videos)
         {
+            // Never prune metadata from a partial/cancelled scan. EnumerateFiles is intentionally
+            // cancellable; a navigation/tab switch can stop it after only a prefix of the directory,
+            // and treating that prefix as authoritative would delete valid entries that simply were
+            // not reached yet.
+            ct.ThrowIfCancellationRequested();
             _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
         }
         IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =

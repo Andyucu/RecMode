@@ -38,6 +38,21 @@ public sealed partial class RecordViewModel
         }
     }
 
+    /// <summary>Opens the "System audio devices" picker and, if saved, applies the new device selection —
+    /// live if a metering-only mixer is running (Record screen open, not recording), so the meter reflects
+    /// the new selection immediately rather than only on the next recording.</summary>
+    public void SelectAudioDevices()
+    {
+        if (!_audioDevicePrompt.TryPick(_settings.Current.SystemAudioDeviceIds, out List<string>? result))
+        {
+            return;
+        }
+
+        _settings.Current.SystemAudioDeviceIds = result;
+        _settings.RequestSave();
+        RestartMetering();
+    }
+
     private void LoadPerAppAudioTargets()
     {
         _loadingPerAppTargets = true;
@@ -91,6 +106,16 @@ public sealed partial class RecordViewModel
                 _settings.RequestSave();
                 RestartMetering();
                 ToggleMicMuteCommand.NotifyCanExecuteChanged();
+
+                // Previously a no-op mid-recording — the coordinator's mixer only ever read this setting once,
+                // at Start() — so toggling it while already recording silently changed nothing about the file
+                // being written, only the *next* recording. Direct user request: forgetting to enable the mic
+                // (or deciding to turn it off) should take effect on the recording actually in progress.
+                if (_coordinator.IsRecording)
+                {
+                    _coordinator.SetMicEnabled(value);
+                    ApplyGains(); // push the current MicVolume/mute state onto the source SetMicEnabled just (re)created
+                }
             }
         }
     }
@@ -218,7 +243,8 @@ public sealed partial class RecordViewModel
             // _meterMixer null on a mid-Start() failure, so the mixer's already-opened WASAPI capture
             // client(s) were never disposed (a leak repeated on every nav to Record / audio-toggle flip).
             _meterMixer = mixer;
-            mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid, meteringOnly: true);
+            mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid, meteringOnly: true,
+                systemDeviceIds: _settings.Current.SystemAudioDeviceIds);
             mixer.SystemGain = (float)(SystemVolume / 100.0);
             mixer.MicGain = (float)(MicVolume / 100.0);
         }

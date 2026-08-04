@@ -152,6 +152,8 @@ public partial class App : Application
         // just makes that call wait out whatever's left of this background probe instead of starting cold.
         var encoderProbe = _host.Services.GetRequiredService<IEncoderProbe>();
         bool isFirstRun = settingsService.IsFirstRun; // snapshot before any background task can race Save()
+        VideoCodec initialCodec = settingsService.Current.Codec;
+        EncoderBackend initialBackend = settingsService.Current.Backend;
         System.Threading.Tasks.Task.Run(() =>
         {
             System.Collections.Generic.IReadOnlyList<RecMode.Encoding.Encoders.EncoderInfo> available = encoderProbe.GetAvailableEncoders();
@@ -176,16 +178,23 @@ public partial class App : Application
                     RecMode.Encoding.Encoders.EncoderBenchmark.Recommend(
                         ff.FfmpegPath, h264Candidates, shouldAbort: () => coordinator.IsRecording) is { } recommended)
                 {
-                    settingsService.Current.Codec = recommended.Codec;
-                    settingsService.Current.Backend = recommended.Backend;
-                    settingsService.Save();
+                    // Apply only if the user has not changed encoding defaults while benchmarking.
+                    // The mutation and persistence are dispatched together with the live VM update.
 
                     // Also apply it to the already-loaded Record screen — persisting alone only took effect
                     // on the next launch. See RecordViewModel.ApplyRecommendedEncoder, which declines if the
                     // user has since chosen an encoder or a recording has started.
                     Dispatcher.BeginInvoke(() =>
+                    {
+                        if (settingsService.Current.Codec != initialCodec ||
+                            settingsService.Current.Backend != initialBackend)
+                            return;
+                        settingsService.Current.Codec = recommended.Codec;
+                        settingsService.Current.Backend = recommended.Backend;
+                        settingsService.Save();
                         _host.Services.GetRequiredService<ViewModels.RecordViewModel>()
-                             .ApplyRecommendedEncoder(recommended.Codec, recommended.Backend));
+                             .ApplyRecommendedEncoder(recommended.Codec, recommended.Backend);
+                    });
                 }
             }
         });

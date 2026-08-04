@@ -213,17 +213,28 @@ public sealed partial class RecordViewModel
         StartPreview();
     }
 
-    private void OnPreviewFrame() => DispatchLowPriority(() =>
+    private int _previewDispatchPending;
+
+    private void OnPreviewFrame()
     {
-        if (_preview is null || _previewBitmap is null)
+        // Frame notifications can arrive faster than the WPF dispatcher. Coalesce them behind one
+        // pending render callback; TryGetLatestFrame then consumes only the newest frame, preventing an
+        // unbounded queue of redundant bitmap copies while the UI is busy.
+        if (Interlocked.Exchange(ref _previewDispatchPending, 1) != 0)
         {
             return;
         }
 
-        if (_preview.TryGetLatestFrame(_previewBuffer))
+        DispatchLowPriority(() =>
         {
-            var rect = new Int32Rect(0, 0, _previewBitmap.PixelWidth, _previewBitmap.PixelHeight);
-            _previewBitmap.WritePixels(rect, _previewBuffer, _preview.Stride, 0);
-        }
-    });
+            // Clear before consuming so a notification arriving during bitmap copy can enqueue the next
+            // coalesced callback instead of being lost.
+            Interlocked.Exchange(ref _previewDispatchPending, 0);
+            if (_preview is not null && _previewBitmap is not null && _preview.TryGetLatestFrame(_previewBuffer))
+            {
+                var rect = new Int32Rect(0, 0, _previewBitmap.PixelWidth, _previewBitmap.PixelHeight);
+                _previewBitmap.WritePixels(rect, _previewBuffer, _preview.Stride, 0);
+            }
+        });
+    }
 }

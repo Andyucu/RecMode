@@ -108,8 +108,9 @@ public sealed class RecordingCoordinator : IDisposable
     private volatile CaptureTarget? _pendingRetarget;
 
     // Follow-window-resize (Window source only): the window's on-screen size last seen, so PaceLoop can
-    // detect a resize by polling and queue the same hot-swap SetAnnotating uses. Pacer-thread-owned except
-    // for the initial value set in Start(); _isAnnotating is set from the UI thread by SetAnnotating.
+    // detect a resize by polling and queue the same hot-swap SetAnnotating/SetClickHighlightActive/
+    // SetKeystrokeVisualizerActive use. Pacer-thread-owned except for the initial value set in Start();
+    // the three _*Active flags below are set from the UI thread by their respective Set* methods.
     /// <summary>Bound on the user-configurable A/V sync offset. Half a second each way is far beyond any
     /// plausible capture-pipeline mismatch (ITU-R BT.1359-1 puts even the *acceptability* limit around
     /// 90-185ms), and an unbounded value would prepend arbitrarily much silence to the recording.</summary>
@@ -121,6 +122,17 @@ public sealed class RecordingCoordinator : IDisposable
     internal static int ClampAudioSyncOffsetMs(int raw) => Math.Clamp(raw, -MaxAudioSyncOffsetMs, MaxAudioSyncOffsetMs);
 
     private bool _isAnnotating;
+    private bool _clickHighlightActive;
+    private bool _keystrokeVisualizerActive;
+
+    /// <summary>True while any feature that draws into its own separate top-level overlay window — draw-on-
+    /// screen annotation, the click-highlight ripple, the keystroke visualizer — is active. All three need the
+    /// identical Window→Region-proxy substitution (see <see cref="ApplyWindowOverlayProxyChange"/>): WGC's
+    /// per-window capture only sees a Window source's own rendered content, never anything a different,
+    /// independent window layers on top of it, so without this substitution any of these overlays would show
+    /// live on screen but never appear in the actual recording.</summary>
+    private bool NeedsWindowOverlayProxy => _isAnnotating || _clickHighlightActive || _keystrokeVisualizerActive;
+
     private int _lastWindowW, _lastWindowH;
     // Set alongside _pendingRetarget only by CheckWindowResize, which — unlike SetAnnotating's own use of
     // _pendingRetarget for the draw-on-screen Region-proxy swap — is only ever called from the pacer thread's
@@ -199,6 +211,8 @@ public sealed class RecordingCoordinator : IDisposable
             _pendingRetarget = null;
             _pendingResizeSize = null;
             _isAnnotating = false;
+            _clickHighlightActive = false;
+            _keystrokeVisualizerActive = false;
             _zoomMonitorCache = null;
             _zoomMonitorCacheHandle = 0;
             (_lastWindowW, _lastWindowH) = target.Kind == CaptureKind.Window &&
@@ -501,7 +515,8 @@ public sealed class RecordingCoordinator : IDisposable
     /// A no-op unless the recording's source is a Window (Monitor/Region/AllDisplays already see overlay
     /// windows naturally, per <see cref="WindowRegionProxy"/>'s doc comment). Just queues the swap —
     /// <see cref="PaceLoop"/> applies it on the pacer thread so <see cref="_capture"/> is never mutated
-    /// cross-thread.</summary>
+    /// cross-thread. See <see cref="SetClickHighlightActive"/>/<see cref="SetKeystrokeVisualizerActive"/> for
+    /// the two sibling overlay features that need the identical substitution.</summary>
     public void SetAnnotating(bool isAnnotating)
     {
         if (_originalTarget is not { Kind: CaptureKind.Window } original)
@@ -509,9 +524,57 @@ public sealed class RecordingCoordinator : IDisposable
             return;
         }
 
+        bool wasNeeded = NeedsWindowOverlayProxy;
         _isAnnotating = isAnnotating;
+        ApplyWindowOverlayProxyChange(original, wasNeeded);
+    }
 
-        if (!isAnnotating)
+    /// <summary>Called by <see cref="RecordViewModel.NotifyClickHighlightActive"/> (in turn driven by
+    /// <see cref="ClickHighlightService"/> showing/hiding the click-ripple overlay) — same Window-source
+    /// substitution <see cref="SetAnnotating"/> needs and for the same reason (see
+    /// <see cref="NeedsWindowOverlayProxy"/>'s doc comment): without it, a Window-source recording showed
+    /// ripples live on screen but they never actually appeared in the recorded file, since the ripple overlay
+    /// is a separate window WGC's per-window capture can't see.</summary>
+    public void SetClickHighlightActive(bool active)
+    {
+        if (_originalTarget is not { Kind: CaptureKind.Window } original)
+        {
+            return;
+        }
+
+        bool wasNeeded = NeedsWindowOverlayProxy;
+        _clickHighlightActive = active;
+        ApplyWindowOverlayProxyChange(original, wasNeeded);
+    }
+
+    /// <summary>Called by <see cref="RecordViewModel.NotifyKeystrokeVisualizerActive"/> — see
+    /// <see cref="SetClickHighlightActive"/>'s doc comment; identical reasoning, different overlay.</summary>
+    public void SetKeystrokeVisualizerActive(bool active)
+    {
+        if (_originalTarget is not { Kind: CaptureKind.Window } original)
+        {
+            return;
+        }
+
+        bool wasNeeded = NeedsWindowOverlayProxy;
+        _keystrokeVisualizerActive = active;
+        ApplyWindowOverlayProxyChange(original, wasNeeded);
+    }
+
+    /// <summary>Shared by <see cref="SetAnnotating"/>/<see cref="SetClickHighlightActive"/>/
+    /// <see cref="SetKeystrokeVisualizerActive"/>: swaps to (or back from) the Region-proxy substitution only
+    /// on an actual true→false or false→true transition of the *combined* need — so, e.g., turning off click
+    /// highlighting while annotation is still active doesn't revert the live capture back to the real window
+    /// (which would make the still-active annotation ink invisible in the recording again).</summary>
+    private void ApplyWindowOverlayProxyChange(CaptureTarget original, bool wasNeeded)
+    {
+        bool isNeeded = NeedsWindowOverlayProxy;
+        if (isNeeded == wasNeeded)
+        {
+            return;
+        }
+
+        if (!isNeeded)
         {
             _pendingRetarget = original;
             return;
@@ -527,12 +590,13 @@ public sealed class RecordingCoordinator : IDisposable
     /// <summary>Window-source recordings only, called from <see cref="PaceLoop"/>: if the recorded window's
     /// on-screen size has changed since the capture last (re)started, queues a retarget at the same window so
     /// <see cref="RetargetCapture"/> re-reads its current size — the video stays scaled to the fixed encoder
-    /// output, so the whole window is always visible instead of a stale, wrongly-sized crop. Skipped while
-    /// annotating (the live capture is a Region proxy then, not the window itself — see
-    /// <see cref="SetAnnotating"/>) or while a retarget is already pending, so this never clobbers that swap.</summary>
+    /// output, so the whole window is always visible instead of a stale, wrongly-sized crop. Skipped while any
+    /// overlay feature needs the Region-proxy substitution (the live capture isn't the window itself then —
+    /// see <see cref="NeedsWindowOverlayProxy"/>) or while a retarget is already pending, so this never
+    /// clobbers that swap.</summary>
     private void CheckWindowResize()
     {
-        if (_isAnnotating || _pendingRetarget is not null || _originalTarget is not { Kind: CaptureKind.Window } original)
+        if (NeedsWindowOverlayProxy || _pendingRetarget is not null || _originalTarget is not { Kind: CaptureKind.Window } original)
         {
             return;
         }
@@ -744,7 +808,8 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         _mixer = _mixerFactory();
-        AudioMixerStartResult startResult = _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid);
+        AudioMixerStartResult startResult = _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid,
+            systemDeviceIds: _settings.Current.SystemAudioDeviceIds);
         _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
         _mixer.MicGain = _settings.Current.MicVolume / 100f;
 
@@ -933,6 +998,29 @@ public sealed class RecordingCoordinator : IDisposable
         }
     }
 
+    /// <summary>Called by <see cref="RecordViewModel.MicEnabled"/> when toggled mid-recording — direct user
+    /// request. Previously the mic capture actually opened by <see cref="StartAudioMixer"/> was fixed for the
+    /// whole recording (set once from <c>_settings.Current.MicrophoneEnabled</c> at <see cref="Start"/> time),
+    /// so forgetting to enable the mic before hitting Record — or deciding partway through to turn it off —
+    /// silently had no effect on the file actually being written, only on the *next* recording. A no-op if not
+    /// currently recording. Warns (matching <see cref="StartAudioMixer"/>'s own degraded-source warning) if
+    /// enabling fails — an unplugged mic or an exclusive-mode conflict from another app.</summary>
+    public void SetMicEnabled(bool enabled)
+    {
+        if (_mixer is not { } mixer)
+        {
+            return;
+        }
+
+        bool started = mixer.SetMicEnabled(enabled);
+        if (enabled && !started)
+        {
+            _errors.Warn("record.audio-mic-unavailable",
+                "The microphone couldn't be captured for this recording.",
+                "Recording will continue without microphone audio.");
+        }
+    }
+
     /// <summary>Applies the captured-video brightness adjustment (-100..100) to the live recording, so
     /// changes on the Record screen take effect mid-recording, not just on the next session.</summary>
     public void SetBrightness(double value)
@@ -1112,8 +1200,7 @@ public sealed class RecordingCoordinator : IDisposable
         long lastSplitCheck = Stopwatch.GetTimestamp();
         long lastWindowCheck = Stopwatch.GetTimestamp();
         long lastStaleCaptureCheck = Stopwatch.GetTimestamp();
-        long lastCapturedFrames = _capture.CapturedFrameCount;
-        long capturedFramesChangedAt = Stopwatch.GetTimestamp();
+        long captureStartedAt = lastStaleCaptureCheck;
         long lastAudioFaultCheck = Stopwatch.GetTimestamp();
         bool systemAudioFaultWarned = false;
         bool micAudioFaultWarned = false;
@@ -1137,6 +1224,19 @@ public sealed class RecordingCoordinator : IDisposable
                 {
                     Thread.Sleep(1);
                     continue;
+                }
+
+                // Initial capture liveness check must run even while TryGetLatestFrame has no image yet;
+                // otherwise the no-first-frame path's early continue would bypass the watchdog entirely.
+                long preFrameNow = Stopwatch.GetTimestamp();
+                if (framesWritten == 0 && preFrameNow - captureStartedAt > 10 * Stopwatch.Frequency)
+                {
+                    _errors.Warn("record.capture-stalled",
+                        "The screen capture did not deliver an initial frame — the recording was ended.",
+                        "What was recorded up to this point is saved.");
+                    _stopRequested = true;
+                    _ = System.Threading.Tasks.Task.Run(Stop);
+                    break;
                 }
 
                 if (!_capture.TryGetLatestFrame(frame))
@@ -1258,13 +1358,10 @@ public sealed class RecordingCoordinator : IDisposable
                 if (now - lastStaleCaptureCheck >= Stopwatch.Frequency) // ~1 Hz
                 {
                     lastStaleCaptureCheck = now;
-                    long capturedNow = _capture.CapturedFrameCount;
-                    if (capturedNow != lastCapturedFrames)
-                    {
-                        lastCapturedFrames = capturedNow;
-                        capturedFramesChangedAt = now;
-                    }
-                    else if (now - capturedFramesChangedAt > 10 * Stopwatch.Frequency)
+                    // WGC is change-driven: an unchanged/static desktop legitimately emits no additional
+                    // frames after the first one. Only treat failure to deliver the initial frame as stale;
+                    // subsequent liveness failures are reported by the engine Faulted event.
+                    if (framesWritten == 0 && now - captureStartedAt > 10 * Stopwatch.Frequency)
                     {
                         _errors.Warn("record.capture-stalled",
                             "The screen capture stopped producing new frames — the recording was ended.",

@@ -11,7 +11,7 @@
         Background="{DynamicResource WindowBackgroundBrush}"
         FontFamily="{StaticResource AppFontFamily}"
         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale"
-        TextOptions.TextHintingMode="Fixed" UseLayoutRounding="True" SnapsToDevicePixels="True">
+        TextOptions.TextHintingMode="Animated" UseLayoutRounding="True" SnapsToDevicePixels="True">
 
     <WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" />
@@ -262,7 +262,8 @@
                     Visibility="{Binding SnackbarVisible, Converter={StaticResource BoolToVisibility}}"
                     Background="{DynamicResource SurfaceAcrylicBrush}" BorderBrush="{DynamicResource StrokeCardBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16,10" MaxWidth="620"
-                    AutomationProperties.LiveSetting="Assertive">
+                    AutomationProperties.LiveSetting="Assertive" Focusable="True"
+                    AutomationProperties.Name="{Binding SnackbarMessage}" AutomationProperties.HelpText="Notification">
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,10,0">
                         <Ellipse.Style>

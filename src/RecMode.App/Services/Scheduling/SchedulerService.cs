@@ -27,6 +27,7 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
     private DispatcherTimer? _timer;
     private DateTimeOffset? _scheduledStopAt;
     private bool _scheduledRecordingActive;
+    private bool _scheduledStartInFlight;
     private bool _started;
 
     // RecordViewModel.StartRecordingFromCli() now runs pre-flight/encoder-startup on a background thread and
@@ -118,14 +119,24 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
         }
 
         bool started;
+        _scheduledStartInFlight = true;
         try
         {
             record.EnsureDevicesLoaded();
             started = await record.StartRecordingFromCli().ConfigureAwait(true);
         }
+        catch (Exception ex)
+        {
+            // Fire is intentionally detached from the dispatcher tick. Never let a device/encoder/startup
+            // exception become an unobserved task, and avoid retrying the same broken schedule every 20s
+            // without a diagnostic trail.
+            Log.Error(ex, "Scheduled recording {Name} failed during startup", item.Name);
+            return;
+        }
         finally
         {
             scheduledProfile?.Dispose();
+            _scheduledStartInFlight = false;
             _fireInFlight = false;
         }
 
@@ -138,7 +149,9 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             item.LastFiredOccurrence = ScheduleEvaluator.OccurrenceKey(now, scheduledTime);
             if (item.Recurrence == ScheduleRecurrence.Once) item.Enabled = false;
             settings.Save();
-            _scheduledRecordingActive = true;
+            // A very short recording can start and finish before StartRecordingFromCli completes.
+            // Only arm the expiry if the coordinator still owns a live recording session.
+            _scheduledRecordingActive = coordinator.IsRecording;
             // Anchored to DateTimeOffset.Now (captured HERE, once recording has actually started), not to the
             // tick's own `now` — that timestamp precedes the whole await above, which covers pre-flight
             // (including an 8 MB disk-speed probe that "takes seconds on a mapped network share", per this
@@ -159,7 +172,7 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
     {
         // This only tracks the session this scheduler started. Once it finishes, a later manual recording
         // must never inherit this schedule's expiry.
-        if (_scheduledRecordingActive)
+        if (_scheduledRecordingActive && !_scheduledStartInFlight)
         {
             _scheduledRecordingActive = false;
             _scheduledStopAt = null;

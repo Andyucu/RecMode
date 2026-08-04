@@ -101,8 +101,9 @@ public sealed class CrashReporter : ICrashReporter
         try
         {
             Directory.CreateDirectory(_paths.CrashDumpDirectory);
-            string stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-            string logPath = Path.Combine(_paths.CrashDumpDirectory, $"crash-{stamp}.log");
+            string stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+            string baseName = $"crash-{stamp}-{Environment.ProcessId}";
+            string logPath = UniqueArtifactPath(baseName, ".log");
             File.WriteAllText(
                 logPath,
                 $"time={DateTimeOffset.UtcNow:O}\r\nterminating={isTerminating}\r\n\r\n{exception}");
@@ -119,7 +120,7 @@ public sealed class CrashReporter : ICrashReporter
             {
                 if (_minidumpsEnabled())
                 {
-                    string dumpPath = Path.Combine(_paths.CrashDumpDirectory, $"crash-{stamp}.dmp");
+                    string dumpPath = UniqueArtifactPath(baseName, ".dmp");
                     _minidump.TryWrite(dumpPath);
                 }
             }
@@ -132,5 +133,20 @@ public sealed class CrashReporter : ICrashReporter
         {
             // We are already handling a crash; swallow secondary IO failures.
         }
+    }
+
+    private string UniqueArtifactPath(string baseName, string extension)
+    {
+        string path = Path.Combine(_paths.CrashDumpDirectory, baseName + extension);
+        if (!File.Exists(path)) return path;
+
+        for (int suffix = 1; suffix < 1000; suffix++)
+        {
+            path = Path.Combine(_paths.CrashDumpDirectory, $"{baseName}-{suffix}{extension}");
+            if (!File.Exists(path)) return path;
+        }
+
+        // Extremely unlikely; retain uniqueness even if the directory is unusually busy.
+        return Path.Combine(_paths.CrashDumpDirectory, $"{baseName}-{Guid.NewGuid():N}{extension}");
     }
 }

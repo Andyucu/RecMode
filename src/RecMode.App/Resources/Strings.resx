@@ -246,6 +246,13 @@
   <data name="ScheduleEdit_Save" xml:space="preserve"><value>Save</value></data>
   <data name="ScheduleEdit_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ScheduleEdit_InvalidTime" xml:space="preserve"><value>Enter a name and a start time as HH:mm (24-hour), e.g. 09:30.</value></data>
+  <data name="ScheduleEdit_NameRequired" xml:space="preserve"><value>Name is required.</value></data>
+  <data name="Schedule_On" xml:space="preserve"><value>On</value></data>
+  <data name="Schedule_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Schedule_Once" xml:space="preserve"><value>Once</value></data>
+  <data name="Schedule_Daily" xml:space="preserve"><value>Daily</value></data>
+  <data name="Schedule_Weekdays" xml:space="preserve"><value>Weekdays</value></data>
+  <data name="Schedule_Weekly" xml:space="preserve"><value>Weekly</value></data>
   <data name="Schedule_NoItems" xml:space="preserve"><value>No schedules yet. Add one to record automatically.</value></data>
   <data name="Record_Profile" xml:space="preserve"><value>Profile</value></data>
   <data name="Profile_Custom" xml:space="preserve"><value>Custom</value></data>
@@ -304,6 +311,18 @@
   <data name="Toolbar_StopTooltip" xml:space="preserve"><value>Stop the recording (F9)</value></data>
   <data name="Toolbar_HighlightClicksTooltip" xml:space="preserve"><value>Highlight mouse clicks on screen — handy to turn on for a moment to point something out, then off again</value></data>
   <data name="Toolbar_HighlightClicksLabel" xml:space="preserve"><value>Clicks</value></data>
+  <data name="AudioDevicePicker_Title" xml:space="preserve"><value>System audio devices</value></data>
+  <data name="AudioDevicePicker_ButtonLabel" xml:space="preserve"><value>Select audio devices…</value></data>
+  <data name="AudioDevicePicker_Automatic" xml:space="preserve"><value>Automatic (recommended)</value></data>
+  <data name="AudioDevicePicker_AutomaticDesc" xml:space="preserve"><value>Uses your default playback device, plus your separate call/communications device if you have one configured — this covers apps like Teams automatically.</value></data>
+  <data name="AudioDevicePicker_Custom" xml:space="preserve"><value>Choose specific devices</value></data>
+  <data name="AudioDevicePicker_CustomDesc" xml:space="preserve"><value>Record only the devices you check below — use this to exclude a device you don't want captured.</value></data>
+  <data name="AudioDevicePicker_NoDevices" xml:space="preserve"><value>No playback devices found.</value></data>
+  <data name="AudioDevicePicker_DefaultTag" xml:space="preserve"><value>default</value></data>
+  <data name="AudioDevicePicker_CommsTag" xml:space="preserve"><value>communications</value></data>
+  <data name="Toolbar_PinLabel" xml:space="preserve"><value>Pin position</value></data>
+  <data name="Toolbar_PinTooltip" xml:space="preserve"><value>Pin this position — an unpinned toolbar resets to the bottom of the main screen every time a new recording starts</value></data>
+  <data name="Toolbar_UnpinTooltip" xml:space="preserve"><value>Unpin — the toolbar will reset to the bottom of the main screen on the next recording</value></data>
 
   <data name="RegionSelect_Instructions" xml:space="preserve"><value>Drag to select a region · Esc to cancel · Enter to use</value></data>
   <data name="RegionSelect_Preset1080" xml:space="preserve"><value>1920 × 1080</value></data>
@@ -331,4 +350,19 @@
   <data name="Record_StatusStarting" xml:space="preserve"><value>Starting…</value></data>
   <data name="Record_StatusRecording" xml:space="preserve"><value>Recording</value></data>
   <data name="Record_StatusFinalizing" xml:space="preserve"><value>Finalizing…</value></data>
+  <data name="Settings_UpdateChecking" xml:space="preserve"><value>Checking…</value></data>
+  <data name="Settings_UpdateNotConfigured" xml:space="preserve"><value>No update channel configured yet.</value></data>
+  <data name="Settings_UpdateUpToDate" xml:space="preserve"><value>You're up to date.</value></data>
+  <data name="Settings_UpdateAvailable" xml:space="preserve"><value>Update available: v{0}</value></data>
+  <data name="Settings_UpdateFailed" xml:space="preserve"><value>Couldn't check for updates. Try again later.</value></data>
+  <data name="Settings_UpdateDownloading" xml:space="preserve"><value>Downloading update…</value></data>
+  <data name="Settings_ChooseOutputFolder" xml:space="preserve"><value>Choose output folder</value></data>
+  <data name="Library_RecordAgainTooltip" xml:space="preserve"><value>Record again with these settings</value></data>
+  <data name="Library_RevealTooltip" xml:space="preserve"><value>Show {0} in folder</value></data>
+  <data name="Library_DeleteTooltip" xml:space="preserve"><value>Delete {0}</value></data>
+  <data name="Accessibility_PickWindow" xml:space="preserve"><value>Pick a window with the mouse</value></data>
+  <data name="Accessibility_SystemAudioLevel" xml:space="preserve"><value>System audio level</value></data>
+  <data name="Accessibility_SystemAudioVolume" xml:space="preserve"><value>System audio volume</value></data>
+  <data name="Accessibility_MicrophoneLevel" xml:space="preserve"><value>Microphone level</value></data>
+  <data name="Accessibility_MicrophoneVolume" xml:space="preserve"><value>Microphone volume</value></data>
 </root>

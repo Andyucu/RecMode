@@ -65,6 +65,7 @@ internal static class Composition
         services.AddSingleton<IStartupManager, StartupManager>();
         services.AddSingleton<IScheduleEditor, ScheduleEditor>();
         services.AddSingleton<IProfileNamePrompt, ProfileNamePrompt>();
+        services.AddSingleton<IAudioDevicePrompt, AudioDevicePrompt>();
         services.AddSingleton<OrphanRecoveryService>();
         services.AddSingleton<IPowerStatus, PowerStatus>();
         services.AddSingleton<IDiskSpeedProbe, DiskSpeedProbe>();

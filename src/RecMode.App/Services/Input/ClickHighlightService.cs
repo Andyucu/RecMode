@@ -50,6 +50,11 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
         _overlay.Show();
         hook.Clicked += OnClicked;
         hook.Install();
+        // Window-source recordings only see their own window's rendered content via WGC's per-window
+        // capture — a separate top-level overlay window like this one is invisible to it otherwise, so
+        // without this the ripple showed live on screen but never in the actual recording. See
+        // RecordingCoordinator.SetClickHighlightActive's doc comment.
+        record.NotifyClickHighlightActive(true);
     }
 
     // OnClicked runs synchronously ON the UI thread's own message dispatch, as part of the WH_MOUSE_LL hook
@@ -71,6 +76,7 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
         hook.Clicked -= OnClicked;
         _overlay?.Close();
         _overlay = null;
+        record.NotifyClickHighlightActive(false);
     }
 
     public void Dispose()

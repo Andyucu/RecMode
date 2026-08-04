@@ -119,6 +119,18 @@ public sealed class RecModeSettings
     public string? PerAppAudioProcessName { get; set; }
 
     /// <summary>
+    /// Which physical playback devices "System audio" loops back, by WASAPI endpoint ID. Null (the default)
+    /// means auto-detect: the default Console-role device, plus the Communications-role device too if it's a
+    /// different physical output (see <c>AudioMixer.StartCommsLoopbackIfDifferent</c> — covers VoIP apps like
+    /// Teams that route call audio there specifically). A non-null list is an explicit user selection from the
+    /// Settings audio-device picker — capture exactly those devices, however many, instead of auto-detecting.
+    /// Ignored when <see cref="PerAppAudioProcessName"/> is set (per-app targeting already names an exact
+    /// process, not a device). Device IDs are stable across reboots but not guaranteed across driver
+    /// reinstalls; a since-vanished ID is simply skipped at capture time, same as any other unplugged device.
+    /// </summary>
+    public List<string>? SystemAudioDeviceIds { get; set; }
+
+    /// <summary>
     /// Webcam picture-in-picture overlay (Phase 7). Null <see cref="WebcamDeviceId"/> means "not configured" —
     /// enabling the toggle with no device selected does nothing (fails closed, no accidental default-camera use).
     /// </summary>
@@ -150,6 +162,20 @@ public sealed class RecModeSettings
     /// WGC already follows movement/resizing while the original HWND remains alive.
     /// </summary>
     public bool FollowWindow { get; set; } = true;
+
+    /// <summary>
+    /// Last dragged position of the floating recording toolbar, in device-independent virtual-screen
+    /// coordinates (so it can live on any monitor, not just the primary), only meaningful while
+    /// <see cref="ToolbarPinned"/> is true. Unpinned recordings always open at the default
+    /// bottom-centre-of-primary placement — direct user request: the bar should be predictable by default,
+    /// with pinning as the explicit opt-in for "remember where I put it."
+    /// </summary>
+    public double? ToolbarLeft { get; set; }
+    public double? ToolbarTop { get; set; }
+
+    /// <summary>When true, the floating recording toolbar reopens at <see cref="ToolbarLeft"/>/<see cref="ToolbarTop"/>
+    /// on every new recording instead of resetting to the default bottom-centre-of-primary position.</summary>
+    public bool ToolbarPinned { get; set; }
 
     // FFmpeg — null = use the bundled build under AppPaths.FfmpegDirectory (§3.4).
     public string? FfmpegPathOverride { get; set; }

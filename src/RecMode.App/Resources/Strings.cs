@@ -213,6 +213,13 @@ public static class Strings
     public static string ScheduleEdit_Save => Get(nameof(ScheduleEdit_Save));
     public static string ScheduleEdit_Cancel => Get(nameof(ScheduleEdit_Cancel));
     public static string ScheduleEdit_InvalidTime => Get(nameof(ScheduleEdit_InvalidTime));
+    public static string ScheduleEdit_NameRequired => Get(nameof(ScheduleEdit_NameRequired));
+    public static string Schedule_On => Get(nameof(Schedule_On));
+    public static string Schedule_Off => Get(nameof(Schedule_Off));
+    public static string Schedule_Once => Get(nameof(Schedule_Once));
+    public static string Schedule_Daily => Get(nameof(Schedule_Daily));
+    public static string Schedule_Weekdays => Get(nameof(Schedule_Weekdays));
+    public static string Schedule_Weekly => Get(nameof(Schedule_Weekly));
     public static string Schedule_NoItems => Get(nameof(Schedule_NoItems));
 
     public static string Record_Profile => Get(nameof(Record_Profile));
@@ -272,6 +279,18 @@ public static class Strings
     public static string Toolbar_StopTooltip => Get(nameof(Toolbar_StopTooltip));
     public static string Toolbar_HighlightClicksTooltip => Get(nameof(Toolbar_HighlightClicksTooltip));
     public static string Toolbar_HighlightClicksLabel => Get(nameof(Toolbar_HighlightClicksLabel));
+    public static string AudioDevicePicker_Title => Get(nameof(AudioDevicePicker_Title));
+    public static string AudioDevicePicker_ButtonLabel => Get(nameof(AudioDevicePicker_ButtonLabel));
+    public static string AudioDevicePicker_Automatic => Get(nameof(AudioDevicePicker_Automatic));
+    public static string AudioDevicePicker_AutomaticDesc => Get(nameof(AudioDevicePicker_AutomaticDesc));
+    public static string AudioDevicePicker_Custom => Get(nameof(AudioDevicePicker_Custom));
+    public static string AudioDevicePicker_CustomDesc => Get(nameof(AudioDevicePicker_CustomDesc));
+    public static string AudioDevicePicker_NoDevices => Get(nameof(AudioDevicePicker_NoDevices));
+    public static string AudioDevicePicker_DefaultTag => Get(nameof(AudioDevicePicker_DefaultTag));
+    public static string AudioDevicePicker_CommsTag => Get(nameof(AudioDevicePicker_CommsTag));
+    public static string Toolbar_PinLabel => Get(nameof(Toolbar_PinLabel));
+    public static string Toolbar_PinTooltip => Get(nameof(Toolbar_PinTooltip));
+    public static string Toolbar_UnpinTooltip => Get(nameof(Toolbar_UnpinTooltip));
 
     public static string RegionSelect_Instructions => Get(nameof(RegionSelect_Instructions));
     public static string RegionSelect_Preset1080 => Get(nameof(RegionSelect_Preset1080));
@@ -299,4 +318,19 @@ public static class Strings
     public static string Record_StatusStarting => Get(nameof(Record_StatusStarting));
     public static string Record_StatusRecording => Get(nameof(Record_StatusRecording));
     public static string Record_StatusFinalizing => Get(nameof(Record_StatusFinalizing));
+    public static string Settings_UpdateChecking => Get(nameof(Settings_UpdateChecking));
+    public static string Settings_UpdateNotConfigured => Get(nameof(Settings_UpdateNotConfigured));
+    public static string Settings_UpdateUpToDate => Get(nameof(Settings_UpdateUpToDate));
+    public static string Settings_UpdateAvailable => Get(nameof(Settings_UpdateAvailable));
+    public static string Settings_UpdateFailed => Get(nameof(Settings_UpdateFailed));
+    public static string Settings_UpdateDownloading => Get(nameof(Settings_UpdateDownloading));
+    public static string Settings_ChooseOutputFolder => Get(nameof(Settings_ChooseOutputFolder));
+    public static string Library_RecordAgainTooltip => Get(nameof(Library_RecordAgainTooltip));
+    public static string Library_RevealTooltip => Get(nameof(Library_RevealTooltip));
+    public static string Library_DeleteTooltip => Get(nameof(Library_DeleteTooltip));
+    public static string Accessibility_PickWindow => Get(nameof(Accessibility_PickWindow));
+    public static string Accessibility_SystemAudioLevel => Get(nameof(Accessibility_SystemAudioLevel));
+    public static string Accessibility_SystemAudioVolume => Get(nameof(Accessibility_SystemAudioVolume));
+    public static string Accessibility_MicrophoneLevel => Get(nameof(Accessibility_MicrophoneLevel));
+    public static string Accessibility_MicrophoneVolume => Get(nameof(Accessibility_MicrophoneVolume));
 }

@@ -309,7 +309,14 @@ public sealed class ProcessLoopbackCapture : IWaveIn
                 }
                 else
                 {
-                    _tcs.TrySetResult(activatedInterface);
+                    // A timeout can fault the waiting task while the system activation operation is
+                    // still in flight. If completion arrives afterwards there is nobody left to consume
+                    // the returned interface pointer, so release it here when the result cannot be handed
+                    // to the caller.
+                    if (!_tcs.TrySetResult(activatedInterface) && activatedInterface != IntPtr.Zero)
+                    {
+                        try { Marshal.Release(activatedInterface); } catch (Exception) { }
+                    }
                 }
             }
             catch (Exception ex)

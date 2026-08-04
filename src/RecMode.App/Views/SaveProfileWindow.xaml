@@ -19,9 +19,9 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="{x:Static res:Strings.ScheduleEdit_Cancel}" Click="OnCancel"
-                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" />
+                        Style="{StaticResource SecondaryButton}" Width="90" Height="32" Margin="0,0,8,0" IsCancel="True" />
                 <Button Content="{x:Static res:Strings.ScheduleEdit_Save}" Click="OnSave"
-                        Style="{StaticResource AccentButton}" Width="90" Height="32" />
+                        Style="{StaticResource AccentButton}" Width="90" Height="32" IsDefault="True" />
             </StackPanel>
         </StackPanel>
     </Border>

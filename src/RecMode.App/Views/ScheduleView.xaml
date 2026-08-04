@@ -58,7 +58,8 @@
                                         <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
                                                       IsChecked="{Binding Enabled, Mode=TwoWay}"
                                                       ToolTip="{Binding Name, StringFormat='Enable or disable {0}'}"
-                                                      AutomationProperties.Name="{Binding Name, StringFormat='Enable {0}'}" />
+                                                      AutomationProperties.Name="{Binding Name, StringFormat='Enable or disable {0}'}"
+                                                      AutomationProperties.HelpText="{Binding StateLabel}" />
                                         <Button Content="{x:Static res:Strings.Schedule_Edit}"
                                                 Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"

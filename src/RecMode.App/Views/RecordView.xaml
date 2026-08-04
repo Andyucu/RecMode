@@ -76,7 +76,7 @@
                                           AutomationProperties.LabeledBy="{Binding ElementName=WindowLabel}" />
                                 <Button Grid.Column="1" Content="{x:Static res:Strings.Record_ManualPick}" Command="{Binding PickWindowCommand}"
                                         ToolTip="{x:Static res:Strings.Record_PickWindowTooltip}"
-                                        AutomationProperties.Name="Pick a window with the mouse"
+                                        AutomationProperties.Name="{x:Static res:Strings.Accessibility_PickWindow}"
                                         Style="{StaticResource SecondaryButton}" Height="32" Padding="10,0" />
                             </Grid>
                             <Grid ToolTip="{x:Static res:Strings.Record_FollowWindowTooltip}">
@@ -296,10 +296,13 @@
                                IsEnabled="{Binding SystemAudioEnabled}" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding PerAppAudioTargets}" SelectedItem="{Binding SelectedPerAppAudioTarget}"
-                              IsEnabled="{Binding SystemAudioEnabled}" Margin="0,0,0,10"
+                              IsEnabled="{Binding SystemAudioEnabled}" Margin="0,0,0,8"
                               AutomationProperties.LabeledBy="{Binding ElementName=PerAppAudioLabel}" />
+                    <Button Content="{x:Static res:Strings.AudioDevicePicker_ButtonLabel}" Command="{Binding SelectAudioDevicesCommand}"
+                            Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Height="28" Padding="10,0" Margin="0,0,0,10"
+                            IsEnabled="{Binding SystemAudioEnabled}" ToolTip="{x:Static res:Strings.AudioDevicePicker_AutomaticDesc}" />
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding SystemMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
-                                 AutomationProperties.Name="System audio level"
+                                 AutomationProperties.Name="{x:Static res:Strings.Accessibility_SystemAudioLevel}"
                                  Foreground="{Binding SystemMeter, Converter={StaticResource MeterCaution}}"
                                  Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
@@ -310,7 +313,7 @@
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                                 Value="{Binding SystemVolume}" VerticalAlignment="Center"
                                 ToolTip="{x:Static res:Strings.Record_SystemVolumeTooltip}"
-                                AutomationProperties.Name="System audio volume" />
+                                AutomationProperties.Name="{x:Static res:Strings.Accessibility_SystemAudioVolume}" />
                         <TextBlock Grid.Column="1" Text="{Binding SystemVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>
@@ -323,7 +326,7 @@
                                       AutomationProperties.LabeledBy="{Binding ElementName=MicLabel}" />
                     </Grid>
                     <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicMeter, Mode=OneWay}" Height="6" Margin="0,0,0,6"
-                                 AutomationProperties.Name="Microphone level"
+                                 AutomationProperties.Name="{x:Static res:Strings.Accessibility_MicrophoneLevel}"
                                  Foreground="{Binding MicMeter, Converter={StaticResource MeterCaution}}"
                                  Background="{DynamicResource SurfaceSecondaryBrush}"
                                  BorderThickness="0" />
@@ -334,7 +337,7 @@
                         <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                                 Value="{Binding MicVolume}" VerticalAlignment="Center"
                                 ToolTip="{x:Static res:Strings.Record_MicVolumeTooltip}"
-                                AutomationProperties.Name="Microphone volume" />
+                                AutomationProperties.Name="{x:Static res:Strings.Accessibility_MicrophoneVolume}" />
                         <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>

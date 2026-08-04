@@ -125,6 +125,37 @@ public partial class RegionSelectWindow : Window
         {
             Confirm();
         }
+        else if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Add or Key.OemPlus or Key.Subtract or Key.OemMinus)
+        {
+            EnsureKeyboardSelection();
+            int x = (int)Math.Round(Canvas.GetLeft(SelectionRect) * _dpiScale);
+            int y = (int)Math.Round(Canvas.GetTop(SelectionRect) * _dpiScale);
+            int w = (int)Math.Round(SelectionRect.Width * _dpiScale);
+            int h = (int)Math.Round(SelectionRect.Height * _dpiScale);
+            int step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 16 : 2;
+            if (e.Key == Key.Left) x -= step; else if (e.Key == Key.Right) x += step;
+            else if (e.Key == Key.Up) y -= step; else if (e.Key == Key.Down) y += step;
+            else if (e.Key is Key.Add or Key.OemPlus) { w += step; h += step; }
+            else { w -= step; h -= step; }
+            x = Math.Clamp(x, 0, Math.Max(0, _monitor.Width - w));
+            y = Math.Clamp(y, 0, Math.Max(0, _monitor.Height - h));
+            w = Math.Clamp(w, 16, _monitor.Width - x); h = Math.Clamp(h, 16, _monitor.Height - y);
+            SetRectPixels(x, y, w, h); e.Handled = true;
+        }
+    }
+
+    private void EnsureKeyboardSelection()
+    {
+        if (SelectionRect.Visibility == Visibility.Visible) return;
+        int w = Math.Min(640, _monitor.Width), h = Math.Min(360, _monitor.Height);
+        SetRectPixels((_monitor.Width - w) / 2, (_monitor.Height - h) / 2, w, h);
+    }
+
+    private void SetRectPixels(int x, int y, int w, int h)
+    {
+        var a = new Point(x / _dpiScale, y / _dpiScale);
+        var b = new Point((x + w) / _dpiScale, (y + h) / _dpiScale);
+        UpdateRect(a, b);
     }
 
     private void Confirm()

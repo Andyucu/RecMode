@@ -267,7 +267,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     {
         _checkingForUpdates = true;
         CheckForUpdatesCommand.NotifyCanExecuteChanged();
-        UpdateStatusText = "Checking…";
+        UpdateStatusText = Resources.Strings.Settings_UpdateChecking;
         _updateReleasesUrl = null;
         _canApplyUpdate = false;
 
@@ -283,10 +283,10 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
 
         UpdateStatusText = result.Status switch
         {
-            Services.UpdateCheckStatus.NotConfigured => "No update channel configured yet.",
-            Services.UpdateCheckStatus.UpToDate => "You're up to date.",
-            Services.UpdateCheckStatus.UpdateAvailable => $"Update available: v{result.Version}",
-            Services.UpdateCheckStatus.Failed => $"Couldn't check for updates ({result.Error}).",
+            Services.UpdateCheckStatus.NotConfigured => Resources.Strings.Settings_UpdateNotConfigured,
+            Services.UpdateCheckStatus.UpToDate => Resources.Strings.Settings_UpdateUpToDate,
+            Services.UpdateCheckStatus.UpdateAvailable => Resources.Strings.Settings_UpdateAvailable.Replace("{0}", result.Version ?? string.Empty, StringComparison.Ordinal),
+            Services.UpdateCheckStatus.Failed => Resources.Strings.Settings_UpdateFailed,
             _ => "",
         };
         _updateReleasesUrl = result.ReleasesPageUrl;
@@ -301,7 +301,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
 
     private async Task ApplyUpdateAsync()
     {
-        UpdateStatusText = "Downloading update…";
+        UpdateStatusText = Resources.Strings.Settings_UpdateDownloading;
         try
         {
             await _updateChecker.ApplyAndRestartAsync();
@@ -591,7 +591,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "Choose output folder",
+            Title = Resources.Strings.Settings_ChooseOutputFolder,
             InitialDirectory = Directory.Exists(OutputFolder) ? OutputFolder : _paths.RecordingsDirectory,
         };
         if (dialog.ShowDialog() == true)

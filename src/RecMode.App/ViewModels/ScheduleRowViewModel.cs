@@ -45,7 +45,7 @@ public sealed class ScheduleRowViewModel : ObservableObject
         }
     }
 
-    public string StateLabel => Model.Enabled ? "On" : "Off";
+    public string StateLabel => Model.Enabled ? Resources.Strings.Schedule_On : Resources.Strings.Schedule_Off;
 
     /// <summary>Refreshes the derived text after the model was edited elsewhere (the edit dialog).</summary>
     public void RefreshDisplay()
@@ -59,10 +59,10 @@ public sealed class ScheduleRowViewModel : ObservableObject
 
     private static string RecurrenceLabel(ScheduleRecurrence r) => r switch
     {
-        ScheduleRecurrence.Once => "Once",
-        ScheduleRecurrence.Daily => "Daily",
-        ScheduleRecurrence.Weekdays => "Weekdays",
-        ScheduleRecurrence.Weekly => "Weekly",
+        ScheduleRecurrence.Once => Resources.Strings.Schedule_Once,
+        ScheduleRecurrence.Daily => Resources.Strings.Schedule_Daily,
+        ScheduleRecurrence.Weekdays => Resources.Strings.Schedule_Weekdays,
+        ScheduleRecurrence.Weekly => Resources.Strings.Schedule_Weekly,
         _ => r.ToString(),
     };
 }

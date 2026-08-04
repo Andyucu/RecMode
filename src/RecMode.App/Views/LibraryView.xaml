@@ -100,7 +100,7 @@
                                                 Command="{Binding DataContext.RecordAgainCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
                                                 Visibility="{Binding CanRecordAgain, Converter={StaticResource BoolToVisibility}}"
-                                                ToolTip="{Binding DisplayName, StringFormat='Record again with these settings'}"
+                                                ToolTip="{x:Static res:Strings.Library_RecordAgainTooltip}"
                                                 AutomationProperties.Name="{Binding DisplayName, StringFormat='Record again with the settings from {0}'}" />
                                         <Button Content="{Binding OpenLabel}"
                                                 Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
@@ -110,14 +110,14 @@
                                         <Button Content="{x:Static res:Strings.Library_Reveal}"
                                                 Command="{Binding DataContext.RevealCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
-                                                ToolTip="{Binding DisplayName, StringFormat='Show {0} in folder'}"
-                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Show {0} in folder'}" />
+                                                ToolTip="{Binding DisplayName, StringFormat={x:Static res:Strings.Library_RevealTooltip}}"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat={x:Static res:Strings.Library_RevealTooltip}}" />
                                         <Button Content="{x:Static res:Strings.Library_Delete}"
                                                 Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
                                                 Foreground="{DynamicResource CriticalBrush}"
-                                                ToolTip="{Binding DisplayName, StringFormat='Delete {0}'}"
-                                                AutomationProperties.Name="{Binding DisplayName, StringFormat='Delete {0}'}" />
+                                                ToolTip="{Binding DisplayName, StringFormat={x:Static res:Strings.Library_DeleteTooltip}}"
+                                                AutomationProperties.Name="{Binding DisplayName, StringFormat={x:Static res:Strings.Library_DeleteTooltip}}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>

@@ -40,8 +40,20 @@ public interface IAudioMixer : IDisposable
     /// run their own separate mixer instance from the one an actual recording pumps): each source then
     /// skips buffering samples for consumption entirely — peak/RMS are still computed every callback —
     /// instead of silently filling, then discarding out of, a buffer nobody was ever going to read.
+    /// <paramref name="systemDeviceIds"/> — explicit render-device IDs to loop back (Settings' audio device
+    /// picker), ignored when <paramref name="targetProcessId"/> is set. Null/empty means auto-detect: the
+    /// default Console-role device, plus the Communications-role device too if it's a genuinely different
+    /// physical output (covers VoIP apps like Teams that route call audio there — see
+    /// <c>AudioMixer.StartCommsLoopbackIfDifferent</c>).
     /// </summary>
-    AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null, bool meteringOnly = false);
+    AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null,
+        bool meteringOnly = false, IReadOnlyList<string>? systemDeviceIds = null);
+
+    /// <summary>Live-toggles the microphone source on an already-running mixer — see
+    /// <see cref="AudioMixer.SetMicEnabled"/> for the full reasoning. Returns whether mic capture ended up
+    /// enabled (false if the mixer isn't running, the requested state already matched, or the source failed
+    /// to start).</summary>
+    bool SetMicEnabled(bool enabled);
 
     void Stop();
 

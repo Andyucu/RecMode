@@ -39,10 +39,17 @@
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
-        <!-- Ideal layout with grayscale anti-aliasing preserves fine glyph detail without subpixel colour fringing. -->
+        <!-- Ideal layout with grayscale anti-aliasing preserves fine glyph detail without subpixel colour
+             fringing. TextHintingMode=Animated (not Fixed, despite Fixed usually being the crisper choice for
+             *static* text) — Fixed hints glyph outlines to a hard 96-DPI pixel grid using the font's own hint
+             instructions, which Exo 2 (the app's embedded font, an open-source webfont with no fine hinting
+             tables) can't do well, and which also looks uneven at any non-100% Windows display scaling (very
+             common) since Fixed's grid-fit assumption breaks down at fractional DPI. Animated's sub-pixel
+             positioning renders noticeably smoother in both cases, at a small cost to edge crispness — direct
+             user report ("the text ... looks kind of choppy") after the font switch to Exo 2. -->
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
-        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Animated" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
     <Style x:Key="BodyText" TargetType="TextBlock">
@@ -51,7 +58,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
-        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Animated" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
     <Style x:Key="BodyStrongText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
@@ -71,7 +78,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
-        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Animated" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
@@ -110,7 +117,7 @@
     <Style TargetType="Control">
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
-        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Animated" />
         <Setter Property="UseLayoutRounding" Value="True" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
@@ -131,7 +138,7 @@
     <Style TargetType="Window">
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
-        <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
+        <Setter Property="TextOptions.TextHintingMode" Value="Animated" />
         <Setter Property="UseLayoutRounding" Value="True" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
@@ -269,6 +276,11 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
+                        </Trigger>
+                        <!-- Visible pressed-state color feedback (not just the scale below) — reverts the
+                             instant the mouse releases, since Trigger conditions are live, not one-shot. -->
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtlePressedBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="bd" Property="Opacity" Value="0.45" />

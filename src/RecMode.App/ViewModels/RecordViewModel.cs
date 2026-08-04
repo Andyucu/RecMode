@@ -55,6 +55,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     private readonly IScreenshotFlash _screenshotFlash;
     private readonly ICountdownController _countdown;
     private readonly IProfileNamePrompt _profilePrompt;
+    private readonly IAudioDevicePrompt _audioDevicePrompt;
     private readonly RecMode.Core.Infrastructure.IAppPaths _paths;
     private readonly IErrorReporter _errors;
     private string _diskSpaceText = "";
@@ -63,7 +64,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         ISettingsService settings, Func<IPreviewEngine> previewFactory, IRegionPicker regionPicker,
         IWindowPicker windowPicker, Func<RecMode.Audio.IAudioMixer> mixerFactory, ScreenshotService screenshots,
         IScreenshotFlash screenshotFlash, ICountdownController countdown, IProfileNamePrompt profilePrompt,
-        RecMode.Core.Infrastructure.IAppPaths paths, IErrorReporter errors)
+        IAudioDevicePrompt audioDevicePrompt, RecMode.Core.Infrastructure.IAppPaths paths, IErrorReporter errors)
     {
         _coordinator = coordinator;
         _encoderProbe = encoderProbe;
@@ -76,6 +77,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _screenshotFlash = screenshotFlash;
         _countdown = countdown;
         _profilePrompt = profilePrompt;
+        _audioDevicePrompt = audioDevicePrompt;
         _paths = paths;
         _errors = errors;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
@@ -113,6 +115,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
         SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
+        SelectAudioDevicesCommand = new RelayCommand(SelectAudioDevices);
 
         LoadProfiles();
 
@@ -180,6 +183,9 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     /// <summary>Sets Quality to a named snap-point value (Web/Balanced/Archive), so users can land on a
     /// sensible value without dragging — the same anchors <see cref="FfmpegArgsBuilder.QualityTier"/> names.</summary>
     public IRelayCommand<string> SetQualityPresetCommand { get; }
+
+    /// <summary>Opens the "System audio devices" picker — see <see cref="SelectAudioDevices"/>.</summary>
+    public IRelayCommand SelectAudioDevicesCommand { get; }
 
     /// <summary>Captures a still of the current source (F11 / button). The actual WGC grab, PNG encode, and
     /// file write now run off the UI thread (see <see cref="ScreenshotService.Capture"/>'s doc comment) —
@@ -657,6 +663,16 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     /// <summary>Turns annotation off (called by the overlay on Esc and when the recording ends).</summary>
     public void StopAnnotating() => IsAnnotating = false;
+
+    /// <summary>Called by <see cref="ClickHighlightService"/> whenever it shows/hides the click-ripple
+    /// overlay, so the coordinator can substitute a Region-equivalent capture for Window sources — same
+    /// reasoning as <see cref="IsAnnotating"/>'s coordinator notification, just for a different overlay (see
+    /// <see cref="RecordingCoordinator.SetClickHighlightActive"/>).</summary>
+    public void NotifyClickHighlightActive(bool active) => _coordinator.SetClickHighlightActive(active);
+
+    /// <summary>Called by <see cref="KeystrokeVisualizerService"/> — see
+    /// <see cref="NotifyClickHighlightActive"/>.</summary>
+    public void NotifyKeystrokeVisualizerActive(bool active) => _coordinator.SetKeystrokeVisualizerActive(active);
 
     private bool _isManualZooming;
     /// <summary>True while the toolbar's manual "Zoom"/"Exit Zoom" button has an area zoomed in. Distinct from

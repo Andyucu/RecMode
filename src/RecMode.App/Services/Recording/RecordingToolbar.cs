@@ -2,6 +2,7 @@ using System.ComponentModel;
 using RecMode.App.ViewModels;
 using RecMode.App.Views;
 using RecMode.Core.Infrastructure;
+using RecMode.Core.Settings;
 
 namespace RecMode.App.Services;
 
@@ -10,7 +11,7 @@ namespace RecMode.App.Services;
 /// observing <see cref="RecordViewModel.IsRecording"/> (plan Phase 5). Decoupled from the start/stop flow so
 /// it covers every path — manual stop, hotkey, CLI, or an error-driven finish.
 /// </summary>
-public sealed class RecordingToolbar(RecordViewModel record, IOsCapabilities os) : IDisposable
+public sealed class RecordingToolbar(RecordViewModel record, IOsCapabilities os, ISettingsService settings) : IDisposable
 {
     private RecordingToolbarWindow? _window;
 
@@ -44,7 +45,7 @@ public sealed class RecordingToolbar(RecordViewModel record, IOsCapabilities os)
             return;
         }
 
-        _window = new RecordingToolbarWindow(record, os);
+        _window = new RecordingToolbarWindow(record, os, settings);
         _window.Show();
     }
 
