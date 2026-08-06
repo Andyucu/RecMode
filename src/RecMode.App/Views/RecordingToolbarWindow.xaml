@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:res="clr-namespace:RecMode.App.Resources"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        Topmost="True" ShowInTaskbar="False" ShowActivated="True" ResizeMode="NoResize"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         SizeToContent="WidthAndHeight" WindowStartupLocation="Manual">
     <Window.Resources>
         <!-- Icon-only button chrome (SecondaryButton's hover/pressed-color/scale behavior, sized square for a

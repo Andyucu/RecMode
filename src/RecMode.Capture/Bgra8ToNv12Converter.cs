@@ -27,32 +27,56 @@ public static class Bgra8ToNv12Converter
     public static void Convert(ReadOnlySpan<byte> bgra, int srcW, int srcH, int dstW, int dstH, byte[] output)
     {
         int ySize = dstW * dstH;
-        for (int y = 0; y < dstH; y++)
-        for (int x = 0; x < dstW; x++)
-        {
-            (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, dstW, dstH, x, y);
-            output[y * dstW + x] = (byte)Math.Clamp(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16, 0, 255);
-        }
+
+        // Precompute the nearest-neighbor source column/row for every destination column/row ONCE, instead
+        // of recomputing "x*srcW/dstW" / "y*srcH/dstH" (two integer divisions each) per sampled pixel. The
+        // previous version paid this on every luma sample AND again on every chroma sub-sample — the same
+        // (x,y) positions sampled twice, since the chroma loop re-called Pixel() for the identical 2x2 block
+        // the luma loop had just read. On this project's own 2-hour soak (5120x1440, GDI fallback), that was
+        // roughly 442M Pixel() calls/sec and ~884M divisions/sec — a previously-unattributed share of the
+        // measured CPU (see PROJECT_MEMORY 2026-08-05 for the full accounting). The loop below fixes both:
+        // one table build instead of per-pixel division, and one fetch per 2x2 block instead of two.
+        int[] sxFor = new int[dstW];
+        int[] syFor = new int[dstH];
+        for (int x = 0; x < dstW; x++) sxFor[x] = Math.Min(srcW - 1, x * srcW / dstW);
+        for (int y = 0; y < dstH; y++) syFor[y] = Math.Min(srcH - 1, y * srcH / dstH);
+
+        // dstW/dstH are always even (NV12 4:2:0 requires it, and CaptureSizing.MakeEven guarantees it) — same
+        // implicit assumption the original step-by-2 chroma loop already made, just relied upon more directly
+        // here since every 2x2 block is now handled as a single unit.
         for (int y = 0; y < dstH; y += 2)
-        for (int x = 0; x < dstW; x += 2)
         {
-            int sumU = 0, sumV = 0;
-            for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++)
+            int sy0 = syFor[y], sy1 = syFor[y + 1];
+            int lumaRow0 = y * dstW, lumaRow1 = (y + 1) * dstW;
+            for (int x = 0; x < dstW; x += 2)
             {
-                (byte b, byte g, byte r) = Pixel(bgra, srcW, srcH, dstW, dstH, x + dx, y + dy);
-                sumU += ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-                sumV += ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+                int sx0 = sxFor[x], sx1 = sxFor[x + 1];
+
+                int sumU = 0, sumV = 0;
+                WritePixel(bgra, srcW, sx0, sy0, output, lumaRow0 + x, ref sumU, ref sumV);
+                WritePixel(bgra, srcW, sx1, sy0, output, lumaRow0 + x + 1, ref sumU, ref sumV);
+                WritePixel(bgra, srcW, sx0, sy1, output, lumaRow1 + x, ref sumU, ref sumV);
+                WritePixel(bgra, srcW, sx1, sy1, output, lumaRow1 + x + 1, ref sumU, ref sumV);
+
+                int at = ySize + (y / 2) * dstW + x;
+                output[at] = (byte)Math.Clamp(sumU / 4, 0, 255);
+                output[at + 1] = (byte)Math.Clamp(sumV / 4, 0, 255);
             }
-            int at = ySize + (y / 2) * dstW + x;
-            output[at] = (byte)Math.Clamp(sumU / 4, 0, 255);
-            output[at + 1] = (byte)Math.Clamp(sumV / 4, 0, 255);
         }
     }
 
-    private static (byte B, byte G, byte R) Pixel(ReadOnlySpan<byte> p, int w, int h, int dstW, int dstH, int x, int y)
+    /// <summary>Fetches one source pixel, writes its luma sample, and accumulates its chroma contribution —
+    /// the exact same per-sample BT.601 limited-range formulas the original per-pixel implementation used
+    /// (coefficients and operation order unchanged), just evaluated once per pixel instead of once for luma
+    /// and once again for chroma. <paramref name="sx"/>/<paramref name="sy"/> are already-resolved source
+    /// coordinates (from the caller's lookup tables), not destination coordinates needing further scaling.</summary>
+    private static void WritePixel(ReadOnlySpan<byte> bgra, int srcW, int sx, int sy, byte[] output, int lumaIndex, ref int sumU, ref int sumV)
     {
-        int sx = Math.Min(w - 1, x * w / dstW), sy = Math.Min(h - 1, y * h / dstH);
-        int i = (sy * w + sx) * 4;
-        return (p[i], p[i + 1], p[i + 2]);
+        int i = (sy * srcW + sx) * 4;
+        byte b = bgra[i], g = bgra[i + 1], r = bgra[i + 2];
+
+        output[lumaIndex] = (byte)Math.Clamp(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16, 0, 255);
+        sumU += ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+        sumV += ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
     }
 }

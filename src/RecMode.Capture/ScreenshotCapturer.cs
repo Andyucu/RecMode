@@ -160,10 +160,10 @@ public static class ScreenshotCapturer
             // The very first AcquireNextFrame per output can legitimately time out rather than deliver
             // current content immediately (DXGI only signals on an actual desktop change) — a few extra
             // pulls make sure every output has produced at least one real frame before the readback below.
-            ID3D11Texture2D canvas = dda.AcquireNextFrame(timeoutMs: 500);
+            ID3D11Texture2D canvas = dda.AcquireNextFrame(timeoutMs: 500, out _);
             for (int i = 0; i < 4; i++)
             {
-                canvas = dda.AcquireNextFrame(timeoutMs: 200);
+                canvas = dda.AcquireNextFrame(timeoutMs: 200, out _);
             }
             return Readback(dda.Device, dda.Context, canvas, region: null);
         }

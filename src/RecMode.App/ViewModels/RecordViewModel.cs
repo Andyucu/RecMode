@@ -96,7 +96,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         }
 
         Formats = [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
-        FrameRates = [15, 30, 60, 120];
+        FrameRates = [10, 15, 20, 25, 30, 60, 120];
         _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mkv;
         _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 30;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);

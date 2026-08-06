@@ -16,11 +16,17 @@ internal static class CaptureSizing
     {
         int w = srcW, h = srcH;
 
+        // The H.264 level cap is on either dimension, not specifically width — h264_amf rejects a frame
+        // whose HEIGHT exceeds 4096 exactly the same way it rejects one whose width does. Checking width
+        // only meant a taller-than-wide source (two 4K monitors stacked under All Displays: 3840x4320; a
+        // portrait-rotated ultrawide: 1440x5120) passed this check, then failed to open the hardware encoder
+        // at all — TryStartAnyEncoder's fallback chain silently walked down to software x264, so the user got
+        // a CPU-cost downgrade with only the generic "encoder wouldn't start" warning, never told why.
         bool hardwareH264 = encoder.Codec == VideoCodec.H264 && encoder.IsHardware;
-        if (hardwareH264 && w > HardwareH264MaxWidth)
+        if (hardwareH264 && (w > HardwareH264MaxWidth || h > HardwareH264MaxWidth))
         {
-            double scale = HardwareH264MaxWidth / (double)w;
-            w = HardwareH264MaxWidth;
+            double scale = Math.Min(HardwareH264MaxWidth / (double)w, HardwareH264MaxWidth / (double)h);
+            w = (int)Math.Round(srcW * scale);
             h = (int)Math.Round(srcH * scale);
         }
 

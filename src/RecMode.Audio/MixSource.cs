@@ -73,6 +73,20 @@ internal sealed class MixSource : IDisposable
         _channels = f.Channels;
         _isFloat = f.Encoding == WaveFormatEncoding.IeeeFloat;
 
+        // Fail LOUDLY on a format neither branch of OnDataAvailable can actually decode. ToStandardWaveFormat
+        // returns the Extensible format *unchanged* when its SubFormat is neither PCM nor 32-bit IEEE float —
+        // in which case Encoding is Extensible, _isFloat is false, and the integer-PCM reader below would
+        // reinterpret whatever the real layout is as little-endian signed ints. That produces a technically
+        // valid, correctly-timed, completely inaudible stream: precisely the silent-audio failure this
+        // project spent two sessions chasing in July. Marking the source Faulted up front routes it into the
+        // pacer's existing 1 Hz fault check so the user gets a warning instead of a silent file.
+        if (f.Encoding is not (WaveFormatEncoding.IeeeFloat or WaveFormatEncoding.Pcm))
+        {
+            Log.Warning("Audio source reports an unsupported format ({Encoding}, {Bits}-bit, {Rate} Hz, {Channels}ch) — " +
+                "it cannot be decoded and would record as silence", f.Encoding, f.BitsPerSample, f.SampleRate, f.Channels);
+            Faulted = true;
+        }
+
         _buffer = new BufferedWaveProvider(WaveFormat.CreateIeeeFloatWaveFormat(f.SampleRate, f.Channels))
         {
             DiscardOnBufferOverflow = true,
@@ -193,12 +207,24 @@ internal sealed class MixSource : IDisposable
         }
     }
 
+    /// <summary>
+    /// Tears down the capture only. <b>Deliberately does not dispose <c>_buffer</c>/<c>_out</c>, and must not
+    /// start doing so</b> — <see cref="AudioMixer"/> reads its sources without a lock (a copy-on-write
+    /// snapshot), so a reader can legitimately still be inside <see cref="ReadMixed"/>, <see cref="Level"/> or
+    /// <see cref="ClearBuffer"/> on an instance another thread is disposing. Leaving the managed buffer and
+    /// sample-provider chain intact makes that safe: the worst outcome is reading silence from a source whose
+    /// capture has stopped. Disposing them here would turn every one of those into a use-after-dispose.
+    /// </summary>
     public void Dispose()
     {
         _capture.DataAvailable -= OnDataAvailable;
         _capture.RecordingStopped -= OnRecordingStopped;
         try { _capture.StopRecording(); } catch (Exception) { }
-        _capture.Dispose();
+        // Guarded like StopRecording above: NAudio's WasapiCapture.Dispose releases COM and can throw for a
+        // device removed mid-recording. Unguarded, that propagated out through AudioMixer.Stop into
+        // RecordingCoordinator.Finalize, skipping the safe-recording MKV->MP4 remux and the library-index
+        // write — so a perfectly good recording was left as a .recording.mkv with no Library entry.
+        try { _capture.Dispose(); } catch (Exception ex) { Log.Warning(ex, "Disposing an audio capture threw; ignoring"); }
     }
 
     /// <summary>Reads one little-endian signed-integer PCM sample (8/16/24/32-bit) starting at

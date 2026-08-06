@@ -87,6 +87,15 @@ public sealed class RecordingCoordinator : IDisposable
     private List<EncoderInfo>? _encoderChain;
     private FfmpegJob? _jobTemplate;
 
+    // Set by RotateSegment right after a segment finalizes successfully, read (and cleared) by Finalize()
+    // when _session is null. Without this, pressing Stop while a rotation's finalize+remux+library-write is
+    // in flight (tens of seconds for a multi-GB segment) reported a fully successful recording as FAILED:
+    // RotateSegment's own "_stopRequested" early-return leaves _session null by design (starting a fresh
+    // encoder for a segment about to be abandoned would be pointless), but Finalize() then had no way to tell
+    // "nothing to finalize because we just legitimately rotated it away" apart from "nothing to finalize
+    // because startup never got this far" — both produced the same hardcoded RecordingResult(false, -1, "", 0).
+    private RecordingResult? _lastRotatedSegmentResult;
+
     // Mid-stream hw→sw Degraded fallback (§3.6 / Phase 3 tail): the encoder actually in use for the current
     // segment, and whether a downgrade has already been attempted this recording (once per recording).
     private EncoderInfo? _activeEncoder;
@@ -286,6 +295,7 @@ public sealed class RecordingCoordinator : IDisposable
             _stopRequested = false;
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
+            _currentSegmentStartedAt = TimeSpan.Zero;
             _targetFps = fps;
             _encoderBehind = false;
             _pacer = new Thread(() => PaceLoop(fps)) { IsBackground = true, Name = "recmode-pacer" };
@@ -726,6 +736,7 @@ public sealed class RecordingCoordinator : IDisposable
         _outputDir = outputDir;
         _baseFileName = fileName;
         _segmentIndex = 1;
+        _lastRotatedSegmentResult = null; // defensive; Finalize() already clears it on every normal path
         _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
         _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
         _downgradeAttempted = false;
@@ -809,7 +820,8 @@ public sealed class RecordingCoordinator : IDisposable
 
         _mixer = _mixerFactory();
         AudioMixerStartResult startResult = _mixer.Start(captureSystem, _settings.Current.MicrophoneEnabled, perAppPid,
-            systemDeviceIds: _settings.Current.SystemAudioDeviceIds);
+            systemDeviceIds: _settings.Current.SystemAudioDeviceIds,
+            captureCommsRoleAudio: _settings.Current.CaptureCommunicationsRoleAudio);
         _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
         _mixer.MicGain = _settings.Current.MicVolume / 100f;
 
@@ -989,6 +1001,13 @@ public sealed class RecordingCoordinator : IDisposable
     /// as the mic test.</summary>
     public void SetAudioGains(float systemGain, float micGain, bool systemMuted = false, bool micMuted = false)
     {
+        // No lock against Finalize() nulling _mixer concurrently, unlike _capture's _captureAccessLock —
+        // deliberately, not an oversight. Finalize() only disposes _mixer after joining the audio-pump thread,
+        // and AudioMixer's own members (post-0.9.111 copy-on-write rewrite) are safe to call on an
+        // already-stopped instance: Gain/Muted are plain properties on MixSource objects whose managed state
+        // outlives Dispose() by design (see MixSource.Dispose's doc comment), and SetMicEnabled no-ops once
+        // IsRunning is false. Reading the `_mixer` field itself a moment before it's nulled is a benign,
+        // harmless race — worst case, these four writes land on a mixer about to be thrown away.
         if (_mixer is { } mixer)
         {
             mixer.SystemGain = systemGain;
@@ -1201,6 +1220,8 @@ public sealed class RecordingCoordinator : IDisposable
         long lastWindowCheck = Stopwatch.GetTimestamp();
         long lastStaleCaptureCheck = Stopwatch.GetTimestamp();
         long captureStartedAt = lastStaleCaptureCheck;
+        long lastCapturedFrameCount = _capture.CapturedFrameCount;
+        long lastCapturedFrameChangeAt = captureStartedAt;
         long lastAudioFaultCheck = Stopwatch.GetTimestamp();
         bool systemAudioFaultWarned = false;
         bool micAudioFaultWarned = false;
@@ -1351,17 +1372,30 @@ public sealed class RecordingCoordinator : IDisposable
                 // Stale-capture watchdog: defense-in-depth alongside OnCaptureFaulted. Faulted covers the
                 // engine's own known unrecoverable-error and window-closed paths, but if the capture engine
                 // ever stops producing new frames without raising it (a case Faulted doesn't cover), PaceLoop
-                // would otherwise duplicate the same last frame forever with nothing to catch it —
-                // CapturedFrameCount exists on every engine specifically so something reads it. 10 s with zero
-                // new frames captured is well past any legitimate stall (a black/static desktop still
-                // produces new — merely unchanged-looking — frames; this checks the count, not the content).
+                // would otherwise duplicate the same last frame forever for the rest of the recording with
+                // nothing to catch it — a full-length file that's frozen from that instant on, with no
+                // warning to the user.
+                //
+                // This used to re-check the exact same "framesWritten == 0" predicate the per-iteration
+                // bootstrap check above already covers — which can never fire here, since the bootstrap check
+                // always trips (and breaks the loop) first. That silently narrowed this watchdog down to
+                // "detect failure to deliver the FIRST frame" only, losing all coverage for capture dying
+                // partway through an otherwise-healthy recording — exactly the case this comment used to
+                // describe covering. CapturedFrameCount (real captures, independent of framesWritten's
+                // CFR-duplicated count) is the right signal instead: WGC is change-driven, so it legitimately
+                // stays flat on a static desktop, which is why the threshold is generous (60 s, not 10 s) —
+                // long enough that a real static desktop essentially never trips it, short enough to still
+                // catch a genuinely dead capture within a reasonable time.
                 if (now - lastStaleCaptureCheck >= Stopwatch.Frequency) // ~1 Hz
                 {
                     lastStaleCaptureCheck = now;
-                    // WGC is change-driven: an unchanged/static desktop legitimately emits no additional
-                    // frames after the first one. Only treat failure to deliver the initial frame as stale;
-                    // subsequent liveness failures are reported by the engine Faulted event.
-                    if (framesWritten == 0 && now - captureStartedAt > 10 * Stopwatch.Frequency)
+                    long capturedNow = _capture.CapturedFrameCount;
+                    if (capturedNow != lastCapturedFrameCount)
+                    {
+                        lastCapturedFrameCount = capturedNow;
+                        lastCapturedFrameChangeAt = now;
+                    }
+                    else if (framesWritten > 0 && now - lastCapturedFrameChangeAt > 60 * Stopwatch.Frequency)
                     {
                         _errors.Warn("record.capture-stalled",
                             "The screen capture stopped producing new frames — the recording was ended.",
@@ -1526,8 +1560,18 @@ public sealed class RecordingCoordinator : IDisposable
         }
 
         string stderr = _session?.StandardError ?? "";
+        // _lastRotatedSegmentResult covers the "Stop() raced a rotation's own finalize" case — see its doc
+        // comment. Cleared here either way so a stale successful rotation from a PREVIOUS recording can never
+        // leak into a later one's genuine "nothing to finalize" failure. usedStashedResult gates the
+        // remux/library-add blocks below: when true, RotateSegment already did BOTH for this exact file
+        // (_recordingPath/_finalPath still point at that same already-finalized, already-remuxed segment,
+        // since the early return happens before they're advanced to the next one) — redoing either would try
+        // to remux a file RotateSegment already deleted, and would double-add the library entry.
+        bool usedStashedResult = _session is null && _lastRotatedSegmentResult is not null;
         RecordingResult result = _session?.StopAndFinalize(TimeSpan.FromSeconds(20))
+            ?? _lastRotatedSegmentResult
             ?? new RecordingResult(false, -1, "", 0);
+        _lastRotatedSegmentResult = null;
 
         if (!result.Success && stderr.Length > 0)
         {
@@ -1562,8 +1606,9 @@ public sealed class RecordingCoordinator : IDisposable
         _originalTarget = null;
         _pendingRetarget = null;
 
-        // Safe recording: remux the crash-safe MKV to MP4 without re-encoding.
-        if (result.Success && _safeRemux)
+        // Safe recording: remux the crash-safe MKV to MP4 without re-encoding. Skipped when usedStashedResult
+        // — RotateSegment already remuxed (and library-indexed) this exact file before stashing it.
+        if (!usedStashedResult && result.Success && _safeRemux)
         {
             if (Remux(_recordingPath, _finalPath))
             {
@@ -1579,7 +1624,7 @@ public sealed class RecordingCoordinator : IDisposable
             }
         }
 
-        if (result.Success && result.OutputPath.Length > 0)
+        if (!usedStashedResult && result.Success && result.OutputPath.Length > 0)
         {
             double duration = _metaFps > 0 ? (double)result.FramesWritten / _metaFps : 0;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
@@ -1711,6 +1756,10 @@ public sealed class RecordingCoordinator : IDisposable
                 Path.GetFileName(prevFinalPath), _metaSource, _metaCodec, _metaContainer,
                 _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
                 _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
+
+            // Stash in case a concurrent Stop() bails this method out at the _stopRequested check right
+            // below — see the field's own doc comment.
+            _lastRotatedSegmentResult = segResult with { OutputPath = prevFinalPath };
         }
 
         // Stop() (UI thread/tray/hotkey) can set this concurrently while the finalize/remux/library-write
@@ -1729,6 +1778,13 @@ public sealed class RecordingCoordinator : IDisposable
 
         _segmentIndex++;
         (_recordingPath, _finalPath) = BuildSegmentPaths(_segmentIndex);
+        // The new segment's file starts at 0 bytes and its own session starts at 0 FramesWritten — reset the
+        // throughput sampler's baseline and the fps calc's segment-start anchor together, or the very next
+        // RaiseProgress tick subtracts the PREVIOUS (now-larger) segment's size from the new (near-empty)
+        // one's, producing a large negative Mbps reading for one tick after every rotation.
+        _lastSizeBytes = 0;
+        _lastSizeTicks = 0;
+        _currentSegmentStartedAt = segmentStartedAt;
 
         var job = _jobTemplate! with
         {
@@ -1823,6 +1879,14 @@ public sealed class RecordingCoordinator : IDisposable
         {
             EncoderInfo enc = chain[i];
             var session = new FfmpegRecordingSession(_ffmpegPath!);
+            // Ownership stays here until the session is successfully returned; the finally below disposes it
+            // otherwise. FfmpegRecordingSession.Start creates BOTH named pipes before Process.Start, so ANY
+            // throw past that point owns two live kernel pipe handles (and possibly a running ffmpeg child).
+            // The catch filter below only covers encoder-shaped failures, so exceptions outside it — e.g.
+            // Win32Exception from Process.Start when the binary is missing/AV-quarantined, or
+            // UnauthorizedAccessException from NamedPipeServerStreamAcl.Create — used to escape with the
+            // session never disposed, leaking those handles until finalization.
+            bool keepSession = false;
             try
             {
                 // Fresh pipe names per candidate, not just per rotation: a prior candidate's session that
@@ -1843,12 +1907,24 @@ public sealed class RecordingCoordinator : IDisposable
                         $"Using {enc.DisplayName} — the selected encoder wouldn't start.");
                 }
                 _activeEncoder = enc;
+                keepSession = true;
                 return session;
             }
             catch (Exception ex) when (ex is EncoderStartException or InvalidOperationException or IOException)
             {
+                // Encoder-shaped failure: this candidate didn't work, try the next one. Anything OUTSIDE this
+                // filter is deliberately left to propagate to Start()'s outer handler — a missing/blocked
+                // ffmpeg binary is not encoder-specific, so walking the rest of the chain would just retry a
+                // guaranteed failure and report the vaguer "no encoder could start" instead of the real
+                // cause. Only the leak needed fixing here, not the propagation (see the finally).
                 Log.Warning(ex, "Encoder {Enc} failed to start; trying next", enc.FfmpegId);
-                session.Dispose();
+            }
+            finally
+            {
+                if (!keepSession)
+                {
+                    session.Dispose();
+                }
             }
         }
 
@@ -1893,6 +1969,12 @@ public sealed class RecordingCoordinator : IDisposable
 
     private long _lastSizeBytes;
     private long _lastSizeTicks;
+    // Elapsed-at-start of the CURRENT segment's file — TimeSpan.Zero for the first segment, reset in
+    // RotateSegment for every one after. RaiseProgress's fps figure used to divide the new segment's own
+    // FramesWritten (which restarts at 0 after every auto-split rotation) by the WHOLE recording's
+    // cumulative Elapsed (which does not reset per segment) — so displayed fps collapsed toward zero for the
+    // rest of a long auto-split recording after the first rotation, even though the encoder was running fine.
+    private TimeSpan _currentSegmentStartedAt = TimeSpan.Zero;
     private int _targetFps;
     private volatile bool _encoderBehind; // health: the encoder can't keep up with real time
     private string? _outputRoot;          // drive root for the mid-recording disk-space guard
@@ -1908,9 +1990,10 @@ public sealed class RecordingCoordinator : IDisposable
         // JIT/another thread from observing a different value on the second read. Snapshotting into `session`
         // once makes the null-check and the use refer to the same object no matter what other threads do.
         FfmpegRecordingSession? session = _session;
-        double fps = session is null || _stateMachine.Elapsed.TotalSeconds < 0.1
+        double segmentElapsedSeconds = (_stateMachine.Elapsed - _currentSegmentStartedAt).TotalSeconds;
+        double fps = session is null || segmentElapsedSeconds < 0.1
             ? 0
-            : session.FramesWritten / _stateMachine.Elapsed.TotalSeconds;
+            : session.FramesWritten / segmentElapsedSeconds;
 
         long size = 0;
         double mbps = 0;
@@ -1925,7 +2008,9 @@ public sealed class RecordingCoordinator : IDisposable
                     double dt = (now - _lastSizeTicks) / (double)Stopwatch.Frequency;
                     if (dt > 0)
                     {
-                        mbps = (size - _lastSizeBytes) * 8 / dt / 1_000_000.0;
+                        // Clamped to non-negative as a last-resort safety net alongside the reset above — a
+                        // real file size never legitimately shrinks between samples.
+                        mbps = Math.Max(0, (size - _lastSizeBytes) * 8 / dt / 1_000_000.0);
                     }
                 }
                 _lastSizeBytes = size;

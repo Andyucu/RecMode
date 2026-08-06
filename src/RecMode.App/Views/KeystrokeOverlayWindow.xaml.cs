@@ -26,9 +26,10 @@ public partial class KeystrokeOverlayWindow : Window
         }
         else
         {
-            IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-            MonitorInfo mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-            _bounds = new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+            // See ClickRippleOverlay — null means no attached display; degrade to an invisible overlay
+            // instead of throwing out of a UI-thread constructor.
+            MonitorInfo? mon = CaptureCapabilities.PrimaryOrFirstMonitor();
+            _bounds = mon is null ? default : new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
         }
 
         SourceInitialized += OnSourceInitialized;

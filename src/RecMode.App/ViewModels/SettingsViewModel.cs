@@ -42,6 +42,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private AudioCodec _selectedAudioCodec;
     private int _selectedAudioBitrate;
     private int _audioSyncOffsetMs;
+    private bool _captureCommunicationsRoleAudio;
     private string _outputFolder;
     private string _filenamePattern;
     private bool _countdownEnabled;
@@ -80,6 +81,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
         _audioSyncOffsetMs = Math.Clamp(s.AudioSyncOffsetMs, -500, 500);
+        _captureCommunicationsRoleAudio = s.CaptureCommunicationsRoleAudio;
         _outputFolder = paths.ResolveUserPath(s.OutputFolder) ?? paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
@@ -499,6 +501,16 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         set => Persist(ref _autoZoomEnabled, value, v => _settings.Current.AutoZoomEnabled = v);
     }
 
+    /// <summary>Gates <c>AudioMixer.StartCommsLoopbackIfDifferent</c> — see
+    /// <see cref="RecMode.Core.Settings.RecModeSettings.CaptureCommunicationsRoleAudio"/>'s own doc comment
+    /// for why this defaults on (catching Teams/Zoom audio) despite a real echo risk on some setups; this is
+    /// the toggle a user hits if they need the opt-out.</summary>
+    public bool CaptureCommunicationsRoleAudio
+    {
+        get => _captureCommunicationsRoleAudio;
+        set => Persist(ref _captureCommunicationsRoleAudio, value, v => _settings.Current.CaptureCommunicationsRoleAudio = v);
+    }
+
     /// <summary>Adds a generous -maxrate/-bufsize ceiling alongside CRF/CQ encoding on encoders whose
     /// rate-control mode supports it, to guard against surprise multi-GB files on unusually complex content.</summary>
     public bool BitrateGuardrailEnabled
@@ -618,6 +630,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _selectedAudioCodec = s.AudioCodec;
         _selectedAudioBitrate = s.AudioBitrateKbps;
         _audioSyncOffsetMs = Math.Clamp(s.AudioSyncOffsetMs, -500, 500);
+        _captureCommunicationsRoleAudio = s.CaptureCommunicationsRoleAudio;
         _outputFolder = _paths.ResolveUserPath(s.OutputFolder) ?? _paths.RecordingsDirectory;
         _filenamePattern = s.FilenamePattern;
         _countdownEnabled = s.CountdownSeconds > 0;
@@ -638,7 +651,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _enableCrashMinidumps = s.EnableCrashMinidumps;
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
             nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate),
-            nameof(AudioSyncOffsetMs), nameof(AudioSyncOffsetLabelText), nameof(AudioSyncOffsetDescription), nameof(OutputFolder),
+            nameof(AudioSyncOffsetMs), nameof(AudioSyncOffsetLabelText), nameof(AudioSyncOffsetDescription), nameof(CaptureCommunicationsRoleAudio), nameof(OutputFolder),
             nameof(FilenamePattern), nameof(FilenamePatternPreview), nameof(CountdownEnabled), nameof(CaptureCursor),
             nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),

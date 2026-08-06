@@ -43,10 +43,10 @@ public partial class AnnotationOverlay : Window
         }
         else
         {
-            // Nothing being recorded (or its bounds couldn't be resolved) — fall back to the primary monitor.
-            IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-            MonitorInfo mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-            _bounds = new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+            // Nothing being recorded (or its bounds couldn't be resolved) — fall back to the primary monitor,
+            // or to an empty rect when the session has no attached display at all (see ClickRippleOverlay).
+            MonitorInfo? mon = CaptureCapabilities.PrimaryOrFirstMonitor();
+            _bounds = mon is null ? default : new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
         }
 
         Color accent = TryFindResource("AccentColor") is Color c ? c : Colors.DeepSkyBlue;

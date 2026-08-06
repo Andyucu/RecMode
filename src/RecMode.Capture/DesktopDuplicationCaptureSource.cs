@@ -214,8 +214,16 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
     /// An output that currently has no live duplication (never acquired one, or just lost access) is skipped
     /// for this pull — its region of the canvas simply keeps its last composited pixels, same as a monitor
     /// with no new frame this cycle.</summary>
-    public ID3D11Texture2D AcquireNextFrame(int timeoutMs)
+    /// <param name="changed">True if at least one output actually copied new pixels into the canvas this
+    /// pull. False means every output either had nothing new (DXGI_ERROR_WAIT_TIMEOUT) or has no live
+    /// duplication right now — the canvas is byte-identical to what it was after the last call, so callers
+    /// doing GPU work off the result (a VideoProcessorBlt + staging readback, ~7 MB/frame at 4096x1152) can
+    /// skip it entirely on a static desktop instead of reprocessing pixels that didn't move. This used to be
+    /// unreported, so the pump loop's only throttle was time-based — a fully idle All-Displays recording
+    /// still paid the full convert+readback cost at the target fps regardless.</param>
+    public ID3D11Texture2D AcquireNextFrame(int timeoutMs, out bool changed)
     {
+        changed = false;
         bool isFirst = true;
         foreach (OutputState state in _outputs)
         {
@@ -271,6 +279,7 @@ internal sealed class DesktopDuplicationCaptureSource : IDisposable
                 using (ID3D11Texture2D tex = resource.QueryInterface<ID3D11Texture2D>())
                 {
                     Context.CopySubresourceRegion(_canvas, 0, (uint)state.OffsetX, (uint)state.OffsetY, 0, tex, 0, null);
+                    changed = true;
                 }
             }
             finally { state.Duplication.ReleaseFrame(); }

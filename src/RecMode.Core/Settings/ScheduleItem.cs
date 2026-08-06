@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace RecMode.Core.Settings;
 
 /// <summary>How often a scheduled recording repeats.</summary>
@@ -46,4 +49,16 @@ public sealed class ScheduleItem
     /// <summary>Local occurrence identity (yyyy-MM-dd|HH:mm), preventing a daily schedule firing twice
     /// during the repeated hour when daylight saving time ends.</summary>
     public string? LastFiredOccurrence { get; set; }
+
+    /// <summary>
+    /// Mirrors <see cref="RecModeSettings.UnknownProperties"/> at this nesting level — see that property's
+    /// own doc comment for the full "why". <c>RecModeSettings</c> round-trips properties a NEWER build added
+    /// that this build doesn't know about, but that guarantee stopped at the top level: a field added to
+    /// ScheduleItem specifically (not RecModeSettings itself) was silently dropped the moment an older
+    /// portable copy ran once against the same shared Data\ folder and saved — the exact class of data loss
+    /// the top-level fix exists to prevent, just one level down, for every schedule instead of the settings
+    /// document as a whole.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownProperties { get; set; }
 }

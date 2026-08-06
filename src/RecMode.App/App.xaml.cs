@@ -95,7 +95,27 @@ public partial class App : Application
             return;
         }
 
-        paths.EnsureDirectories();
+        // Guarded because this runs BEFORE RegisterGlobalExceptionHandlers (which needs the DI host, built
+// further down), so anything escaping here is a silent death: no crash log, no reporter, no message —
+        // the exact failure class build.ps1's launch smoke test was added to catch. The writability probe
+        // above only covers DataDirectory; in an installed (non-portable) build RecordingsDirectory defaults
+        // under %USERPROFILE%\Videos, which folder redirection can point at an unreachable network share.
+        try
+        {
+            paths.EnsureDirectories();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            MessageBox.Show(
+                $"RecMode can't create its folders:\n{ex.Message}\n\n" +
+                "This usually means the recordings or data folder points somewhere unavailable " +
+                "(for example a disconnected network drive). Check the output folder location and try again.",
+                "RecMode — folder unavailable",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
 
         // §3.5/security: a portable install extracted directly off a drive root (rather than inside the
         // user's own profile) inherits Windows' default ACL for that location, which typically grants
@@ -295,11 +315,22 @@ public partial class App : Application
             var errors = _host.Services.GetRequiredService<RecMode.Core.Errors.IErrorReporter>();
             _ = System.Threading.Tasks.Task.Run(async () =>
             {
-                Services.UpdateCheckResult result = await updateChecker.CheckAsync();
-                if (result.Status == Services.UpdateCheckStatus.UpdateAvailable)
+                // CheckAsync's own catch filter is narrow (Http/TaskCanceled/IO + Velopack's
+                // NotInstalledException), so anything else Velopack throws would escape into this
+                // fire-and-forget task and surface only as an unobserved-task exception at some later GC.
+                // Settings' own "Check now" path already catches broadly; this is the inconsistent one.
+                try
                 {
-                    errors.Warn("app.update-available", $"RecMode {result.Version} is available.",
-                        "Open Settings to update.");
+                    Services.UpdateCheckResult result = await updateChecker.CheckAsync();
+                    if (result.Status == Services.UpdateCheckStatus.UpdateAvailable)
+                    {
+                        errors.Warn("app.update-available", $"RecMode {result.Version} is available.",
+                            "Open Settings to update.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Launch-time update check failed");
                 }
             });
         }

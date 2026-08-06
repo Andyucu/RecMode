@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace RecMode.Core.Settings;
 
 /// <summary>
@@ -24,6 +27,15 @@ public sealed class RecordingProfile
     /// with this false — the Record screen's profile list shows the override in the built-in's slot instead of
     /// the shipped defaults; deleting that override falls back to the shipped defaults again.</summary>
     public bool IsBuiltIn { get; set; }
+
+    /// <summary>
+    /// Mirrors <see cref="RecModeSettings.UnknownProperties"/> at this nesting level — see that property's
+    /// own doc comment for the full "why". A field added to <c>RecordingProfile</c> specifically by a newer
+    /// build was previously silently dropped the moment an older portable copy round-tripped the same shared
+    /// settings file, the same class of data loss the top-level fix exists to prevent, just one level down.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownProperties { get; set; }
 
     public override string ToString() => Name;
 }

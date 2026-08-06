@@ -20,6 +20,8 @@ public partial class RecordingToolbarWindow : Window
     private readonly IOsCapabilities _os;
     private readonly ISettingsService _settings;
     private readonly bool _excludeFromCapture;
+    private bool _syncingPinState;
+    private bool _initialPositionApplied;
 
     public RecordingToolbarWindow(object viewModel, IOsCapabilities os, ISettingsService settings, bool excludeFromCapture = true)
     {
@@ -43,19 +45,36 @@ public partial class RecordingToolbarWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         RecModeSettings s = _settings.Current;
-        PinToggle.IsChecked = s.ToolbarPinned;
 
         if (s.ToolbarPinned && s.ToolbarLeft.HasValue && s.ToolbarTop.HasValue)
         {
             Left = s.ToolbarLeft.Value;
             Top = s.ToolbarTop.Value;
-            return;
+        }
+        else
+        {
+            // Bottom-centre of the primary work area (DIP units — above the taskbar).
+            Rect work = SystemParameters.WorkArea;
+            Left = work.Left + (work.Width - ActualWidth) / 2;
+            Top = work.Bottom - ActualHeight - 28;
         }
 
-        // Bottom-centre of the primary work area (DIP units — above the taskbar).
-        Rect work = SystemParameters.WorkArea;
-        Left = work.Left + (work.Width - ActualWidth) / 2;
-        Top = work.Bottom - ActualHeight - 28;
+        // Sync the Pin button's visual checked state from settings *after* positioning, and guarded — setting
+        // IsChecked fires OnPinToggled synchronously, which (for a real user click) captures the window's
+        // *current* Left/Top as the newly-pinned spot. Doing that here, before the restore above, meant every
+        // launch with the pin already on immediately overwrote the real saved position with whatever arbitrary
+        // spot the window happened to be created at, discarding it — which is exactly why the pin looked like
+        // it was "randomly" moving instead of holding still.
+        _syncingPinState = true;
+        PinToggle.IsChecked = s.ToolbarPinned;
+        _syncingPinState = false;
+
+        // Only start honoring/persisting LocationChanged after this initial placement is done — the HWND can
+        // receive an OS-assigned default position (and fire LocationChanged for it) as soon as it's created,
+        // which happens before Loaded runs. Without this guard, that transient pre-placement position could
+        // race the restore above and get saved over the real pinned spot, the same corruption shape as the
+        // PinToggle.IsChecked issue fixed above, just via a different trigger.
+        _initialPositionApplied = true;
     }
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -76,7 +95,7 @@ public partial class RecordingToolbarWindow : Window
 
     private void OnLocationChanged(object? sender, EventArgs e)
     {
-        if (!_settings.Current.ToolbarPinned)
+        if (!_initialPositionApplied || !_settings.Current.ToolbarPinned)
         {
             // Not pinned: the window still moves live for this session, but nothing is persisted — the next
             // recording resets to the default position, per the "predictable by default" behavior above.
@@ -90,6 +109,13 @@ public partial class RecordingToolbarWindow : Window
 
     private void OnPinToggled(object sender, RoutedEventArgs e)
     {
+        if (_syncingPinState)
+        {
+            // A programmatic sync from OnLoaded, not a real user click — the position side effect below is
+            // only correct for an actual toggle.
+            return;
+        }
+
         bool pinned = ((ToggleButton)sender).IsChecked == true;
         _settings.Current.ToolbarPinned = pinned;
         if (pinned)

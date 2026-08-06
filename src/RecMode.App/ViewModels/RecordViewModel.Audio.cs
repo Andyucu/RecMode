@@ -120,6 +120,32 @@ public sealed partial class RecordViewModel
         }
     }
 
+    /// <summary>
+    /// Updates the mic toggle's UI + persisted state WITHOUT propagating to a recording already in progress —
+    /// the audio equivalent of <c>SetSourceKindQuietly</c>, and needed for the same reason: the normal setter
+    /// has interactive side effects that are wrong when the change isn't a user gesture.
+    /// <para>
+    /// Used by the schedule-bound-profile restore. That restore deliberately runs once the coordinator has
+    /// captured its options, to put the user's visible defaults back so an unattended schedule doesn't
+    /// silently rewrite them — but by then the recording HAS started, so going through the normal setter hit
+    /// its live <c>_coordinator.SetMicEnabled</c> path and immediately undid the profile's own microphone
+    /// choice on the in-progress recording. A schedule bound to a mic-enabled profile recorded ~0 s of
+    /// microphone; the mirror case leaked mic audio into a recording whose profile had it off.
+    /// </para>
+    /// </summary>
+    internal void SetMicEnabledQuietly(bool value)
+    {
+        if (_micEnabled == value)
+        {
+            return;
+        }
+
+        _micEnabled = value;
+        _settings.Current.MicrophoneEnabled = value;
+        OnPropertyChanged(nameof(MicEnabled));
+        ToggleMicMuteCommand.NotifyCanExecuteChanged();
+    }
+
     /// <summary>RMS level 0..1 for the meter bars.</summary>
     public double SystemMeter { get => _systemMeter; private set => SetProperty(ref _systemMeter, value); }
     public double MicMeter { get => _micMeter; private set => SetProperty(ref _micMeter, value); }
@@ -244,7 +270,8 @@ public sealed partial class RecordViewModel
             // client(s) were never disposed (a leak repeated on every nav to Record / audio-toggle flip).
             _meterMixer = mixer;
             mixer.Start(SystemAudioEnabled, MicEnabled, PerAppAudioTargetPid, meteringOnly: true,
-                systemDeviceIds: _settings.Current.SystemAudioDeviceIds);
+                systemDeviceIds: _settings.Current.SystemAudioDeviceIds,
+                captureCommsRoleAudio: _settings.Current.CaptureCommunicationsRoleAudio);
             mixer.SystemGain = (float)(SystemVolume / 100.0);
             mixer.MicGain = (float)(MicVolume / 100.0);
         }

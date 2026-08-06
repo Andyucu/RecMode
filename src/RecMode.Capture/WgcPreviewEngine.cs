@@ -76,6 +76,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         }
 
         WgcSessionFactory.Session session = WgcSessionFactory.Start(target, captureCursor, OnFrameArrived);
+        BgraScaler? scaler = null;
         try
         {
             _device = session.Device; _context = session.Context; _framePool = session.FramePool; _session = session.CaptureSession;
@@ -83,18 +84,41 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             int srcW = Math.Max(2, session.Item.Size.Width), srcH = Math.Max(2, session.Item.Size.Height);
             int effectiveW = target.Region?.Width ?? srcW, effectiveH = target.Region?.Height ?? srcH;
             (int dstW, int dstH) = FitPreview(Math.Max(2, effectiveW), Math.Max(2, effectiveH));
-            _scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
-            _scaler.SetWebcamOverlay(_webcamSource, _webcamRect); _scaler.SetBrightness(_brightness);
-            Width = dstW; Height = dstH; Stride = _scaler.Stride; ByteSize = _scaler.ByteSize;
-            _latest = new byte[ByteSize]; _scratch = new byte[ByteSize]; _hasLatest = false; IsRunning = true;
+
+            // Built into locals and published atomically under _disposeGuard with _scaler LAST — see the
+            // identical fix and full reasoning in WgcCaptureEngine.Start. StartCapture() has already been
+            // called by the factory, so frames dispatch on threadpool threads while this runs; assigning
+            // _scaler before allocating _scratch let a callback pass the empty `[]` initializer into
+            // BgraScaler.ReadbackTightlyPacked, whose `fixed` yields a null pointer -> access violation ->
+            // process death. This path matters more than the recording one: preview restarts on every source
+            // switch, nav-to-Record, minimize/restore and the 400 ms resize debounce.
+            scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
+            scaler.SetWebcamOverlay(_webcamSource, _webcamRect); scaler.SetBrightness(_brightness);
+            byte[] latest = new byte[scaler.ByteSize]; byte[] scratch = new byte[scaler.ByteSize];
+
+            lock (_disposeGuard)
+            {
+                Width = dstW; Height = dstH; Stride = scaler.Stride; ByteSize = scaler.ByteSize;
+                _latest = latest; _scratch = scratch; _hasLatest = false;
+                _scaler = scaler;
+            }
+
+            IsRunning = true;
             _rateLimiter.SetTargetFps(TargetFps);
         }
         catch
         {
-            if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
-            if (_item is not null) _item.Closed -= OnCaptureItemClosed;
-            _session?.Dispose(); _framePool?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
-            _session = null; _framePool = null; _item = null; _scaler = null; _context = null; _device = null;
+            // Same guard as the success path — this runs while frames are actively flowing, so releasing
+            // these COM objects unguarded is exactly the race _disposeGuard exists to prevent.
+            lock (_disposeGuard)
+            {
+                if (!ReferenceEquals(_scaler, scaler)) scaler?.Dispose();
+                if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
+                if (_item is not null) _item.Closed -= OnCaptureItemClosed;
+                _session?.Dispose(); _framePool?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
+                _session = null; _framePool = null; _item = null; _scaler = null; _context = null; _device = null;
+            }
+
             throw;
         }
     }
@@ -178,15 +202,21 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         BgraScaler? scaler = _scaler;
         ID3D11DeviceContext? context = _context;
         ID3D11Device? device = _device;
+        // See WgcCaptureEngine.DdaPumpLoop's identical fix — always Scale the first successful pull to seed
+        // _latest, skip every unchanged one after that. Matters more here than on the recording path: preview
+        // polls at up to 60Hz (timeoutMs:16) any time the Record screen is open, not just while recording.
+        bool everScaled = false;
         try
         {
             while (!_ddaStopping)
             {
-                ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16);
+                ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16, out bool changed);
 
+                if (!changed && everScaled) continue;
                 if (!_rateLimiter.ShouldAccept(System.Diagnostics.Stopwatch.GetTimestamp())) continue;
 
                 scaler!.Scale(canvas, _scratch);
+                everScaled = true;
                 lock (_sync) { (_scratch, _latest) = (_latest, _scratch); _hasLatest = true; }
                 FrameAvailable?.Invoke();
             }
@@ -244,9 +274,10 @@ public sealed class WgcPreviewEngine : IPreviewEngine
                 _framePool.FrameArrived -= OnFrameArrived;
             }
 
-            // Barrier against an OnFrameArrived call already dispatched when the unsubscribe above took effect —
-            // it blocks here until that callback finishes its GPU work, so the disposals below can't pull the
-            // scaler/context/device out from under it. Same mechanism as WgcCaptureEngine.Stop().
+            // First-pass drain of an OnFrameArrived call already dispatched when the unsubscribe above took
+            // effect. Not sufficient on its own (a callback committed just before the unsubscribe can still
+            // acquire the guard after this releases) — which is why the disposal itself is inside
+            // _disposeGuard below. Same mechanism, and same reasoning, as WgcCaptureEngine.Stop().
             lock (_disposeGuard) { }
 
             _ddaStopping = true;
@@ -260,22 +291,29 @@ public sealed class WgcPreviewEngine : IPreviewEngine
                 Log.Warning("The preview desktop-duplication thread did not stop within 5 seconds; its resources will be released once it does");
             }
 
-            _session?.Dispose();
-            _framePool?.Dispose();
-            if (!wasDda)
+            // Release + null under the guard, so a straggler callback blocks and then sees a null _scaler
+            // rather than racing the COM release. (The DDA wait above stays outside it — the duplication
+            // pump doesn't take this lock, and holding it for up to 5 s would stall frame callbacks for no
+            // benefit.)
+            lock (_disposeGuard)
             {
-                _ddaSource?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
+                _session?.Dispose();
+                _framePool?.Dispose();
+                if (!wasDda)
+                {
+                    _ddaSource?.Dispose(); _scaler?.Dispose(); _context?.Dispose(); _device?.Dispose();
+                }
+                if (_item is not null) _item.Closed -= OnCaptureItemClosed;
+                _session = null;
+                _item = null;
+                _framePool = null;
+                _ddaSource = null;
+                _ddaThread = null;
+                _scaler = null;
+                _context = null;
+                _device = null;
+                _hasLatest = false;
             }
-            if (_item is not null) _item.Closed -= OnCaptureItemClosed;
-            _session = null;
-            _item = null;
-            _framePool = null;
-            _ddaSource = null;
-            _ddaThread = null;
-            _scaler = null;
-            _context = null;
-            _device = null;
-            _hasLatest = false;
         }
     }
 

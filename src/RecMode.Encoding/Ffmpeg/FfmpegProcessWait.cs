@@ -82,7 +82,11 @@ internal static class FfmpegProcessWait
             }
             else if (sinceProgress.Elapsed > stallTimeout)
             {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                // Broad by design: the process is being abandoned either way, so this is best-effort cleanup.
+                // Process.Kill also throws Win32Exception (access denied, or the process exiting concurrently
+                // so the handle op fails) — which used to escape all the way out to Finalize() and turn a
+                // merely-stalled ffmpeg into a Fatal "recording couldn't be finalized".
+                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
                 process.WaitForExit(2000);
                 exitCode = -1;
                 return false;
@@ -92,7 +96,11 @@ internal static class FfmpegProcessWait
                 TimeSpan.FromSeconds(maxSizeSeen / (1024.0 * 1024 * 1024) * AbsoluteCeilingSecondsPerGiB);
             if (overall.Elapsed > ceiling)
             {
-                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                // Broad by design: the process is being abandoned either way, so this is best-effort cleanup.
+                // Process.Kill also throws Win32Exception (access denied, or the process exiting concurrently
+                // so the handle op fails) — which used to escape all the way out to Finalize() and turn a
+                // merely-stalled ffmpeg into a Fatal "recording couldn't be finalized".
+                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
                 process.WaitForExit(2000);
                 exitCode = -1;
                 return false;

@@ -20,7 +20,7 @@ public static class ScheduleEvaluator
             return false;
         }
 
-        if (!TimeOnly.TryParseExact(item.Time?.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly target))
+        if (!TryParseTime(item.Time, out TimeOnly target))
         {
             return false;
         }
@@ -56,6 +56,17 @@ public static class ScheduleEvaluator
             _ => false,
         };
     }
+
+    /// <summary>The single parse for a <see cref="ScheduleItem.Time"/> string — exact "HH:mm", invariant
+    /// culture, trimmed. Exposed (rather than kept inline in <see cref="IsDue"/>) because the scheduler must
+    /// parse the same string a second time when writing <see cref="ScheduleItem.LastFiredOccurrence"/>, and
+    /// it previously used a culture-sensitive <c>TimeOnly.TryParse</c> there instead. On any culture where
+    /// that parse fails, the discarded result left <c>default</c> (00:00), so the occurrence key was written
+    /// as "…|00:00" and could never match the "…|HH:mm" key <see cref="IsDue"/> computes — silently disabling
+    /// the occurrence dedup that exists specifically for the repeated hour at DST end, leaving only the 90 s
+    /// <see cref="DedupWindow"/> fallback.</summary>
+    public static bool TryParseTime(string? time, out TimeOnly value) =>
+        TimeOnly.TryParseExact(time?.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
 
     public static string OccurrenceKey(DateTimeOffset now, TimeOnly target) =>
         $"{now:yyyy-MM-dd}|{target:HH\\:mm}";

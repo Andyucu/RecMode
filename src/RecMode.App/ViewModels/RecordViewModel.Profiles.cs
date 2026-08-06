@@ -128,7 +128,10 @@ public sealed partial class RecordViewModel
             SelectedFrameRate = previous.FrameRate;
             Quality = previous.Quality;
             SystemAudioEnabled = previous.SystemAudio;
-            MicEnabled = previous.Microphone;
+            // Quietly — this restore runs once the recording has already started, and MicEnabled's normal
+            // setter propagates to the LIVE recording, which would immediately undo the schedule-bound
+            // profile's own microphone choice. See SetMicEnabledQuietly.
+            SetMicEnabledQuietly(previous.Microphone);
             _settings.Current.AudioCodec = previous.AudioCodec;
             _settings.Current.AudioBitrateKbps = previous.AudioBitrate;
             _settings.RequestSave();

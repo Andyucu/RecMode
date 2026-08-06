@@ -138,6 +138,9 @@ public static class Strings
     public static string Settings_KeystrokesDesc => Get(nameof(Settings_KeystrokesDesc));
     public static string Settings_AutoZoom => Get(nameof(Settings_AutoZoom));
     public static string Settings_AutoZoomDesc => Get(nameof(Settings_AutoZoomDesc));
+    public static string Settings_CaptureCommsRoleAudio => Get(nameof(Settings_CaptureCommsRoleAudio));
+    public static string Settings_CaptureCommsRoleAudioDesc => Get(nameof(Settings_CaptureCommsRoleAudioDesc));
+    public static string Settings_CaptureCommsRoleAudioTooltip => Get(nameof(Settings_CaptureCommsRoleAudioTooltip));
     public static string Settings_BitrateGuardrail => Get(nameof(Settings_BitrateGuardrail));
     public static string Settings_BitrateGuardrailDesc => Get(nameof(Settings_BitrateGuardrailDesc));
     public static string Settings_AutoSplit => Get(nameof(Settings_AutoSplit));

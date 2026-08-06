@@ -106,7 +106,12 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
 
     public void OnNavigatedFrom()
     {
+        // Dispose as well as cancel. LoadAsync disposes the *previous* CTS on each new load, so without this
+        // the last one leaks its timer/handle registration for the lifetime of this singleton view model —
+        // i.e. until the user happens to visit Library again.
         _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = null;
         Items.Clear();
         SelectedItem = null;
         OnPropertyChanged(nameof(IsEmpty));
@@ -136,15 +141,14 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         bool videos = _showVideos;
         try
         {
-            // Building each LibraryItem — including the thumbnail decode — happens entirely inside this
-            // background Task.Run now, not just the file scan. TryLoadThumbnail's BitmapImage is Frozen
-            // before it's returned, which is exactly what makes this safe: a frozen Freezable is immutable
-            // and thread-safe to hand to the UI thread afterward. Previously only ScanFiles ran off-thread,
-            // and the per-file loop (including a full JPEG/PNG decode per screenshot) ran back on the UI
-            // thread — defeating the ListBox's own VirtualizingPanel (declared in LibraryView.xaml) since
-            // every item was decoded up front regardless of how many were ever actually scrolled into view.
-            // A user with ~500 screenshots (F11 is a one-key hotkey; this accumulates fast) froze the window
-            // for several seconds just opening the Screenshots tab.
+            // Building each LibraryItem happens entirely inside this background Task.Run, not just the file
+            // scan — the metadata build (BuildMeta, library-index lookup) is cheap but still shouldn't run on
+            // the UI thread for hundreds of files. Thumbnail decoding itself is handled separately and
+            // lazily by LibraryItem.Thumbnail's own getter (see its doc comment) — it used to happen eagerly
+            // right here for every screenshot, which defeated the ListBox's own VirtualizingPanel (declared
+            // in LibraryView.xaml): every item was decoded and retained up front regardless of how many were
+            // ever actually scrolled into view. A user with ~500 screenshots (F11 is a one-key hotkey; this
+            // accumulates fast) held tens of MB of decoded bitmaps for the whole time Library stayed open.
             var items = await Task.Run(() => BuildItems(dir, videos, cancellation.Token), cancellation.Token);
             if (cancellation.IsCancellationRequested || !ReferenceEquals(cancellation, _loadCancellation)) return;
 
@@ -171,9 +175,13 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         }
     }
 
-    private static List<FileInfo> ScanFiles(string directory, bool videos, CancellationToken ct)
+    /// <summary>Enumerates matching files, or returns <c>null</c> when the directory itself is unavailable
+    /// (disconnected drive/share, or an <c>OutputFolder</c> that no longer exists). That distinction matters:
+    /// "unavailable" must NOT be conflated with "empty", because <see cref="BuildItems"/> prunes the library
+    /// index against this result — see the guard there.</summary>
+    private static List<FileInfo>? ScanFiles(string directory, bool videos, CancellationToken ct)
     {
-        if (!Directory.Exists(directory)) return [];
+        if (!Directory.Exists(directory)) return null;
         string[] extensions = videos ? VideoExtensions : ImageExtensions;
         return new DirectoryInfo(directory).EnumerateFiles()
             .TakeWhile(_ => !ct.IsCancellationRequested)
@@ -187,14 +195,21 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
     /// entirely off the UI thread. See the call site in <see cref="LoadAsync"/> for why this is safe.</summary>
     private List<LibraryItem> BuildItems(string directory, bool videos, CancellationToken ct)
     {
-        List<FileInfo> files = ScanFiles(directory, videos, ct);
+        List<FileInfo>? scanned = ScanFiles(directory, videos, ct);
+        List<FileInfo> files = scanned ?? [];
 
-        if (videos)
+        // Only prune when the directory genuinely exists AND was fully enumerated. Two distinct ways a
+        // non-authoritative file list could otherwise destroy the whole index:
+        //   1. Directory unavailable (scanned is null) — a disconnected USB/network drive, or an OutputFolder
+        //      the user just repointed. ScanFiles used to return an empty list here, indistinguishable from
+        //      "the folder is genuinely empty", so PruneMissing removed EVERY entry and persisted it. Every
+        //      recording permanently lost its codec/resolution/duration metadata and its "Record again"
+        //      action, silently — LoadAsync's folder-unavailable warning never fires for this case, because
+        //      Directory.Exists returns false rather than throwing.
+        //   2. Partial/cancelled scan — EnumerateFiles is deliberately cancellable, so a navigation or tab
+        //      switch can stop it after only a prefix of the directory (pre-existing guard, kept).
+        if (videos && scanned is not null)
         {
-            // Never prune metadata from a partial/cancelled scan. EnumerateFiles is intentionally
-            // cancellable; a navigation/tab switch can stop it after only a prefix of the directory,
-            // and treating that prefix as authoritative would delete valid entries that simply were
-            // not reached yet.
             ct.ThrowIfCancellationRequested();
             _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
         }
@@ -216,7 +231,9 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
                 DisplayName = Path.GetFileNameWithoutExtension(f.Name),
                 Meta = BuildMeta(f, entry),
                 IsImage = !videos,
-                Thumbnail = videos ? null : TryLoadThumbnail(f.FullName),
+                // Thumbnail is no longer set here — LibraryItem.Thumbnail lazily decodes on its own first
+                // read, i.e. only once virtualization actually realizes this item's container. See its doc
+                // comment for why eager decoding here defeated the point of a virtualized list.
                 IndexEntry = entry,
             });
         }
@@ -347,26 +364,6 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         catch (Exception ex)
         {
             _errors.Warn(code, message, null, ex);
-        }
-    }
-
-    private static ImageSource? TryLoadThumbnail(string path)
-    {
-        try
-        {
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad; // load now, don't lock the file
-            bmp.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            bmp.DecodePixelWidth = 160; // thumbnail-sized decode (hot-path friendly)
-            bmp.UriSource = new Uri(path);
-            bmp.EndInit();
-            bmp.Freeze();
-            return bmp;
-        }
-        catch
-        {
-            return null; // unreadable/corrupt image — just skip the thumbnail
         }
     }
 

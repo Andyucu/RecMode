@@ -131,6 +131,21 @@ public sealed class RecModeSettings
     public List<string>? SystemAudioDeviceIds { get; set; }
 
     /// <summary>
+    /// Whether auto-detect (<see cref="SystemAudioDeviceIds"/> null) also loops back the Communications-role
+    /// playback device when it differs from the Console-role default — see
+    /// <c>AudioMixer.StartCommsLoopbackIfDifferent</c>'s doc comment for why that matters for VoIP apps like
+    /// Teams/Zoom. <b>Default true, by explicit user request (2026-08-06)</b> — catching Teams/Zoom call
+    /// audio by default was judged more valuable than the echo risk below. Be aware: capturing two devices at
+    /// once sums two independently-clocked WASAPI captures, and on setups where the two roles carry
+    /// correlated or overlapping audio (a common shape — Windows often assigns a paired Bluetooth headset to
+    /// the Communications role while Console stays the speakers) the resulting phase mismatch between the two
+    /// captures is audible as echo/doubling, even for users who never asked for multi-device capture at all.
+    /// The Settings toggle (<c>SettingsViewModel.CaptureCommunicationsRoleAudio</c>) is the escape hatch for
+    /// anyone who hits that.
+    /// </summary>
+    public bool CaptureCommunicationsRoleAudio { get; set; } = true;
+
+    /// <summary>
     /// Webcam picture-in-picture overlay (Phase 7). Null <see cref="WebcamDeviceId"/> means "not configured" —
     /// enabling the toggle with no device selected does nothing (fails closed, no accidental default-camera use).
     /// </summary>
@@ -194,10 +209,22 @@ public sealed class RecModeSettings
     public bool EnableCrashMinidumps { get; set; }
 
     // Scheduled recordings (Phase 6 UI + data model; the firing engine is Phase 8).
-    public List<ScheduleItem> Schedules { get; set; } = [];
+    //
+    // Both list properties coalesce null in their setters rather than relying on the initializer alone.
+    // System.Text.Json assigns null for an explicit `"Schedules": null` in the file, which the initializer
+    // does NOT protect against — and neither consumer null-checks: SchedulerService.Tick foreach-es Schedules
+    // on a ~20s DispatcherTimer (so a null throws an NRE, and pops the "unexpected error" modal, every 20s
+    // for the rest of the session) and RecordViewModel.Profiles' LoadProfiles feeds CustomProfiles straight
+    // into RecordingProfiles.Merge on the Record screen's first paint. Neither is caught by Load()'s
+    // corrupt-file recovery, because such a file parses perfectly well — the same class of "valid JSON,
+    // invalid value" gap LenientEnumConverterFactory closes for enums. Reachable via a hand-edited file, a
+    // partially-restored backup, or another local account in the shared-ACL portable case FolderAclCheck warns about.
+    private List<ScheduleItem> _schedules = [];
+    public List<ScheduleItem> Schedules { get => _schedules; set => _schedules = value ?? []; }
 
     // Recording profiles (plan §7 backlog #4, pulled forward): user-created presets alongside the built-in
     // ones. Null/unknown SelectedProfileName means "Custom" — the Record screen's settings are edited directly.
-    public List<RecordingProfile> CustomProfiles { get; set; } = [];
+    private List<RecordingProfile> _customProfiles = [];
+    public List<RecordingProfile> CustomProfiles { get => _customProfiles; set => _customProfiles = value ?? []; }
     public string? SelectedProfileName { get; set; }
 }

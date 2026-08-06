@@ -171,6 +171,9 @@
   <data name="Settings_KeystrokesDesc" xml:space="preserve"><value>Display hotkey combinations like Ctrl + Z on screen</value></data>
   <data name="Settings_AutoZoom" xml:space="preserve"><value>Smart auto-zoom (beta)</value></data>
   <data name="Settings_AutoZoomDesc" xml:space="preserve"><value>While recording, each click smoothly zooms in around it, then eases back out after a few idle seconds. Screen and Region sources only.</value></data>
+  <data name="Settings_CaptureCommsRoleAudio" xml:space="preserve"><value>Also capture the Communications-role audio device</value></data>
+  <data name="Settings_CaptureCommsRoleAudioDesc" xml:space="preserve"><value>Catches Teams/Zoom call audio when it's routed to a different device than your regular speakers. On by default — turn this off if recordings sound doubled or echoey, which can happen when both devices carry the same audio.</value></data>
+  <data name="Settings_CaptureCommsRoleAudioTooltip" xml:space="preserve"><value>When on, System audio also loops back your Communications-role playback device (Windows' separate "call audio" device) if it differs from your regular default — catches Teams/Zoom/Skype audio that plays there. Turn this off if your recordings sound doubled or echoey, which can happen when both devices carry the same audio.</value></data>
   <data name="Settings_BitrateGuardrail" xml:space="preserve"><value>Limit maximum bitrate</value></data>
   <data name="Settings_BitrateGuardrailDesc" xml:space="preserve"><value>Cap file size growth on unusually complex content, without changing the quality setting</value></data>
   <data name="Settings_AutoSplit" xml:space="preserve"><value>Auto-split large recordings</value></data>
@@ -314,7 +317,7 @@
   <data name="AudioDevicePicker_Title" xml:space="preserve"><value>System audio devices</value></data>
   <data name="AudioDevicePicker_ButtonLabel" xml:space="preserve"><value>Select audio devices…</value></data>
   <data name="AudioDevicePicker_Automatic" xml:space="preserve"><value>Automatic (recommended)</value></data>
-  <data name="AudioDevicePicker_AutomaticDesc" xml:space="preserve"><value>Uses your default playback device, plus your separate call/communications device if you have one configured — this covers apps like Teams automatically.</value></data>
+  <data name="AudioDevicePicker_AutomaticDesc" xml:space="preserve"><value>Uses your default playback device, plus your separate call/communications device if you have one configured — this covers apps like Teams automatically. If recordings sound doubled or echoey, turn off "Also capture the Communications-role audio device" in Settings.</value></data>
   <data name="AudioDevicePicker_Custom" xml:space="preserve"><value>Choose specific devices</value></data>
   <data name="AudioDevicePicker_CustomDesc" xml:space="preserve"><value>Record only the devices you check below — use this to exclude a device you don't want captured.</value></data>
   <data name="AudioDevicePicker_NoDevices" xml:space="preserve"><value>No playback devices found.</value></data>

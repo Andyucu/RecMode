@@ -62,6 +62,14 @@ public sealed class SourceContourService(
     private IntPtr _destroyEventHook;
     private IntPtr _followedHandle;
     private MonitorInfo? _currentMonitor;
+    // Cache for the EnumerateMonitors() lookup below, same shape as RecordingCoordinator.ResolveZoomMonitor —
+    // see that one's comment for why: it creates a fresh IDXGIFactory1 and walks every adapter/output
+    // (IsMonitorHdr's per-monitor QueryInterface<IDXGIOutput6>), a real COM/DXGI cost. Update() runs on every
+    // Alt-Tab, every region-picker/Save-profile modal open/close, and every IsWindowActive flip — all on the
+    // UI thread — so re-enumerating on every one of those with a Region source selected was a repeated,
+    // avoidable stall, not a one-time cost.
+    private nint _monitorCacheHandle;
+    private MonitorInfo? _monitorCache;
     private int _clearRegionHotkeyId = -1;
     private bool _warnedUnsupportedThisDrag;
     private bool _loggedRetargetThisDrag;
@@ -135,6 +143,17 @@ public sealed class SourceContourService(
         }
     }
 
+    private MonitorInfo? ResolveMonitor(nint handle)
+    {
+        if (_monitorCache is null || _monitorCacheHandle != handle)
+        {
+            _monitorCacheHandle = handle;
+            _monitorCache = CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == handle);
+        }
+
+        return _monitorCache;
+    }
+
     private void Update()
     {
         // Authoritative recording state — record.IsRecording mirrors this via progress ticks and can lag
@@ -160,7 +179,7 @@ public sealed class SourceContourService(
         }
 
         _currentMonitor = target.Kind == CaptureKind.Region
-            ? CaptureCapabilities.EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle)
+            ? ResolveMonitor(target.Handle)
             : null;
 
         Show();

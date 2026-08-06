@@ -197,6 +197,22 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7F6;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="CaptureCommsRoleAudioLabel" Text="{x:Static res:Strings.Settings_CaptureCommsRoleAudio}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_CaptureCommsRoleAudioDesc}" Style="{StaticResource SettingsCardDesc}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding CaptureCommunicationsRoleAudio, Mode=TwoWay}"
+                                  ToolTip="{x:Static res:Strings.Settings_CaptureCommsRoleAudioTooltip}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=CaptureCommsRoleAudioLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xEA18;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
                         <TextBlock x:Name="BitrateGuardrailLabel" Text="{x:Static res:Strings.Settings_BitrateGuardrail}" Style="{StaticResource BodyStrongText}" />

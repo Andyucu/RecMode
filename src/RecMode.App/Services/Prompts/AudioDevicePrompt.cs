@@ -5,12 +5,13 @@ using RecMode.Audio;
 
 namespace RecMode.App.Services;
 
-/// <summary>Shows the modal "System audio devices" picker. Returns the new value for
-/// <c>RecModeSettings.SystemAudioDeviceIds</c> (null = automatic), or a sentinel meaning "cancelled — leave
-/// the setting unchanged" (distinguished from "cancelled" via <paramref name="changed"/> in
-/// <see cref="TryPick"/> since null is itself a valid, meaningful result).</summary>
+/// <summary>Shows the modal "System audio devices" picker.</summary>
 public interface IAudioDevicePrompt
 {
+    /// <summary>Returns true if the user saved (in which case <paramref name="result"/> is the new value for
+    /// <c>RecModeSettings.SystemAudioDeviceIds</c> — null means automatic, a valid result in its own right) or
+    /// false if cancelled (<paramref name="result"/> is null and should be ignored; the caller leaves the
+    /// existing setting untouched).</summary>
     bool TryPick(List<string>? currentSelection, out List<string>? result);
 }
 

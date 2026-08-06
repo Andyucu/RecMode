@@ -103,25 +103,31 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
         // after Task.Run was queued and always won the race against RecordingCoordinator.Start() reading
         // audio settings from _settings.Current on its own background thread, silently recording with the
         // Record screen's audio state instead of the schedule-bound profile's.
+        // Everything from here to the await lives INSIDE the try, so the finally's _fireInFlight reset covers
+        // every path. Profile resolution used to sit above the try — and it is not trivial code: it drives
+        // several RecordViewModel property setters via ApplyProfileForSchedule. Anything throwing there
+        // escaped into this discarded Task (surfacing only as an unobserved-task exception at some later GC)
+        // and left _fireInFlight latched true forever, so Tick()'s guard returned early on every subsequent
+        // tick and NO schedule ever fired again for the rest of the process, with nothing shown to the user.
         IDisposable? scheduledProfile = null;
-        if (item.ProfileName is not null)
-        {
-            RecordingProfile? profile = record.Profiles.FirstOrDefault(p => p.Name == item.ProfileName);
-            if (profile is not null)
-            {
-                scheduledProfile = record.ApplyProfileForSchedule(profile);
-            }
-            else
-            {
-                Log.Warning("Schedule {Name} references profile \"{Profile}\" which no longer exists — using current Record settings",
-                    item.Name, item.ProfileName);
-            }
-        }
-
         bool started;
         _scheduledStartInFlight = true;
         try
         {
+            if (item.ProfileName is not null)
+            {
+                RecordingProfile? profile = record.Profiles.FirstOrDefault(p => p.Name == item.ProfileName);
+                if (profile is not null)
+                {
+                    scheduledProfile = record.ApplyProfileForSchedule(profile);
+                }
+                else
+                {
+                    Log.Warning("Schedule {Name} references profile \"{Profile}\" which no longer exists — using current Record settings",
+                        item.Name, item.ProfileName);
+                }
+            }
+
             record.EnsureDevicesLoaded();
             started = await record.StartRecordingFromCli().ConfigureAwait(true);
         }
@@ -145,8 +151,13 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
             // Mark success only after a recording has actually started. A broken target/output remains visible
             // and can be retried after the user fixes it rather than silently disabling a one-time schedule.
             item.LastFiredUtc = now;
-            _ = TimeOnly.TryParse(item.Time, out TimeOnly scheduledTime);
-            item.LastFiredOccurrence = ScheduleEvaluator.OccurrenceKey(now, scheduledTime);
+            // Must use ScheduleEvaluator's own parse, not a culture-sensitive TimeOnly.TryParse — see
+            // TryParseTime's doc comment. If it fails, leave LastFiredOccurrence alone rather than writing a
+            // 00:00 key that IsDue could never match anyway (LastFiredUtc's 90 s window still de-dupes).
+            if (ScheduleEvaluator.TryParseTime(item.Time, out TimeOnly scheduledTime))
+            {
+                item.LastFiredOccurrence = ScheduleEvaluator.OccurrenceKey(now, scheduledTime);
+            }
             if (item.Recurrence == ScheduleRecurrence.Once) item.Enabled = false;
             settings.Save();
             // A very short recording can start and finish before StartRecordingFromCli completes.

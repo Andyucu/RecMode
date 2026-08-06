@@ -68,7 +68,22 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
         _hook.Install();
     }
 
-    private void OnClicked(int screenX, int screenY)
+    // OnClicked runs synchronously ON the UI thread's own message dispatch, as part of the WH_MOUSE_LL hook
+    // procedure (same shape as ClickHighlightService.OnClicked, see its comment) — Windows enforces a hook
+    // timeout (LowLevelHooksTimeout, 300ms default) on that callback, and blocking it for too long makes
+    // Windows silently unhook it, breaking auto-zoom AND (since ClickHighlightService uses a separate hook
+    // instance) potentially the click-ripple highlight for the rest of the session with no error surfaced
+    // anywhere. The real work here used to run inline: RecordingCoordinator.ComputeZoomRect ->
+    // ResolveZoomMonitor -> CaptureCapabilities.EnumerateMonitors() creates a fresh IDXGIFactory1 and walks
+    // every adapter/output (IsMonitorHdr's QueryInterface<IDXGIOutput6> per monitor) — real COM/DXGI cost,
+    // on the multi-adapter-per-GPU shape this exact dev machine has — plus SetZoomTarget taking a lock and a
+    // new Timer allocation, all still inside the hook proc. Deferred the same way ClickHighlightService
+    // already does: BeginInvoke hands it to a later, separate pass through the dispatcher queue.
+    private void OnClicked(int screenX, int screenY) =>
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Render, () => HandleClick(screenX, screenY));
+
+    private void HandleClick(int screenX, int screenY)
     {
         // Both features drive the same GPU crop (RecordingCoordinator.SetZoomTarget) with no coordination
         // between them. Without this guard, clicking the toolbar's "Zoom" button and dragging out a manual

@@ -31,9 +31,11 @@ public partial class ClickRippleOverlay : Window
         }
         else
         {
-            IReadOnlyList<MonitorInfo> monitors = CaptureCapabilities.EnumerateMonitors();
-            MonitorInfo mon = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-            _bounds = new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
+            // Null when the session has no attached display at all (RDP/console disconnect) — fall back to an
+            // empty rect so the overlay is simply invisible, rather than throwing out of a constructor that
+            // runs on the UI thread during recording start.
+            MonitorInfo? mon = CaptureCapabilities.PrimaryOrFirstMonitor();
+            _bounds = mon is null ? default : new RegionRect(mon.X, mon.Y, mon.Width, mon.Height);
         }
 
         SourceInitialized += OnSourceInitialized;

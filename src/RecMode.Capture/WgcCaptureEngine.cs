@@ -111,6 +111,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             StartSoftwareFallback(target, dstW, dstH, captureCursor);
             return;
         }
+        Nv12Converter? converter = null;
         try
         {
             _device = session.Device;
@@ -120,21 +121,51 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             _item = session.Item;
             _item.Closed += OnCaptureItemClosed;
 
+            // WgcSessionFactory.Start already called StartCapture() with FrameArrived wired up, so frames are
+            // being dispatched on threadpool threads while this method is still running. Everything below is
+            // therefore built into LOCALS first and published as one atomic unit under _disposeGuard, with
+            // _converter assigned LAST — it is the callback's own "are we live?" gate (it reads _converter
+            // under this same lock and bails when null).
+            //
+            // Previously _converter was assigned before the buffers were allocated. A frame arriving in that
+            // window saw a non-null converter and passed the still-empty `[]` field initializer as the
+            // destination, and Nv12Converter.ReadbackTightlyPacked does `fixed (byte* dstBase = dest)` —
+            // which yields a NULL pointer for a zero-length array — then Buffer.MemoryCopy with a per-row
+            // size argument that never validates against dest.Length. That is an unchecked write to a null
+            // page: an access violation, uncatchable, killing the process. The window was not theoretical
+            // either — the two allocations between are LOH-sized (~5.5 MB each at 1440p, ~12 MB at 4K) and
+            // can trigger a blocking gen2/LOH collection right in the middle of it.
             int srcW = session.Item.Size.Width, srcH = session.Item.Size.Height;
-            _converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region, sourceIsHdr);
-            _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
-            _converter.SetBrightness(_brightness);
+            converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region, sourceIsHdr);
+            converter.SetWebcamOverlay(_webcamSource, _webcamRect);
+            converter.SetBrightness(_brightness);
+            int byteSize = converter.Nv12ByteSize;
+            byte[] latest = new byte[byteSize];
+            byte[] scratch = new byte[byteSize];
+
             OutputWidth = dstW;
             OutputHeight = dstH;
-            Nv12ByteSize = _converter.Nv12ByteSize;
-            _latest = new byte[Nv12ByteSize];
-            _scratch = new byte[Nv12ByteSize];
-            _hasLatest = false;
-            _capturedFrames = 0;
+
+            lock (_disposeGuard)
+            {
+                Nv12ByteSize = byteSize;
+                _latest = latest;
+                _scratch = scratch;
+                _hasLatest = false;
+                _capturedFrames = 0;
+                _converter = converter;
+            }
+
             IsRunning = true;
         }
         catch
         {
+            // Dispose the local only when it never got published — otherwise DisposeWgcResources owns it.
+            if (!ReferenceEquals(_converter, converter))
+            {
+                converter?.Dispose();
+            }
+
             DisposeWgcResources();
             throw;
         }
@@ -284,12 +315,22 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         ThreadPool.QueueUserWorkItem(_ => Stop());
     }
 
+    /// <summary>Releases the WGC/D3D11 objects the frame callback uses. Takes <see cref="_disposeGuard"/>
+    /// itself so the release can never overlap an in-flight <see cref="OnFrameArrivedCore"/> — an empty
+    /// barrier before an unguarded disposal is NOT sufficient: it only drains callbacks that have already
+    /// entered the lock, so one whose native dispatch was committed just before the unsubscribe took effect
+    /// can acquire the guard uncontested right after the barrier releases, and then find itself inside
+    /// TryGetNextFrame/Convert on COM objects being released underneath it. Nulling the fields under the same
+    /// lock is what makes the callback's own null check a real gate.</summary>
     private void DisposeWgcResources()
     {
-        if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
-        if (_item is not null) _item.Closed -= OnCaptureItemClosed;
-        _session?.Dispose(); _framePool?.Dispose(); _converter?.Dispose(); _context?.Dispose(); _device?.Dispose();
-        _session = null; _framePool = null; _item = null; _converter = null; _context = null; _device = null;
+        lock (_disposeGuard)
+        {
+            if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
+            if (_item is not null) _item.Closed -= OnCaptureItemClosed;
+            _session?.Dispose(); _framePool?.Dispose(); _converter?.Dispose(); _context?.Dispose(); _device?.Dispose();
+            _session = null; _framePool = null; _item = null; _converter = null; _context = null; _device = null;
+        }
     }
 
     /// <summary>"All Displays" source: no WGC item exists for this, so <see cref="DesktopDuplicationCaptureSource"/>
@@ -336,11 +377,22 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         Nv12Converter? converter = _converter;
         ID3D11DeviceContext? context = _context;
         ID3D11Device? device = _device;
+        // Convert unconditionally the first time regardless of `changed`, to seed _latest/_scratch with a
+        // real composited frame — until then the canvas is whatever GPU memory it was created with. After
+        // that, an unchanged pull means the canvas is byte-identical to what was already converted, so
+        // skipping it is free (the pacer's own CFR duplication already re-emits the last converted frame for
+        // an unchanged desktop; this just avoids redoing the GPU work to produce the identical result).
+        bool everConverted = false;
         try
         {
             while (!_ddaStopping)
             {
-                ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16);
+                ID3D11Texture2D canvas = ddaSource!.AcquireNextFrame(timeoutMs: 16, out bool changed);
+
+                if (!changed && everConverted)
+                {
+                    continue;
+                }
 
                 // Same throttle as OnFrameArrived (WGC path) — AcquireNextFrame returns as soon as the
                 // desktop changes, which can be far faster than the recording/preview's own target fps.
@@ -350,6 +402,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
                 }
 
                 converter!.Convert(canvas, _scratch);
+                everConverted = true;
                 lock (_sync)
                 {
                     (_scratch, _latest) = (_latest, _scratch);
@@ -455,10 +508,12 @@ public sealed class WgcCaptureEngine : ICaptureEngine
                 _framePool.FrameArrived -= OnFrameArrived;
             }
 
-            // Barrier against an OnFrameArrived call already in flight when the unsubscribe above happened —
-            // see the comment on OnFrameArrived's own lock for why this is safe and sufficient. Must be
-            // _disposeGuard, not _sync: that's the lock OnFrameArrived now holds for the GPU work's whole
-            // duration (_sync is only ever held briefly for the buffer swap, too short a barrier to trust).
+            // Wait out any OnFrameArrived call already in flight when the unsubscribe above happened. This is
+            // only a first-pass drain, NOT the actual protection — a callback dispatched just before the
+            // unsubscribe took effect can still acquire the guard after this releases. The real guarantee is
+            // that DisposeWgcResources performs the release itself under _disposeGuard and nulls the fields
+            // there, so any such straggler blocks, then sees a null _converter and returns without touching
+            // a released COM object.
             lock (_disposeGuard) { }
 
             StopCore();

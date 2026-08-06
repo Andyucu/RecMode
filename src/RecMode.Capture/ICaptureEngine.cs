@@ -77,6 +77,26 @@ public static class CaptureCapabilities
 {
     public static IReadOnlyList<MonitorInfo> EnumerateMonitors() => CaptureInterop.EnumerateMonitors();
 
+    /// <summary>The primary monitor, else the first enumerated one, else <c>null</c> when no monitor exists
+    /// at all. The null case is real, not defensive padding: <c>EnumDisplayMonitors</c> legitimately returns
+    /// nothing on a disconnected RDP/console session. Several overlay windows previously wrote
+    /// <c>FirstOrDefault(m =&gt; m.IsPrimary) ?? monitors[0]</c>, whose indexer throws
+    /// <see cref="ArgumentOutOfRangeException"/> in exactly that case — from a constructor called on the UI
+    /// thread during recording start, so it surfaced as the generic "unexpected error" modal.</summary>
+    public static MonitorInfo? PrimaryOrFirstMonitor()
+    {
+        IReadOnlyList<MonitorInfo> monitors = EnumerateMonitors();
+        foreach (MonitorInfo m in monitors)
+        {
+            if (m.IsPrimary)
+            {
+                return m;
+            }
+        }
+
+        return monitors.Count > 0 ? monitors[0] : null;
+    }
+
     public static IReadOnlyList<WindowInfo> EnumerateWindows() => CaptureInterop.EnumerateWindows();
 
     public static IReadOnlyList<AudioProcessTarget> EnumerateAudioProcesses() => CaptureInterop.EnumerateAudioProcesses();

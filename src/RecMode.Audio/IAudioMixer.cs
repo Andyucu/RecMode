@@ -42,12 +42,17 @@ public interface IAudioMixer : IDisposable
     /// instead of silently filling, then discarding out of, a buffer nobody was ever going to read.
     /// <paramref name="systemDeviceIds"/> — explicit render-device IDs to loop back (Settings' audio device
     /// picker), ignored when <paramref name="targetProcessId"/> is set. Null/empty means auto-detect: the
-    /// default Console-role device, plus the Communications-role device too if it's a genuinely different
-    /// physical output (covers VoIP apps like Teams that route call audio there — see
-    /// <c>AudioMixer.StartCommsLoopbackIfDifferent</c>).
+    /// default Console-role device, plus (only when <paramref name="captureCommsRoleAudio"/> is true) the
+    /// Communications-role device too if it's a genuinely different physical output (covers VoIP apps like
+    /// Teams that route call audio there — see <c>AudioMixer.StartCommsLoopbackIfDifferent</c>). This
+    /// parameter's own default is <c>false</c> (fail-safe for any caller that doesn't pass it explicitly);
+    /// <c>RecModeSettings.CaptureCommunicationsRoleAudio</c> — which both real callers pass through — defaults
+    /// <c>true</c> instead, by explicit user decision. See that setting's own doc comment for the tradeoff:
+    /// summing two independently-clocked device captures can produce audible echo/doubling when the two
+    /// roles carry overlapping audio.
     /// </summary>
     AudioMixerStartResult Start(bool captureSystem, bool captureMic, int? targetProcessId = null,
-        bool meteringOnly = false, IReadOnlyList<string>? systemDeviceIds = null);
+        bool meteringOnly = false, IReadOnlyList<string>? systemDeviceIds = null, bool captureCommsRoleAudio = false);
 
     /// <summary>Live-toggles the microphone source on an already-running mixer — see
     /// <see cref="AudioMixer.SetMicEnabled"/> for the full reasoning. Returns whether mic capture ended up
