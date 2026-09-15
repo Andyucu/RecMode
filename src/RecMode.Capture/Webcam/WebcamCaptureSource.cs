@@ -25,8 +25,10 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
     private int _width;
     private int _height;
     private bool _hasFrame;
+    private long _frameSequence;
 
     public bool IsRunning { get; private set; }
+    public long FrameSequence => Interlocked.Read(ref _frameSequence);
 
     /// <summary>The camera's negotiated native resolution, known synchronously right after <see cref="StartAsync"/>
     /// returns (from the frame source's own <c>CurrentFormat</c>) — used by <see cref="WebcamPreviewEngine"/>,
@@ -138,6 +140,7 @@ public sealed class WebcamCaptureSource : IWebcamFrameSource
                 }
 
                 _hasFrame = true;
+                Interlocked.Increment(ref _frameSequence);
             }
         }
 

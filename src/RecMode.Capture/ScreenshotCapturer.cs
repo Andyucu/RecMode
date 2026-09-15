@@ -1,4 +1,5 @@
 using Serilog;
+using System.Runtime.InteropServices;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Windows.Graphics.Capture;
@@ -25,16 +26,33 @@ public static class ScreenshotCapturer
             return CaptureWebcam(target);
         }
 
+        // IsSupported() only answers "does this Windows build expose the WGC API" — it is NOT a promise that
+        // a D3D11 device can actually be created. The dominant real-world failure (RDP sessions, VMs, driver
+        // feature-level limits) passes this check and then throws DXGI_ERROR_UNSUPPORTED out of
+        // CreateDevice(), which is exactly the population the GDI fallback exists for. So the fallback has to
+        // be reachable from a thrown exception too, not just from the pre-check — mirroring
+        // WgcCaptureEngine.Start, which has always caught around WgcSessionFactory.Start for this same
+        // reason. A null return (the 2s frame timeout) falls back as well: a blank screenshot and no
+        // screenshot are equally useless to the user.
         if (!CaptureCapabilities.IsSupported())
         {
-            return null;
+            return CaptureGdi(target);
         }
 
-        if (target.Kind == CaptureKind.AllDisplays)
+        try
         {
-            return CaptureAllDisplays();
+            return (target.Kind == CaptureKind.AllDisplays ? CaptureAllDisplays() : CaptureWgc(target))
+                ?? CaptureGdi(target);
         }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "WGC screenshot failed; falling back to GDI");
+            return CaptureGdi(target);
+        }
+    }
 
+    private static ScreenshotImage? CaptureWgc(CaptureTarget target)
+    {
         (ID3D11Device device, ID3D11DeviceContext context) = CaptureInterop.CreateDevice();
         using (device)
         using (context)
@@ -216,4 +234,87 @@ public static class ScreenshotCapturer
 
         return new ScreenshotImage(w, h, stride, bgra);
     }
+
+    private static ScreenshotImage? CaptureGdi(CaptureTarget target)
+    {
+        if (!CaptureInterop.TryGetCaptureBounds(target, out var bounds))
+        {
+            return null;
+        }
+
+        nint screen = GetDC(IntPtr.Zero);
+        if (screen == IntPtr.Zero) return null;
+
+        nint dc = CreateCompatibleDC(screen);
+        if (dc == IntPtr.Zero)
+        {
+            _ = ReleaseDC(IntPtr.Zero, screen);
+            return null;
+        }
+
+        var bmi = new BITMAPINFO { Header = new BITMAPINFOHEADER { Size = Marshal.SizeOf<BITMAPINFOHEADER>(), Width = bounds.Width, Height = -bounds.Height, Planes = 1, BitCount = 32, Compression = 0 } };
+        nint bitmap = CreateDIBSection(dc, ref bmi, 0, out nint bits, IntPtr.Zero, 0);
+        if (bitmap == IntPtr.Zero || bits == IntPtr.Zero)
+        {
+            DeleteDC(dc);
+            _ = ReleaseDC(IntPtr.Zero, screen);
+            return null;
+        }
+
+        nint old = SelectObject(dc, bitmap);
+        try
+        {
+            bool captured;
+            if (target.Kind == CaptureKind.Window)
+            {
+                captured = PrintWindow(target.Handle, dc, PW_RENDERFULLCONTENT);
+            }
+            else
+            {
+                captured = BitBlt(dc, 0, 0, bounds.Width, bounds.Height, screen, bounds.X, bounds.Y, SRCCOPY | CAPTUREBLT);
+            }
+
+            if (!captured)
+            {
+                return null;
+            }
+
+            GdiFlush();
+
+            int stride = bounds.Width * 4;
+            byte[] bgra = new byte[stride * bounds.Height];
+            unsafe
+            {
+                fixed (byte* dst = bgra)
+                {
+                    Buffer.MemoryCopy((void*)bits, dst, bgra.Length, bgra.Length);
+                }
+            }
+
+            return new ScreenshotImage(bounds.Width, bounds.Height, stride, bgra);
+        }
+        finally
+        {
+            if (old != IntPtr.Zero) SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            _ = ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct BITMAPINFO { public BITMAPINFOHEADER Header; }
+    [StructLayout(LayoutKind.Sequential)] private struct BITMAPINFOHEADER { public int Size, Width, Height; public short Planes, BitCount; public int Compression, SizeImage, XPelsPerMeter, YPelsPerMeter, ClrUsed, ClrImportant; }
+    private const uint SRCCOPY = 0x00CC0020;
+    private const uint CAPTUREBLT = 0x40000000;
+    private const uint PW_RENDERFULLCONTENT = 0x00000002;
+    [DllImport("gdi32.dll")] private static extern bool GdiFlush();
+    [DllImport("user32.dll")] private static extern nint GetDC(nint hwnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(nint hwnd, nint dc);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool PrintWindow(nint hwnd, nint dc, uint flags);
+    [DllImport("gdi32.dll")] private static extern nint CreateCompatibleDC(nint dc);
+    [DllImport("gdi32.dll")] private static extern nint CreateDIBSection(nint dc, ref BITMAPINFO bmi, uint usage, out nint bits, nint section, uint offset);
+    [DllImport("gdi32.dll")] private static extern nint SelectObject(nint dc, nint obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(nint obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(nint dc);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(nint dst, int x, int y, int w, int h, nint src, int sx, int sy, uint rop);
 }

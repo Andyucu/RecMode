@@ -103,6 +103,7 @@
                            VerticalAlignment="Center" Width="40" />
                 <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                         Value="{Binding Record.SystemVolume, Mode=TwoWay}" Margin="6,0"
+                        ToolTip="{x:Static res:Strings.Record_SystemVolumeTooltip}"
                         IsEnabled="{Binding Record.SystemAudioEnabled}"
                         AutomationProperties.Name="{x:Static res:Strings.Accessibility_SystemAudioVolume}" />
                 <ToggleButton Grid.Column="2" IsChecked="{Binding Record.SystemAudioEnabled, Mode=TwoWay}"
@@ -119,6 +120,7 @@
                            VerticalAlignment="Center" Width="40" />
                 <Slider Grid.Column="1" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
                         Value="{Binding Record.MicVolume, Mode=TwoWay}" Margin="6,0"
+                        ToolTip="{x:Static res:Strings.Record_MicVolumeTooltip}"
                         IsEnabled="{Binding Record.MicEnabled}"
                         AutomationProperties.Name="{x:Static res:Strings.Accessibility_MicrophoneVolume}" />
                 <ToggleButton Grid.Column="2" IsChecked="{Binding Record.MicEnabled, Mode=TwoWay}"

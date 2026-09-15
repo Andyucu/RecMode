@@ -8,10 +8,15 @@ namespace RecMode.Core.Library;
 /// <summary>
 /// Capture metadata for one finished recording, stored in the library index (plan §5 — "capture-source
 /// metadata in the library index from day one"). Keyed by file name; primitives only so it round-trips
-/// cleanly and doesn't couple to the encoder/settings enums.
+/// cleanly and doesn't couple to the encoder/settings enums. <see cref="Directory"/> is null/empty only for
+/// entries written before the field existed (pre-0.9.118 index files) — such legacy rows are deliberately
+/// never pruned (their owning folder is unknown) and never rendered (the Library lists files from disk);
+/// they simply occupy index slots until the <see cref="LibraryIndex.MaxEntries"/> cap evicts them. See
+/// <see cref="LibraryIndex.PruneMissing"/>.
 /// </summary>
 public sealed record LibraryIndexEntry(
     string FileName,
+    string Directory,
     string Source,
     string Codec,
     string Container,
@@ -40,8 +45,14 @@ public interface ILibraryIndex
     /// metadata. No-op if <paramref name="oldFileName"/> isn't indexed (e.g. a plain filesystem-only entry).</summary>
     void Rename(string oldFileName, string newFileName);
 
-    /// <summary>Prunes entries for recordings no longer present in the active recording folder.</summary>
-    void PruneMissing(ISet<string> fileNames);
+    /// <summary>Prunes entries for recordings no longer present in the active recording folder. Entries whose
+    /// <see cref="LibraryIndexEntry.Directory"/> is null/empty (pre-0.9.118 rows) are deliberately skipped
+    /// forever — fail-safe, since their owning folder is unknown and they can't be proven absent. That makes
+    /// them a permanent one-way ratchet: they never render (the Library iterates files on disk and looks
+    /// metadata up by name) and only leave via the <see cref="MaxEntries"/> eviction. If that growth ever
+    /// matters, the remedy is a one-shot backfill assigning the scanned directory to rows whose file still
+    /// exists in it — deliberately not done speculatively, since it writes to the index on scans.</summary>
+    void PruneMissing(ISet<string> fileNames, string directory);
 }
 
 /// <summary>Default <see cref="ILibraryIndex"/> — a JSON array at <see cref="IAppPaths.LibraryIndexPath"/> (portable-safe).</summary>
@@ -138,12 +149,22 @@ public sealed class LibraryIndex(IAppPaths paths) : ILibraryIndex
         }
     }
 
-    public void PruneMissing(ISet<string> fileNames)
+    public void PruneMissing(ISet<string> fileNames, string directory)
     {
         lock (_lock)
         {
             List<LibraryIndexEntry> entries = Load();
-            if (entries.RemoveAll(e => !fileNames.Contains(e.FileName)) > 0)
+            // Only prune entries that belong to the current directory. A user repointing the output folder
+            // must NOT wipe entries from the old folder — those belong to a different directory. Both sides
+            // are normalized (full path, trailing separator removed) before comparing: entries are written
+            // via Path.GetDirectoryName (never a trailing slash), but external/legacy writers may differ.
+            string normDir = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+            static string? NormalizeEntryDir(string? d) =>
+                string.IsNullOrEmpty(d) ? null : Path.GetFullPath(d).TrimEnd(Path.DirectorySeparatorChar);
+            if (entries.RemoveAll(e =>
+                    !fileNames.Contains(e.FileName) &&
+                    NormalizeEntryDir(e.Directory) is { } entryDir &&
+                    string.Equals(entryDir, normDir, StringComparison.OrdinalIgnoreCase)) > 0)
             {
                 Write(entries);
             }

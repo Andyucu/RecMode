@@ -110,6 +110,7 @@
   <data name="Record_SystemAudioTooltip" xml:space="preserve"><value>Include what your computer is playing</value></data>
   <data name="Record_SystemAudio" xml:space="preserve"><value>System audio</value></data>
   <data name="Record_LimitToApp" xml:space="preserve"><value>Limit to app</value></data>
+  <data name="Record_LimitToAppTooltip" xml:space="preserve"><value>Record only the sound this one app makes, instead of everything playing. If the app isn't running when recording starts, no system sound is captured at all — RecMode warns rather than quietly recording everything.</value></data>
   <data name="Record_SystemVolumeTooltip" xml:space="preserve"><value>Adjust the system audio level in the recording</value></data>
   <data name="Record_Microphone" xml:space="preserve"><value>Microphone</value></data>
   <data name="Record_MicrophoneTooltip" xml:space="preserve"><value>Include your microphone</value></data>
@@ -245,7 +246,9 @@
   <data name="ScheduleEdit_WeeklyDay" xml:space="preserve"><value>Day of week</value></data>
   <data name="ScheduleEdit_Time" xml:space="preserve"><value>Start time (HH:mm)</value></data>
   <data name="ScheduleEdit_Duration" xml:space="preserve"><value>Duration (min)</value></data>
+  <data name="ScheduleEdit_DurationTooltip" xml:space="preserve"><value>How long the scheduled recording runs before it stops itself</value></data>
   <data name="ScheduleEdit_Profile" xml:space="preserve"><value>Profile</value></data>
+  <data name="ScheduleEdit_ProfileTooltip" xml:space="preserve"><value>Settings to record with. "Follow Record settings" uses whatever the Record screen is set to when the schedule fires; any other choice applies that saved profile instead.</value></data>
   <data name="ScheduleEdit_Save" xml:space="preserve"><value>Save</value></data>
   <data name="ScheduleEdit_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="ScheduleEdit_InvalidTime" xml:space="preserve"><value>Enter a name and a start time as HH:mm (24-hour), e.g. 09:30.</value></data>
@@ -263,6 +266,7 @@
   <data name="Profile_Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="Profile_SaveTitle" xml:space="preserve"><value>Save profile</value></data>
   <data name="Profile_Name" xml:space="preserve"><value>Profile name</value></data>
+  <data name="Profile_NameTooltip" xml:space="preserve"><value>Saving under an existing profile's name replaces it — including the built-in profiles</value></data>
   <data name="Profile_InvalidName" xml:space="preserve"><value>Enter a name for the profile.</value></data>
 
   <data name="About_Description" xml:space="preserve"><value>A modern, portable-first screen recorder for Windows 11.</value></data>
@@ -317,12 +321,16 @@
   <data name="AudioDevicePicker_Title" xml:space="preserve"><value>System audio devices</value></data>
   <data name="AudioDevicePicker_ButtonLabel" xml:space="preserve"><value>Select audio devices…</value></data>
   <data name="AudioDevicePicker_Automatic" xml:space="preserve"><value>Automatic (recommended)</value></data>
+  <data name="AudioDevicePicker_AutomaticTooltip" xml:space="preserve"><value>Let RecMode pick the playback devices to record</value></data>
   <data name="AudioDevicePicker_AutomaticDesc" xml:space="preserve"><value>Uses your default playback device, plus your separate call/communications device if you have one configured — this covers apps like Teams automatically. If recordings sound doubled or echoey, turn off "Also capture the Communications-role audio device" in Settings.</value></data>
   <data name="AudioDevicePicker_Custom" xml:space="preserve"><value>Choose specific devices</value></data>
+  <data name="AudioDevicePicker_CustomTooltip" xml:space="preserve"><value>Pick the exact playback devices to record</value></data>
   <data name="AudioDevicePicker_CustomDesc" xml:space="preserve"><value>Record only the devices you check below — use this to exclude a device you don't want captured.</value></data>
   <data name="AudioDevicePicker_NoDevices" xml:space="preserve"><value>No playback devices found.</value></data>
   <data name="AudioDevicePicker_DefaultTag" xml:space="preserve"><value>default</value></data>
+  <data name="AudioDevicePicker_DefaultTagTooltip" xml:space="preserve"><value>Windows plays normal app sound through this device</value></data>
   <data name="AudioDevicePicker_CommsTag" xml:space="preserve"><value>communications</value></data>
+  <data name="AudioDevicePicker_CommsTagTooltip" xml:space="preserve"><value>Windows sends call audio (Teams, Zoom, Discord) to this device</value></data>
   <data name="Toolbar_PinLabel" xml:space="preserve"><value>Pin position</value></data>
   <data name="Toolbar_PinTooltip" xml:space="preserve"><value>Pin this position — an unpinned toolbar resets to the bottom of the main screen every time a new recording starts</value></data>
   <data name="Toolbar_UnpinTooltip" xml:space="preserve"><value>Unpin — the toolbar will reset to the bottom of the main screen on the next recording</value></data>
@@ -331,6 +339,7 @@
   <data name="RegionSelect_Preset1080" xml:space="preserve"><value>1920 × 1080</value></data>
   <data name="RegionSelect_Preset720" xml:space="preserve"><value>1280 × 720</value></data>
   <data name="RegionSelect_Full" xml:space="preserve"><value>Full</value></data>
+  <data name="RegionSelect_FullTooltip" xml:space="preserve"><value>Select this whole display</value></data>
   <data name="RegionSelect_UseRegion" xml:space="preserve"><value>Use region</value></data>
   <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
 

@@ -74,60 +74,81 @@ internal abstract class VideoProcessorPipeline : IDisposable
         _srcW = srcW;
         _srcH = srcH;
 
-        VideoDevice = device.QueryInterface<ID3D11VideoDevice>();
-        VideoContext = context.QueryInterface<ID3D11VideoContext>();
-
-        var content = new VideoProcessorContentDescription
+        try
         {
-            InputFrameFormat = VideoFrameFormat.Progressive,
-            InputWidth = (uint)srcW,
-            InputHeight = (uint)srcH,
-            OutputWidth = (uint)dstW,
-            OutputHeight = (uint)dstH,
-            InputFrameRate = new Rational((uint)frameRate, 1),
-            OutputFrameRate = new Rational((uint)frameRate, 1),
-            Usage = VideoUsage.PlaybackNormal,
-        };
-        Enumerator = VideoDevice.CreateVideoProcessorEnumerator(content);
-        Processor = VideoDevice.CreateVideoProcessor(Enumerator, 0);
+            VideoDevice = device.QueryInterface<ID3D11VideoDevice>();
+            VideoContext = context.QueryInterface<ID3D11VideoContext>();
 
-        var gpuDesc = new Texture2DDescription
+            var content = new VideoProcessorContentDescription
+            {
+                InputFrameFormat = VideoFrameFormat.Progressive,
+                InputWidth = (uint)srcW,
+                InputHeight = (uint)srcH,
+                OutputWidth = (uint)dstW,
+                OutputHeight = (uint)dstH,
+                InputFrameRate = new Rational((uint)frameRate, 1),
+                OutputFrameRate = new Rational((uint)frameRate, 1),
+                Usage = VideoUsage.PlaybackNormal,
+            };
+            Enumerator = VideoDevice.CreateVideoProcessorEnumerator(content);
+            Processor = VideoDevice.CreateVideoProcessor(Enumerator, 0);
+
+            var gpuDesc = new Texture2DDescription
+            {
+                Width = (uint)dstW,
+                Height = (uint)dstH,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = outputFormat,
+                SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.RenderTarget,
+                CPUAccessFlags = CpuAccessFlags.None,
+            };
+            GpuTexture = device.CreateTexture2D(gpuDesc);
+            StagingTexture = device.CreateTexture2D(gpuDesc with
+            {
+                Usage = ResourceUsage.Staging,
+                BindFlags = BindFlags.None,
+                CPUAccessFlags = CpuAccessFlags.Read,
+            });
+
+            OutputView = VideoDevice.CreateVideoProcessorOutputView(GpuTexture, Enumerator,
+                new VideoProcessorOutputViewDescription { ViewDimension = VideoProcessorOutputViewDimension.Texture2D });
+
+            // Region capture: crop the source to the region rect; the VideoProcessor scales it to the output.
+            // The actual VideoProcessorSetStreamSourceRect call happens every frame in BltAndReadback (see
+            // ApplyZoomRect) rather than once here, so smart auto-zoom can animate within this rect later.
+            _restRect = sourceRect ?? new RegionRect(0, 0, srcW, srcH);
+            _zoomFrom = _restRect;
+            _zoomTo = _restRect;
+            _zoomStartTimestamp = Stopwatch.GetTimestamp();
+
+            _webcamCompositor = new WebcamOverlayCompositor(device, context, VideoDevice, Enumerator);
+
+            Result filterHr = Enumerator.GetVideoProcessorFilterRange(VideoProcessorFilter.Brightness, out _brightnessRange);
+            _brightnessSupported = filterHr.Success;
+
+            HdrToneMapActive = sourceIsHdr && TryApplyHdrToneMap();
+        }
+        catch
         {
-            Width = (uint)dstW,
-            Height = (uint)dstH,
-            MipLevels = 1,
-            ArraySize = 1,
-            Format = outputFormat,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Default,
-            BindFlags = BindFlags.RenderTarget,
-            CPUAccessFlags = CpuAccessFlags.None,
-        };
-        GpuTexture = device.CreateTexture2D(gpuDesc);
-        StagingTexture = device.CreateTexture2D(gpuDesc with
-        {
-            Usage = ResourceUsage.Staging,
-            BindFlags = BindFlags.None,
-            CPUAccessFlags = CpuAccessFlags.Read,
-        });
-
-        OutputView = VideoDevice.CreateVideoProcessorOutputView(GpuTexture, Enumerator,
-            new VideoProcessorOutputViewDescription { ViewDimension = VideoProcessorOutputViewDimension.Texture2D });
-
-        // Region capture: crop the source to the region rect; the VideoProcessor scales it to the output.
-        // The actual VideoProcessorSetStreamSourceRect call happens every frame in BltAndReadback (see
-        // ApplyZoomRect) rather than once here, so smart auto-zoom can animate within this rect later.
-        _restRect = sourceRect ?? new RegionRect(0, 0, srcW, srcH);
-        _zoomFrom = _restRect;
-        _zoomTo = _restRect;
-        _zoomStartTimestamp = Stopwatch.GetTimestamp();
-
-        _webcamCompositor = new WebcamOverlayCompositor(device, context, VideoDevice, Enumerator);
-
-        Result filterHr = Enumerator.GetVideoProcessorFilterRange(VideoProcessorFilter.Brightness, out _brightnessRange);
-        _brightnessSupported = filterHr.Success;
-
-        HdrToneMapActive = sourceIsHdr && TryApplyHdrToneMap();
+            // The constructor threw midway (a driver rejecting one of the D3D11 allocations — exactly the
+            // machines this class's "no GPU pipeline, fall back" contract exists for). Every COM object
+            // assigned so far would otherwise be unreachable: a type whose constructor throws is never
+            // disposed by its owner, so these were live D3D11/COM references (GPU memory + device internal
+            // refs) leaked per failed attempt. Release whatever was assigned, in Dispose()'s order, and let
+            // the original exception propagate — callers already treat construction failure as "fall back".
+            _webcamCompositor?.Dispose();
+            OutputView?.Dispose();
+            StagingTexture?.Dispose();
+            GpuTexture?.Dispose();
+            Processor?.Dispose();
+            Enumerator?.Dispose();
+            VideoContext?.Dispose();
+            VideoDevice?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>§3.6 HDR-to-SDR tone mapping: the source texture (only ever requested in FP16 when the source

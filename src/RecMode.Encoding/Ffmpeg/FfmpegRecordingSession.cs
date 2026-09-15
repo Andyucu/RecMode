@@ -133,6 +133,10 @@ public sealed class FfmpegRecordingSession : IDisposable
 
         try
         {
+            // .AsTask() is load-bearing, not a stray allocation: PipeStream backs its ValueTask with a pooled
+            // IValueTaskSource, and ValueTask.GetAwaiter().GetResult() does NOT block — it throws
+            // InvalidOperationException the moment the write doesn't complete synchronously. Removing it
+            // (attempted 2026-09-07) produced exactly one written frame per recording before the pipe threw.
             _pipe.WriteAsync(frame.AsMemory(0, length), _writeCancellation.Token).AsTask().GetAwaiter().GetResult();
             _framesWritten++;
         }

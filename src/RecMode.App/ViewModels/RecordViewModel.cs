@@ -137,6 +137,32 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         // than caching a field, so this just needs to repaint the binding whenever the value changes from
         // anywhere else (the Settings screen, or a future second surface) — including while recording.
         settings.SettingsChanged += (_, _) => OnPropertyChanged(nameof(IsHighlightingClicks));
+        // Live display-topology changes (dock/undock, resolution change, RDP connect): refresh the monitor
+        // picker even when the user is parked on the Record screen and never navigates away — the plain
+        // nav-time refresh misses that case. SystemEvents raises this on a non-UI thread and often in bursts
+        // during one topology transition, so the handler coalesces into a single debounced refresh.
+        // RecordViewModel is an app-lifetime DI singleton, so this subscription deliberately lives for the
+        // process; the handler no-ops until the first LoadDevices() has populated anything.
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+    }
+
+    private int _displayChangeRefreshPending;
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        if (Interlocked.Exchange(ref _displayChangeRefreshPending, 1) != 0)
+        {
+            return;
+        }
+
+        Dispatch(() =>
+        {
+            Interlocked.Exchange(ref _displayChangeRefreshPending, 0);
+            if (_devicesLoaded)
+            {
+                LoadMonitors();
+            }
+        });
     }
 
     private void OnSettingsChangedRefreshEncodingDefaults(object? sender, EventArgs e)
@@ -1011,22 +1037,41 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
 
     private void LoadDevices()
     {
-        if (_devicesLoaded)
+        // Encoders are probed exactly once per process: the trial-encode sweep is expensive and the machine's
+        // encoder hardware doesn't change mid-session. Monitors deliberately are NOT under this guard — see
+        // LoadMonitors.
+        if (!_devicesLoaded)
         {
-            return;
+            Encoders.Clear();
+            foreach (EncoderInfo e in _encoderProbe.GetAvailableEncoders())
+            {
+                Encoders.Add(e);
+            }
+            SelectedEncoder = PickDefaultEncoder();
+            _autoSelectedEncoder = SelectedEncoder; // remembered so ApplyRecommendedEncoder can tell "still the default" from "user picked this"
+            _devicesLoaded = true;
         }
 
-        Monitors.Clear();
-        IReadOnlyList<MonitorInfo> realMonitors = CaptureCapabilities.EnumerateMonitors();
-        foreach (MonitorInfo m in realMonitors)
-        {
-            Monitors.Add(m);
-        }
-        if (realMonitors.Count > 1)
+        LoadMonitors();
+    }
+
+    /// <summary>Re-enumerates displays and rebuilds the picker list, preserving the user's selection when the
+    /// monitor is still present. Unlike the encoder probe this runs on every device load (Record-screen
+    /// navigation, <c>--tray</c>/<c>--record</c> headless load) AND on live display-topology changes while
+    /// the app is open (<see cref="OnDisplaySettingsChanged"/>, debounced), because the monitor set genuinely
+    /// changes while the app runs: dock a laptop or plug in a display and it becomes selectable without an
+    /// app restart or any navigation; unplug one and a stale selection would otherwise hold a dead HMONITOR
+    /// that silently captures nothing; and "All Displays" (only meaningful with 2+ real monitors) appears/
+    /// disappears with the real count. Windows already refresh this way on every load — monitors were simply
+    /// left out.</summary>
+    private void LoadMonitors()
+    {
+        List<MonitorInfo> fresh = [.. CaptureCapabilities.EnumerateMonitors()];
+        if (fresh.Count > 1)
         {
             // "Full screen (per display + all displays)" (plan §1) — only meaningful with 2+ real monitors.
-            RegionRect bounds = CaptureTarget.FromAllDisplays(realMonitors).VirtualDesktopBounds!.Value;
-            Monitors.Add(new MonitorInfo
+            RegionRect bounds = CaptureTarget.FromAllDisplays(fresh).VirtualDesktopBounds!.Value;
+            fresh.Add(new MonitorInfo
             {
                 Handle = nint.Zero,
                 DisplayName = "All Displays",
@@ -1038,16 +1083,81 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
                 IsAllDisplays = true,
             });
         }
-        SelectedMonitor = Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault();
 
-        Encoders.Clear();
-        foreach (EncoderInfo e in _encoderProbe.GetAvailableEncoders())
+        // Unchanged fast path (the common case on every Record-screen visit): don't touch the collection or
+        // the selection at all, so no binding churn and no preview restart fires. RecordInfo is a record, so
+        // value equality covers handle/geometry/HDR state — a re-enumeration that found exactly the same
+        // monitors (the usual case) compares equal element-for-element.
+        if (Monitors.Count == fresh.Count)
         {
-            Encoders.Add(e);
+            bool identical = true;
+            for (int i = 0; i < fresh.Count; i++)
+            {
+                if (!MonitorInfoMatches(Monitors[i], fresh[i]))
+                {
+                    identical = false;
+                    break;
+                }
+            }
+
+            if (identical)
+            {
+                return;
+            }
         }
-        SelectedEncoder = PickDefaultEncoder();
-        _autoSelectedEncoder = SelectedEncoder; // remembered so ApplyRecommendedEncoder can tell "still the default" from "user picked this"
-        _devicesLoaded = true;
+
+        MonitorInfo? previous = SelectedMonitor;
+        Monitors.Clear();
+        foreach (MonitorInfo m in fresh)
+        {
+            Monitors.Add(m);
+        }
+
+        SelectedMonitor = ResolveMonitorSelection(previous);
+    }
+
+    /// <summary>Value equality for the unchanged-list fast path. The synthetic "All Displays" entry has a
+    /// zero handle, so it can't be identified by handle alone — compare identity plus the bounding box.</summary>
+    private static bool MonitorInfoMatches(MonitorInfo a, MonitorInfo b)
+    {
+        if (a.IsAllDisplays != b.IsAllDisplays)
+        {
+            return false;
+        }
+
+        return a.IsAllDisplays
+            ? a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height
+            : a == b;
+    }
+
+    /// <summary>Maps a previous selection onto the freshly enumerated list. Real monitors are matched by
+    /// friendly name first, then device path — the label is the most stable cross-reconnect identity, while
+    /// device paths (<c>\\.\DISPLAYn</c>) renumber when the topology changes, so matching on the path first
+    /// could silently re-point the selection to a different physical panel after a replug even when an exact
+    /// name match exists — then by handle; falling back to the primary monitor when the selected one is gone.
+    /// An "All Displays" selection keeps that entry only if 2+ real monitors are still present.</summary>
+    private MonitorInfo? ResolveMonitorSelection(MonitorInfo? previous)
+    {
+        if (previous is null)
+        {
+            return Monitors.FirstOrDefault(m => m.IsPrimary && !m.IsAllDisplays) ?? Monitors.FirstOrDefault();
+        }
+
+        if (previous.IsAllDisplays)
+        {
+            return Monitors.FirstOrDefault(m => m.IsAllDisplays)
+                ?? Monitors.FirstOrDefault(m => m.IsPrimary && !m.IsAllDisplays)
+                ?? Monitors.FirstOrDefault();
+        }
+
+        MonitorInfo? resolved =
+            Monitors.FirstOrDefault(m => !m.IsAllDisplays && string.Equals(m.DisplayName, previous.DisplayName, StringComparison.Ordinal)) ??
+            Monitors.FirstOrDefault(m => !m.IsAllDisplays && string.Equals(m.DeviceName, previous.DeviceName, StringComparison.OrdinalIgnoreCase)) ??
+            Monitors.FirstOrDefault(m => !m.IsAllDisplays && m.Handle == previous.Handle && previous.Handle != nint.Zero);
+
+        return resolved
+            ?? Monitors.FirstOrDefault(m => m.IsPrimary && !m.IsAllDisplays)
+            ?? Monitors.FirstOrDefault();
     }
 
     private void LoadWindows()

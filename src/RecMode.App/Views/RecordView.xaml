@@ -297,6 +297,7 @@
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding PerAppAudioTargets}" SelectedItem="{Binding SelectedPerAppAudioTarget}"
                               IsEnabled="{Binding SystemAudioEnabled}" Margin="0,0,0,8"
+                              ToolTip="{x:Static res:Strings.Record_LimitToAppTooltip}"
                               AutomationProperties.LabeledBy="{Binding ElementName=PerAppAudioLabel}" />
                     <Button Content="{x:Static res:Strings.AudioDevicePicker_ButtonLabel}" Command="{Binding SelectAudioDevicesCommand}"
                             Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Height="28" Padding="10,0" Margin="0,0,0,10"

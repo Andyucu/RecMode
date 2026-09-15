@@ -101,8 +101,12 @@ public partial class ContourOverlayWindow : Window
             return IntPtr.Zero;
         }
 
-        int screenX = unchecked((short)(lParam.ToInt32() & 0xFFFF));
-        int screenY = unchecked((short)((lParam.ToInt32() >> 16) & 0xFFFF));
+        // lParam is a 64-bit value on x64: LOWORD = x (signed), HIWORD = y (signed).
+        // ToInt32() truncates and throws OverflowException if the high bit of the 64-bit value is set
+        // (i.e. any negative y, which happens on monitors above the primary). Use ToInt64() and mask.
+        long lParam64 = lParam.ToInt64();
+        int screenX = unchecked((short)(lParam64 & 0xFFFF));
+        int screenY = unchecked((short)((lParam64 >> 16) & 0xFFFF));
 
         // Window-relative coordinates: the window spans _current (the logical rect) inflated by HandlePadding.
         int localX = screenX - (_current.X - HandlePadding);

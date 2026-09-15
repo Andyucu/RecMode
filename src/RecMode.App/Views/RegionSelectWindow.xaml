@@ -23,7 +23,8 @@
                            VerticalAlignment="Center" Margin="8,0,16,0" FontSize="13" />
                 <Button Content="{x:Static res:Strings.RegionSelect_Preset1080}" Click="OnPreset1080" Style="{StaticResource SecondaryButton}" Margin="0,0,6,0" Tag="1920x1080" />
                 <Button Content="{x:Static res:Strings.RegionSelect_Preset720}" Click="OnPreset720" Style="{StaticResource SecondaryButton}" Margin="0,0,6,0" Tag="1280x720" />
-                <Button Content="{x:Static res:Strings.RegionSelect_Full}" Click="OnPresetFull" Style="{StaticResource SecondaryButton}" Margin="0,0,16,0" />
+                <Button Content="{x:Static res:Strings.RegionSelect_Full}" Click="OnPresetFull" Style="{StaticResource SecondaryButton}"
+                        ToolTip="{x:Static res:Strings.RegionSelect_FullTooltip}" Margin="0,0,16,0" />
                 <Button Content="{x:Static res:Strings.Common_Cancel}" Click="OnCancel" Style="{StaticResource SecondaryButton}" Margin="0,0,6,0" />
                 <Button x:Name="ConfirmButton" Content="{x:Static res:Strings.RegionSelect_UseRegion}" Click="OnConfirm" Style="{StaticResource AccentButton}" IsEnabled="False" />
             </StackPanel>

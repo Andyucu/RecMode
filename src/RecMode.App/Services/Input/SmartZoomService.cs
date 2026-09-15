@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using RecMode.App.ViewModels;
 using RecMode.Capture;
+using RecMode.Core.Errors;
 using RecMode.Core.Settings;
 
 namespace RecMode.App.Services;
@@ -13,21 +14,18 @@ namespace RecMode.App.Services;
 /// way the brightness filter is) — this service only decides *when* to retarget, via
 /// <see cref="RecordingCoordinator.ComputeZoomRect"/>, which documents the Monitor/Region-only v1 scope cut.
 /// <para>
-/// Owns a private <see cref="GlobalMouseHook"/> instance rather than sharing <see cref="ClickHighlightService"/>'s
-/// DI singleton: both services independently call <c>Install()</c>/<c>Uninstall()</c> based on their own
-/// setting, and <c>WH_MOUSE_LL</c> supports multiple simultaneous hooks per process, so a shared hook would mean
-/// one feature's Uninstall could silently kill the other's clicks whenever the two settings are toggled
-/// independently.
+/// Shares <see cref="ClickHighlightService"/>'s DI <see cref="GlobalMouseHook"/> singleton (refcounted
+/// install/uninstall) so only one <c>WH_MOUSE_LL</c> hook exists system-wide regardless of which features
+/// are active.
 /// </para>
 /// Lifecycle mirrors <see cref="ClickHighlightService"/> (§3.9): the hook and idle timer only exist while
 /// recording and the setting is on, torn down otherwise.
 /// </summary>
-public sealed class SmartZoomService(RecordViewModel record, ISettingsService settings, RecordingCoordinator coordinator) : IDisposable
+public sealed class SmartZoomService(RecordViewModel record, ISettingsService settings, RecordingCoordinator coordinator, GlobalMouseHook hook, IErrorReporter errors) : IDisposable
 {
     private const double ZoomFactor = 1.8;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(2.5);
 
-    private readonly GlobalMouseHook _hook = new();
     private Timer? _idleTimer;
     private bool _active;
 
@@ -63,17 +61,27 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
             return;
         }
 
+        // Bail on a failed install — the mouse hook is the only thing driving auto-zoom, so without it the
+        // feature is dead for this recording. SetWindowsHookExW can genuinely fail (EDR/anti-cheat drivers,
+        // the per-desktop hook limit); see LowLevelHook.Install.
+        if (!hook.Install())
+        {
+            errors.Warn("record.zoom-hook-failed",
+                "Smart auto-zoom can't react to clicks this recording.",
+                "Windows refused the global mouse hook (some security software blocks it). Recording continues without auto-zoom.");
+            return;
+        }
+
         _active = true;
-        _hook.Clicked += OnClicked;
-        _hook.Install();
+        hook.Clicked += OnClicked;
     }
 
     // OnClicked runs synchronously ON the UI thread's own message dispatch, as part of the WH_MOUSE_LL hook
     // procedure (same shape as ClickHighlightService.OnClicked, see its comment) — Windows enforces a hook
     // timeout (LowLevelHooksTimeout, 300ms default) on that callback, and blocking it for too long makes
-    // Windows silently unhook it, breaking auto-zoom AND (since ClickHighlightService uses a separate hook
-    // instance) potentially the click-ripple highlight for the rest of the session with no error surfaced
-    // anywhere. The real work here used to run inline: RecordingCoordinator.ComputeZoomRect ->
+    // Windows silently unhook it, breaking auto-zoom AND — this hook being the one shared with
+    // ClickHighlightService — potentially the click-ripple highlight for the rest of the session with no
+    // error surfaced anywhere. The real work here used to run inline: RecordingCoordinator.ComputeZoomRect ->
     // ResolveZoomMonitor -> CaptureCapabilities.EnumerateMonitors() creates a fresh IDXGIFactory1 and walks
     // every adapter/output (IsMonitorHdr's QueryInterface<IDXGIOutput6> per monitor) — real COM/DXGI cost,
     // on the multi-adapter-per-GPU shape this exact dev machine has — plus SetZoomTarget taking a lock and a
@@ -118,8 +126,8 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
         }
 
         _active = false;
-        _hook.Uninstall();
-        _hook.Clicked -= OnClicked;
+        hook.Uninstall();
+        hook.Clicked -= OnClicked;
         _idleTimer?.Dispose();
         _idleTimer = null;
         coordinator.SetZoomTarget(null);
@@ -130,6 +138,5 @@ public sealed class SmartZoomService(RecordViewModel record, ISettingsService se
         record.PropertyChanged -= OnPropertyChanged;
         settings.SettingsChanged -= OnSettingsChanged;
         Stop();
-        _hook.Dispose();
     }
 }

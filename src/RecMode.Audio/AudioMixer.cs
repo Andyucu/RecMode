@@ -42,7 +42,17 @@ public sealed class AudioMixer : IAudioMixer
     /// Never hold this across a blocking WASAPI/COM call; detach under the lock, dispose after releasing it.</summary>
     private readonly object _writeLock = new();
 
-    public bool IsRunning { get; private set; }
+    /// <summary>True once <see cref="Stop"/> has torn this mixer down, false from the moment <see cref="Start"/>
+    /// runs until then. Deliberately separate from "has at least one source": a mic-only recording whose mic is
+    /// toggled off partway has zero sources but is still a live mixer that must accept a re-enable. Conflating
+    /// the two made <see cref="SetMicEnabled"/> reject every re-enable after a mid-recording off-toggle (its
+    /// guard read the "has no sources" state as "stopped"), firing a false "microphone couldn't be captured"
+    /// warning — and made the just-started-source publish check below see a live mixer as stopped.</summary>
+    private volatile bool _stopped = true;
+
+    /// <summary>Whether the mixer is in a started (not yet stopped) session. See <see cref="_stopped"/>.</summary>
+    public bool IsRunning => !_stopped;
+
     public int SampleRate => Rate;
     public int Channels => Chans;
 
@@ -164,7 +174,7 @@ public sealed class AudioMixer : IAudioMixer
         }
 
         bool systemStarted = _systemSources.Length > 0;
-        IsRunning = systemStarted || _mic is not null;
+        _stopped = false;
 
         return new AudioMixerStartResult
         {
@@ -352,7 +362,7 @@ public sealed class AudioMixer : IAudioMixer
     /// as a warning.</summary>
     public bool SetMicEnabled(bool enabled)
     {
-        if (!IsRunning)
+        if (_stopped)
         {
             return false;
         }
@@ -375,7 +385,6 @@ public sealed class AudioMixer : IAudioMixer
                 {
                     toDispose = _mic;
                     _mic = null;
-                    IsRunning = _systemSources.Length > 0;
                     return false;
                 }
             }
@@ -387,10 +396,29 @@ public sealed class AudioMixer : IAudioMixer
                 capture = new WasapiCapture(); // default capture device, shared mode — mirrors Start()'s own mic path
                 micSource = new MixSource(capture, _meteringOnly);
                 micSource.Start();
+
+                // Stop() can tear the whole mixer down while device activation above was in progress (it runs
+                // outside the lock on purpose). Publishing after that would put a live WasapiCapture onto a
+                // dead mixer that nothing will ever Stop() again — the OS "microphone in use" indicator (and
+                // the capture client) would stay lit for the process lifetime. _stopped is only meaningful
+                // under _writeLock, so re-check it exactly where we publish.
+                bool mixerStopped;
                 lock (_writeLock)
                 {
-                    _mic = micSource;
-                    IsRunning = true;
+                    mixerStopped = _stopped;
+                    if (!mixerStopped)
+                    {
+                        _mic = micSource;
+                        micSource = null; // ownership transferred — must not be disposed below
+                        capture = null;
+                    }
+                }
+
+                if (mixerStopped)
+                {
+                    Log.Debug("Mixer stopped while a mic enable toggle was mid-flight; discarding the just-started microphone capture");
+                    DisposeFailedSource(micSource, capture);
+                    return false;
                 }
 
                 return true;
@@ -402,7 +430,6 @@ public sealed class AudioMixer : IAudioMixer
                 lock (_writeLock)
                 {
                     _mic = null;
-                    IsRunning = _systemSources.Length > 0;
                 }
 
                 return false;
@@ -442,6 +469,8 @@ public sealed class AudioMixer : IAudioMixer
             while (silenceRemaining > 0 && !token.IsCancellationRequested)
             {
                 int n = (int)Math.Min(silenceRemaining, ChunkFloats);
+                // .AsTask() is required, not incidental — see FfmpegRecordingSession.WriteFrame: a bare
+                // ValueTask.GetAwaiter().GetResult() throws as soon as the write goes async.
                 pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
                 silenceRemaining -= n;
                 floatsWritten += n;
@@ -485,6 +514,8 @@ public sealed class AudioMixer : IAudioMixer
                 // recording made with a negative AudioSyncOffsetMs, on exactly the one chunk where the discard
                 // ends partway through.
                 Buffer.BlockCopy(mixBuf, (int)dropped * 4, outBytes, 0, n * 4);
+                // .AsTask() is required, not incidental — see FfmpegRecordingSession.WriteFrame: a bare
+                // ValueTask.GetAwaiter().GetResult() throws as soon as the write goes async.
                 pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
                 floatsWritten += n;
             }
@@ -540,15 +571,16 @@ public sealed class AudioMixer : IAudioMixer
 
     public void Stop()
     {
-        IsRunning = false;
-
         // Detach under the lock, dispose after releasing it — MixSource.Dispose joins WASAPI capture threads
         // (up to ~2 s for per-app process loopback), and holding the lock across that would block the UI
-        // thread's meter tick for the whole teardown.
+        // thread's meter tick for the whole teardown. _stopped=true is INSIDE the lock deliberately: it's
+        // the flag SetMicEnabled re-checks before publishing a just-started mic source, so the flag flip and
+        // the source detachment must be one atomic step or the toggle could observe stale "running" state.
         MixSource[] systemToDispose;
         MixSource? micToDispose;
         lock (_writeLock)
         {
+            _stopped = true;
             systemToDispose = _systemSources;
             micToDispose = _mic;
             _systemSources = [];

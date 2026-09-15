@@ -77,6 +77,7 @@ public static class Strings
     public static string Record_SystemAudioTooltip => Get(nameof(Record_SystemAudioTooltip));
     public static string Record_SystemAudio => Get(nameof(Record_SystemAudio));
     public static string Record_LimitToApp => Get(nameof(Record_LimitToApp));
+    public static string Record_LimitToAppTooltip => Get(nameof(Record_LimitToAppTooltip));
     public static string Record_SystemVolumeTooltip => Get(nameof(Record_SystemVolumeTooltip));
     public static string Record_Microphone => Get(nameof(Record_Microphone));
     public static string Record_MicrophoneTooltip => Get(nameof(Record_MicrophoneTooltip));
@@ -212,7 +213,9 @@ public static class Strings
     public static string ScheduleEdit_WeeklyDay => Get(nameof(ScheduleEdit_WeeklyDay));
     public static string ScheduleEdit_Time => Get(nameof(ScheduleEdit_Time));
     public static string ScheduleEdit_Duration => Get(nameof(ScheduleEdit_Duration));
+    public static string ScheduleEdit_DurationTooltip => Get(nameof(ScheduleEdit_DurationTooltip));
     public static string ScheduleEdit_Profile => Get(nameof(ScheduleEdit_Profile));
+    public static string ScheduleEdit_ProfileTooltip => Get(nameof(ScheduleEdit_ProfileTooltip));
     public static string ScheduleEdit_Save => Get(nameof(ScheduleEdit_Save));
     public static string ScheduleEdit_Cancel => Get(nameof(ScheduleEdit_Cancel));
     public static string ScheduleEdit_InvalidTime => Get(nameof(ScheduleEdit_InvalidTime));
@@ -231,6 +234,7 @@ public static class Strings
     public static string Profile_Delete => Get(nameof(Profile_Delete));
     public static string Profile_SaveTitle => Get(nameof(Profile_SaveTitle));
     public static string Profile_Name => Get(nameof(Profile_Name));
+    public static string Profile_NameTooltip => Get(nameof(Profile_NameTooltip));
     public static string Profile_InvalidName => Get(nameof(Profile_InvalidName));
 
     public static string About_Description => Get(nameof(About_Description));
@@ -285,12 +289,16 @@ public static class Strings
     public static string AudioDevicePicker_Title => Get(nameof(AudioDevicePicker_Title));
     public static string AudioDevicePicker_ButtonLabel => Get(nameof(AudioDevicePicker_ButtonLabel));
     public static string AudioDevicePicker_Automatic => Get(nameof(AudioDevicePicker_Automatic));
+    public static string AudioDevicePicker_AutomaticTooltip => Get(nameof(AudioDevicePicker_AutomaticTooltip));
     public static string AudioDevicePicker_AutomaticDesc => Get(nameof(AudioDevicePicker_AutomaticDesc));
     public static string AudioDevicePicker_Custom => Get(nameof(AudioDevicePicker_Custom));
+    public static string AudioDevicePicker_CustomTooltip => Get(nameof(AudioDevicePicker_CustomTooltip));
     public static string AudioDevicePicker_CustomDesc => Get(nameof(AudioDevicePicker_CustomDesc));
     public static string AudioDevicePicker_NoDevices => Get(nameof(AudioDevicePicker_NoDevices));
     public static string AudioDevicePicker_DefaultTag => Get(nameof(AudioDevicePicker_DefaultTag));
+    public static string AudioDevicePicker_DefaultTagTooltip => Get(nameof(AudioDevicePicker_DefaultTagTooltip));
     public static string AudioDevicePicker_CommsTag => Get(nameof(AudioDevicePicker_CommsTag));
+    public static string AudioDevicePicker_CommsTagTooltip => Get(nameof(AudioDevicePicker_CommsTagTooltip));
     public static string Toolbar_PinLabel => Get(nameof(Toolbar_PinLabel));
     public static string Toolbar_PinTooltip => Get(nameof(Toolbar_PinTooltip));
     public static string Toolbar_UnpinTooltip => Get(nameof(Toolbar_UnpinTooltip));
@@ -299,6 +307,7 @@ public static class Strings
     public static string RegionSelect_Preset1080 => Get(nameof(RegionSelect_Preset1080));
     public static string RegionSelect_Preset720 => Get(nameof(RegionSelect_Preset720));
     public static string RegionSelect_Full => Get(nameof(RegionSelect_Full));
+    public static string RegionSelect_FullTooltip => Get(nameof(RegionSelect_FullTooltip));
     public static string RegionSelect_UseRegion => Get(nameof(RegionSelect_UseRegion));
     public static string Common_Cancel => Get(nameof(Common_Cancel));
 

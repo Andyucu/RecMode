@@ -290,9 +290,11 @@ public sealed class RecordingCoordinator : IDisposable
             {
                 _finalizeStarted = false;
                 _finalizationCompleted.Reset();
+                _stopRequested = false; // disarm before IsBusy can publish true, so a Stop in the earlier
+                // window (between IsBusy and this line) can't claim this attempt's fresh latch then have us
+                // overwrite the flag and launch a pacer over a torn-down _capture. See the stop-race note above.
             }
             _stateMachine.StartRecording();
-            _stopRequested = false;
             _lastSizeBytes = 0;
             _lastSizeTicks = 0;
             _currentSegmentStartedAt = TimeSpan.Zero;
@@ -779,6 +781,11 @@ public sealed class RecordingCoordinator : IDisposable
             Effort = _settings.Current.Effort,
             BitrateGuardrailEnabled = _settings.Current.BitrateGuardrailEnabled,
             IsScreenContent = target.Kind != CaptureKind.Webcam,
+            // Under safe recording the muxer writes a temp MKV, but audio-args steering must follow the
+            // container the user actually picked — Opus/FLAC in the temp MKV can't be stream-copied into
+            // MP4/MOV on remux, so the steering (which would have forced AAC for MP4/MOV without safe
+            // recording) has to see that final container. See FfmpegJob.FinalContainer.
+            FinalContainer = _safeRemux ? container : null,
         };
 
         return (job, audioEnabled);
@@ -1225,6 +1232,7 @@ public sealed class RecordingCoordinator : IDisposable
         long lastAudioFaultCheck = Stopwatch.GetTimestamp();
         bool systemAudioFaultWarned = false;
         bool micAudioFaultWarned = false;
+        long lastFrameSequence = -1;
 
         _ = timeBeginPeriod(1);
         try
@@ -1243,7 +1251,17 @@ public sealed class RecordingCoordinator : IDisposable
                 long targetFrames = (long)(_stateMachine.Elapsed.TotalSeconds * fps);
                 if (framesWritten >= targetFrames)
                 {
-                    Thread.Sleep(1);
+                    double elapsed = _stateMachine.Elapsed.TotalSeconds;
+                    double nextFrameElapsed = (framesWritten + 1) / (double)fps;
+                    double sleepSeconds = nextFrameElapsed - elapsed;
+                    if (sleepSeconds > 0.001)
+                    {
+                        Thread.Sleep((int)Math.Max(1, sleepSeconds * 1000));
+                    }
+                    else
+                    {
+                        Thread.Sleep(1);
+                    }
                     continue;
                 }
 
@@ -1260,10 +1278,15 @@ public sealed class RecordingCoordinator : IDisposable
                     break;
                 }
 
-                if (!_capture.TryGetLatestFrame(frame))
+                long currentSeq = _capture.FrameSequence;
+                if (currentSeq != lastFrameSequence)
                 {
-                    Thread.Sleep(1);
-                    continue; // no first frame yet
+                    if (!_capture.TryGetLatestFrame(frame))
+                    {
+                        Thread.Sleep(1);
+                        continue; // no first frame yet
+                    }
+                    lastFrameSequence = currentSeq;
                 }
 
                 _session!.WriteFrame(frame, frame.Length);
@@ -1627,8 +1650,9 @@ public sealed class RecordingCoordinator : IDisposable
         if (!usedStashedResult && result.Success && result.OutputPath.Length > 0)
         {
             double duration = _metaFps > 0 ? (double)result.FramesWritten / _metaFps : 0;
+            string directory = Path.GetDirectoryName(result.OutputPath) ?? string.Empty;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
-                Path.GetFileName(result.OutputPath), _metaSource, _metaCodec, _metaContainer,
+                Path.GetFileName(result.OutputPath), directory, _metaSource, _metaCodec, _metaContainer,
                 _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
                 _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
         }
@@ -1752,8 +1776,9 @@ public sealed class RecordingCoordinator : IDisposable
         if (segResult.Success && prevFinalPath.Length > 0)
         {
             double duration = _targetFps > 0 ? (double)segResult.FramesWritten / _targetFps : 0;
+            string directory = Path.GetDirectoryName(prevFinalPath) ?? string.Empty;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
-                Path.GetFileName(prevFinalPath), _metaSource, _metaCodec, _metaContainer,
+                Path.GetFileName(prevFinalPath), directory, _metaSource, _metaCodec, _metaContainer,
                 _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
                 _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
 

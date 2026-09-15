@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using RecMode.App.ViewModels;
 using RecMode.App.Views;
+using RecMode.Core.Errors;
 using RecMode.Core.Settings;
 
 namespace RecMode.App.Services;
@@ -10,7 +11,7 @@ namespace RecMode.App.Services;
 /// and the "Highlight mouse clicks" setting is on (plan Phase 8). Torn down when recording stops (§3.9), so
 /// the hook and overlay only exist during a recording.
 /// </summary>
-public sealed class ClickHighlightService(RecordViewModel record, ISettingsService settings, GlobalMouseHook hook) : IDisposable
+public sealed class ClickHighlightService(RecordViewModel record, ISettingsService settings, GlobalMouseHook hook, IErrorReporter errors) : IDisposable
 {
     private ClickRippleOverlay? _overlay;
 
@@ -46,10 +47,33 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
             return;
         }
 
-        _overlay = new ClickRippleOverlay(record.ActiveCaptureTarget);
-        _overlay.Show();
+        // Install BEFORE creating the overlay, and bail on failure: ripples are driven entirely by the mouse
+        // hook, so without it the overlay would be a no-op. SetWindowsHookExW can genuinely fail (EDR/anti-
+        // cheat drivers, the per-desktop hook limit) — previously this was silent for the whole recording.
+        if (!hook.Install())
+        {
+            errors.Warn("record.click-hook-failed",
+                "Click highlights can't be shown for this recording.",
+                "Windows refused the global mouse hook (some security software blocks it). Recording continues without click highlights.");
+            return;
+        }
+
+        try
+        {
+            _overlay = new ClickRippleOverlay(record.ActiveCaptureTarget);
+            _overlay.Show();
+        }
+        catch
+        {
+            // The hook reference is already held at this point, and Hide()'s _overlay-null guard would
+            // early-return without releasing it if the overlay constructor/show threw — leaking one refcount
+            // on the shared hook for the rest of the process. Release it here and let the failure propagate.
+            hook.Uninstall();
+            _overlay = null;
+            throw;
+        }
+
         hook.Clicked += OnClicked;
-        hook.Install();
         // Window-source recordings only see their own window's rendered content via WGC's per-window
         // capture — a separate top-level overlay window like this one is invisible to it otherwise, so
         // without this the ripple showed live on screen but never in the actual recording. See
@@ -72,6 +96,11 @@ public sealed class ClickHighlightService(RecordViewModel record, ISettingsServi
 
     private void Hide()
     {
+        if (_overlay is null)
+        {
+            return;
+        }
+
         hook.Uninstall();
         hook.Clicked -= OnClicked;
         _overlay?.Close();

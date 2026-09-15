@@ -15,6 +15,7 @@
             <TextBlock x:Name="ProfileNameLabel" Text="{x:Static res:Strings.Profile_Name}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
             <TextBox x:Name="NameBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource AppTextBox}" Margin="0,0,0,16"
+                     ToolTip="{x:Static res:Strings.Profile_NameTooltip}"
                      AutomationProperties.LabeledBy="{Binding ElementName=ProfileNameLabel}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

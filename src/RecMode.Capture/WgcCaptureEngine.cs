@@ -57,6 +57,7 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     // recording after 10s of no increase — so without this delegation every recording on the fallback path
     // (Win10 pre-1903, RDP/VM sessions, any WGC device-creation failure) self-terminated after ~11 seconds.
     public long CapturedFrameCount => _softwareFallback?.CapturedFrameCount ?? Interlocked.Read(ref _capturedFrames);
+    public long FrameSequence => _softwareFallback?.FrameSequence ?? Interlocked.Read(ref _capturedFrames);
     public bool SupportsZoom => _softwareFallback is null;
 
     /// <summary>True once HDR-to-SDR tone mapping (§3.6) is actually active for the current recording — only
@@ -438,8 +439,9 @@ public sealed class WgcCaptureEngine : ICaptureEngine
 
     public bool TryGetLatestFrame(byte[] dest)
     {
-        if (_softwareFallback is not null)
-            return _softwareFallback.TryGetLatestFrame(dest);
+        var sw = _softwareFallback; // read once — Stop() nulls it under a different lock
+        if (sw is not null)
+            return sw.TryGetLatestFrame(dest);
         lock (_sync)
         {
             if (!_hasLatest)

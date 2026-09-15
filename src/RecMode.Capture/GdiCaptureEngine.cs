@@ -22,12 +22,18 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
     private bool _captureWindow;
     private bool _captureCursor;
     private bool _hasLatest;
+    // Written on the capture thread, read cross-thread by the pacer (FrameSequence drives its copy-skip) and
+    // the capture-stall watchdog (CapturedFrameCount) — so it must be accessed atomically, matching
+    // WgcCaptureEngine's Interlocked.Read(ref _capturedFrames). A plain long would let the pacer keep seeing
+    // a stale value and either skip a fresh frame or recopy an unchanged one.
+    private long _capturedFrames;
 
     public bool IsRunning { get; private set; }
     public int OutputWidth => _dstW;
     public int OutputHeight => _dstH;
     public int Nv12ByteSize => _dstW * _dstH * 3 / 2;
-    public long CapturedFrameCount { get; private set; }
+    public long CapturedFrameCount => Interlocked.Read(ref _capturedFrames);
+    public long FrameSequence => Interlocked.Read(ref _capturedFrames);
     public bool SupportsZoom => false;
     public bool HdrToneMapActive => false;
     public event EventHandler<Exception>? Faulted;
@@ -46,7 +52,7 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
         _captureWindow = target.Kind == CaptureKind.Window;
         _captureCursor = captureCursor;
         _hasLatest = false;
-        CapturedFrameCount = 0;
+        Interlocked.Exchange(ref _capturedFrames, 0);
         _stopping = false;
         IsRunning = true;
         _thread = new Thread(CaptureLoop) { IsBackground = true, Name = "recmode-gdi" };
@@ -93,7 +99,7 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
                         Buffer.BlockCopy(nv12, 0, _latest, 0, nv12.Length);
                         _hasLatest = true;
                     }
-                    CapturedFrameCount++;
+                    Interlocked.Increment(ref _capturedFrames);
                     consecutiveFailures = 0;
                 }
                 catch (Exception) when (++consecutiveFailures < MaxConsecutiveFrameFailures)

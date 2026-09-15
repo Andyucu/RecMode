@@ -166,6 +166,8 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
         }
     }
 
+    public long FrameSequence => _source?.FrameSequence ?? 0;
+
     public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect) { } // nonsensical when the webcam already IS the source
     public void SetBrightness(double value) { } // no GPU pass to apply it — see class doc comment
     public void SetZoomTarget(RegionRect? rect) { }

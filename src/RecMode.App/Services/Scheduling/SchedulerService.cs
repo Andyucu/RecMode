@@ -74,6 +74,12 @@ public sealed class SchedulerService(ISettingsService settings, RecordViewModel 
                 System.Threading.Tasks.Task.Run(coordinator.Stop);
             }
 
+            // Either way this schedule's window is over — clear the latch unconditionally so a recording that
+            // already ended (by another path) doesn't leave us permanently stuck taking this branch and
+            // returning before ever evaluating any future schedule.
+            _scheduledRecordingActive = false;
+            _scheduledStopAt = null;
+
             return; // let the next tick evaluate a fresh state
         }
 

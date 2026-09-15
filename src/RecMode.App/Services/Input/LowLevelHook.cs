@@ -30,6 +30,7 @@ public abstract class LowLevelHook : IDisposable
     private readonly int _idHook;
     private readonly HookProc _proc; // kept alive for the hook's lifetime
     private IntPtr _hook;
+    private int _refCount;
 
     protected LowLevelHook(int idHook)
     {
@@ -37,23 +38,43 @@ public abstract class LowLevelHook : IDisposable
         _proc = Callback;
     }
 
-    public void Install()
+    /// <summary>Installs the Win32 hook (or takes one more shared reference on an existing install). Returns
+    /// false when <c>SetWindowsHookExW</c> failed — which is a real, reachable outcome, not a theoretical one:
+    /// EDR/anti-cheat drivers block low-level hooks in practice, and Windows caps hooks per desktop. Callers
+    /// must check this and warn: the previous silent-void version left the feature dead for the whole
+    /// recording (overlay up, never any events) with nothing logged, and — this class being a shared DI
+    /// singleton — let one feature's failed install sit invisibly under a second feature's successful one,
+    /// whose later <see cref="Uninstall"/> then tore the hook out from under it.</summary>
+    public bool Install()
     {
+        if (_hook != IntPtr.Zero)
+        {
+            _refCount++;
+            return true;
+        }
+
+        _hook = SetWindowsHookExW(_idHook, _proc, GetModuleHandleW(null), 0);
         if (_hook == IntPtr.Zero)
         {
-            _hook = SetWindowsHookExW(_idHook, _proc, GetModuleHandleW(null), 0);
+            return false; // refCount intentionally untouched — nobody holds a working hook
         }
+
+        _refCount++;
+        return true;
     }
 
     public void Uninstall()
     {
-        if (_hook != IntPtr.Zero)
+        if (_refCount > 0)
+        {
+            _refCount--;
+        }
+        if (_refCount == 0 && _hook != IntPtr.Zero)
         {
             UnhookWindowsHookEx(_hook);
             _hook = IntPtr.Zero;
+            OnUninstalled();
         }
-
-        OnUninstalled();
     }
 
     /// <summary>Called after the hook handle is cleared, so a subclass can reset its own per-session state

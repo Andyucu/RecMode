@@ -9,6 +9,46 @@ namespace RecMode.Capture;
 /// </summary>
 public static class Bgra8ToNv12Converter
 {
+    // Nearest-neighbor lookup tables, cached per (src,dst) size pair. Building them allocates two int[] and
+    // runs one division per destination column/row — doing that on EVERY frame was ~2 int[] allocations per
+    // frame (≈1.3 MB/s of pure garbage at a 4096×1152 destination, 60 fps — a §3.9 violation: this runs on
+    // the allocation-free hot path for every GDI-fallback and webcam recording). Tables are built once per
+    // distinct geometry and never mutated afterwards, so concurrent readers are safe; the dictionary is only
+    // touched under the lock on the (rare) cache-miss path. One recording session has exactly one (src,dst)
+    // pair and the handful of concurrent shapes (recording/preview/webcam) stay small — but a process that
+    // repeatedly re-selects regions accumulates one ~20 KB pair per distinct size for its whole lifetime, so
+    // the cache is capped and cleared wholesale on overflow. Rebuilding a couple of int[] tables is trivial
+    // next to the per-frame cost they remove; holding them forever is not.
+    private const int MaxCachedShapes = 8;
+    private static readonly object TableCacheLock = new();
+    private static readonly Dictionary<(int SrcW, int SrcH, int DstW, int DstH), (int[] SxFor, int[] SyFor)> TableCache = [];
+
+    private static (int[] SxFor, int[] SyFor) GetTables(int srcW, int srcH, int dstW, int dstH)
+    {
+        lock (TableCacheLock)
+        {
+            var key = (SrcW: srcW, SrcH: srcH, DstW: dstW, DstH: dstH);
+            if (TableCache.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+
+            if (TableCache.Count >= MaxCachedShapes)
+            {
+                TableCache.Clear();
+            }
+
+            int[] sxFor = new int[dstW];
+            int[] syFor = new int[dstH];
+            for (int x = 0; x < dstW; x++) sxFor[x] = Math.Min(srcW - 1, x * srcW / dstW);
+            for (int y = 0; y < dstH; y++) syFor[y] = Math.Min(srcH - 1, y * srcH / dstH);
+
+            var tables = (SxFor: sxFor, SyFor: syFor);
+            TableCache[key] = tables;
+            return tables;
+        }
+    }
+
     // BT.601 limited/"TV" range (luma 16-235, chroma 16-240) — the range every decoder assumes by default
     // absent an explicit signal in the bitstream, which is exactly what this pipeline leaves unset
     // (FfmpegArgsBuilder emits no -color_range flag at all — confirmed by grep, not just assumed; there is no
@@ -28,18 +68,16 @@ public static class Bgra8ToNv12Converter
     {
         int ySize = dstW * dstH;
 
-        // Precompute the nearest-neighbor source column/row for every destination column/row ONCE, instead
-        // of recomputing "x*srcW/dstW" / "y*srcH/dstH" (two integer divisions each) per sampled pixel. The
-        // previous version paid this on every luma sample AND again on every chroma sub-sample — the same
-        // (x,y) positions sampled twice, since the chroma loop re-called Pixel() for the identical 2x2 block
-        // the luma loop had just read. On this project's own 2-hour soak (5120x1440, GDI fallback), that was
-        // roughly 442M Pixel() calls/sec and ~884M divisions/sec — a previously-unattributed share of the
-        // measured CPU (see PROJECT_MEMORY 2026-08-05 for the full accounting). The loop below fixes both:
-        // one table build instead of per-pixel division, and one fetch per 2x2 block instead of two.
-        int[] sxFor = new int[dstW];
-        int[] syFor = new int[dstH];
-        for (int x = 0; x < dstW; x++) sxFor[x] = Math.Min(srcW - 1, x * srcW / dstW);
-        for (int y = 0; y < dstH; y++) syFor[y] = Math.Min(srcH - 1, y * srcH / dstH);
+        // Precompute the nearest-neighbor source column/row for every destination column/row (cached — see
+        // GetTables), instead of recomputing "x*srcW/dstW" / "y*srcH/dstH" (two integer divisions each) per
+        // sampled pixel. The previous version paid this on every luma sample AND again on every chroma
+        // sub-sample — the same (x,y) positions sampled twice, since the chroma loop re-called Pixel() for the
+        // identical 2x2 block the luma loop had just read. On this project's own 2-hour soak (5120x1440, GDI
+        // fallback), that was roughly 442M Pixel() calls/sec and ~884M divisions/sec — a
+        // previously-unattributed share of the measured CPU (see PROJECT_MEMORY 2026-08-05 for the full
+        // accounting). The loop below fixes both: one table build instead of per-pixel division, and one
+        // fetch per 2x2 block instead of two.
+        (int[] sxFor, int[] syFor) = GetTables(srcW, srcH, dstW, dstH);
 
         // dstW/dstH are always even (NV12 4:2:0 requires it, and CaptureSizing.MakeEven guarantees it) — same
         // implicit assumption the original step-by-2 chroma loop already made, just relied upon more directly

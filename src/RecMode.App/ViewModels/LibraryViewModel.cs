@@ -211,7 +211,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         if (videos && scanned is not null)
         {
             ct.ThrowIfCancellationRequested();
-            _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase));
+            _index.PruneMissing(new HashSet<string>(files.Select(f => f.Name), StringComparer.OrdinalIgnoreCase), directory);
         }
         IReadOnlyDictionary<string, RecMode.Core.Library.LibraryIndexEntry> meta =
             videos ? _index.ByFileName() : new Dictionary<string, RecMode.Core.Library.LibraryIndexEntry>();

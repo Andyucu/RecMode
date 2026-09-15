@@ -117,15 +117,25 @@ public partial class App : Application
             return;
         }
 
+#if !DEBUG
         // §3.5/security: a portable install extracted directly off a drive root (rather than inside the
         // user's own profile) inherits Windows' default ACL for that location, which typically grants
         // Authenticated Users: Modify — verified empirically. That means every other local account can read
         // every recording/screenshot/settings file this folder holds, and write into it (including replacing
         // the app's own bundled DLLs, since this is a self-contained publish). Detected, not silently fixed —
         // rewriting an ACL on a folder this process doesn't necessarily own risks a half-applied change or
-        // locking the current user out of their own data, worse than the exposure itself. One-time,
-        // dismissable: this is advisory, not a hard failure, and the check only fires for portable installs
-        // (an installed build normally lives under Program Files, which standard users can't write to).
+        // locking the current user out of their own data, worse than the exposure itself. Advisory, not a
+        // hard failure; fires on every launch (no dismiss-once persistence exists despite what an earlier
+        // version of this comment claimed).
+        //
+        // #if !DEBUG (2026-09-07, direct user request): a plain `dotnet build`/`build.ps1` dev output folder
+        // also carries `portable.marker` (RecMode.App.csproj copies it whenever RecModePortable is set) and,
+        // sitting under a repo root outside %USERPROFILE% with dev-tool-broadened ACLs, routinely trips
+        // GrantsWriteToBroadGroups too — so this was popping up on every single Debug launch on this
+        // machine, which is not the drive-root-extraction case the check exists for. build.ps1 only ever
+        // builds Debug for the everyday dev loop; publish-portable.ps1/publish-installer.ps1 always build
+        // Release. Gating on DEBUG targets exactly the population that should never see this (developers
+        // running local builds) without weakening it for the real one (an end user's published portable copy).
         if (paths.IsPortable && RecMode.Core.Infrastructure.FolderAclCheck.GrantsWriteToBroadGroups(paths.AppDirectory))
         {
             MessageBox.Show(
@@ -138,6 +148,7 @@ public partial class App : Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
+#endif
 
         ConfigureLogging(paths);
 
@@ -176,46 +187,57 @@ public partial class App : Application
         EncoderBackend initialBackend = settingsService.Current.Backend;
         System.Threading.Tasks.Task.Run(() =>
         {
-            System.Collections.Generic.IReadOnlyList<RecMode.Encoding.Encoders.EncoderInfo> available = encoderProbe.GetAvailableEncoders();
-
-            // First-run only: benchmark actual encode throughput (not just "does it open," which the probe
-            // above already answered) and recommend the fastest one with real-time headroom, preferring
-            // hardware per §3.9. Bounded to H.264 candidates — the universal baseline codec, and small enough
-            // (typically 2-4 encoders on real hardware) to stay a background-only cost that never delays the
-            // Record screen. A returning user's own encoder choice is never overridden.
-            if (isFirstRun)
+            try
             {
-                var h264Candidates = available.Where(e => e.Codec == RecMode.Core.Settings.VideoCodec.H264).ToList();
-                RecMode.Encoding.Ffmpeg.IFfmpegLocator ffmpegLocator = _host.Services.GetRequiredService<RecMode.Encoding.Ffmpeg.IFfmpegLocator>();
-                RecMode.Encoding.Ffmpeg.FfmpegResolution ff = ffmpegLocator.Resolve();
-                var coordinator = _host.Services.GetRequiredService<Services.RecordingCoordinator>();
+                System.Collections.Generic.IReadOnlyList<RecMode.Encoding.Encoders.EncoderInfo> available = encoderProbe.GetAvailableEncoders();
 
-                // Abort the moment the user starts recording: each benchmarked candidate opens a real
-                // hardware encoder session, and consumer NVENC/AMF/QSV drivers cap concurrent sessions — so
-                // a benchmark still running when a brand-new user hits Record would push their very first
-                // recording onto a software fallback with a Degraded warning.
-                if (ff.IsAvailable && ff.FfmpegPath is not null &&
-                    RecMode.Encoding.Encoders.EncoderBenchmark.Recommend(
-                        ff.FfmpegPath, h264Candidates, shouldAbort: () => coordinator.IsRecording) is { } recommended)
+                // First-run only: benchmark actual encode throughput (not just "does it open," which the probe
+                // above already answered) and recommend the fastest one with real-time headroom, preferring
+                // hardware per §3.9. Bounded to H.264 candidates — the universal baseline codec, and small enough
+                // (typically 2-4 encoders on real hardware) to stay a background-only cost that never delays the
+                // Record screen. A returning user's own encoder choice is never overridden.
+                if (isFirstRun)
                 {
-                    // Apply only if the user has not changed encoding defaults while benchmarking.
-                    // The mutation and persistence are dispatched together with the live VM update.
+                    var h264Candidates = available.Where(e => e.Codec == RecMode.Core.Settings.VideoCodec.H264).ToList();
+                    RecMode.Encoding.Ffmpeg.IFfmpegLocator ffmpegLocator = _host.Services.GetRequiredService<RecMode.Encoding.Ffmpeg.IFfmpegLocator>();
+                    RecMode.Encoding.Ffmpeg.FfmpegResolution ff = ffmpegLocator.Resolve();
+                    var coordinator = _host.Services.GetRequiredService<Services.RecordingCoordinator>();
 
-                    // Also apply it to the already-loaded Record screen — persisting alone only took effect
-                    // on the next launch. See RecordViewModel.ApplyRecommendedEncoder, which declines if the
-                    // user has since chosen an encoder or a recording has started.
-                    Dispatcher.BeginInvoke(() =>
+                    // Abort the moment the user starts recording: each benchmarked candidate opens a real
+                    // hardware encoder session, and consumer NVENC/AMF/QSV drivers cap concurrent sessions — so
+                    // a benchmark still running when a brand-new user hits Record would push their very first
+                    // recording onto a software fallback with a Degraded warning.
+                    if (ff.IsAvailable && ff.FfmpegPath is not null &&
+                        RecMode.Encoding.Encoders.EncoderBenchmark.Recommend(
+                            ff.FfmpegPath, h264Candidates, shouldAbort: () => coordinator.IsRecording) is { } recommended)
                     {
-                        if (settingsService.Current.Codec != initialCodec ||
-                            settingsService.Current.Backend != initialBackend)
-                            return;
-                        settingsService.Current.Codec = recommended.Codec;
-                        settingsService.Current.Backend = recommended.Backend;
-                        settingsService.Save();
-                        _host.Services.GetRequiredService<ViewModels.RecordViewModel>()
-                             .ApplyRecommendedEncoder(recommended.Codec, recommended.Backend);
-                    });
+                        // Apply only if the user has not changed encoding defaults while benchmarking.
+                        // The mutation and persistence are dispatched together with the live VM update.
+
+                        // Also apply it to the already-loaded Record screen — persisting alone only took effect
+                        // on the next launch. See RecordViewModel.ApplyRecommendedEncoder, which declines if the
+                        // user has since chosen an encoder or a recording has started.
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            if (settingsService.Current.Codec != initialCodec ||
+                                settingsService.Current.Backend != initialBackend)
+                                return;
+                            settingsService.Current.Codec = recommended.Codec;
+                            settingsService.Current.Backend = recommended.Backend;
+                            settingsService.Save();
+                            _host.Services.GetRequiredService<ViewModels.RecordViewModel>()
+                                 .ApplyRecommendedEncoder(recommended.Codec, recommended.Backend);
+                        });
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                // The task closes over _host and resolves services from it at several points; OnExit disposes
+                // the host without waiting for this task, so quitting during the first-run benchmark would
+                // otherwise surface as an ObjectDisposedException routed through OnUnobservedTaskException.
+                // A benchmark that never completes just means defaults stay as shipped — nothing to recover.
+                Log.Debug(ex, "Background encoder probe/benchmark did not complete (app shutting down, or the probe failed)");
             }
         });
 
@@ -452,6 +474,12 @@ public partial class App : Application
     {
         // Stop through the coordinator before DI disposes it. Disposing a live ffmpeg session kills the
         // process and leaves a partial recording; Stop() closes stdin, waits for the muxer and finalizes it.
+        // Run off the UI thread and BOUND the wait: a finalize legitimately waits out ffmpeg's own stall
+        // windows (20 s encoder wait + a full -c copy remux of a multi-GB file), and this method runs on the
+        // dispatcher thread, where an unbounded block makes the app look hung with no window painting — the
+        // same class of freeze Stop()'s own callers already avoid via Task.Run. On timeout we proceed to
+        // host disposal anyway; the safe-recording temp .recording.mkv (or plain segment file) is left on
+        // disk exactly as after a crash, which OrphanRecoveryService recovers at the next launch.
         if (_host is not null)
         {
             try
@@ -459,7 +487,17 @@ public partial class App : Application
                 var coordinator = _host.Services.GetRequiredService<Services.RecordingCoordinator>();
                 if (coordinator.IsRecording)
                 {
-                    coordinator.Stop();
+                    var stopTask = System.Threading.Tasks.Task.Run(coordinator.Stop);
+                    if (!stopTask.Wait(TimeSpan.FromSeconds(15)))
+                    {
+                        Log.Warning("Recording finalization didn't complete within 15s during shutdown; continuing exit. The recording's temp file stays on disk for next-launch recovery.");
+                        // Mark the antecedent's exception observed — a bare ContinueWith(_ => { }) does NOT do
+                        // that, and the task can still fault after the bounded Wait returned. Same pattern
+                        // UpdateChecker's bounded Velopack wait uses.
+                        _ = stopTask.ContinueWith(
+                            static t => _ = t.Exception,
+                            System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted | System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously);
+                    }
                 }
             }
             catch (Exception ex)

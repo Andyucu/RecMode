@@ -19,9 +19,11 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                 <RadioButton Style="{StaticResource SegmentedButton}" GroupName="audioDeviceMode"
                              Content="{x:Static res:Strings.AudioDevicePicker_Automatic}"
+                             ToolTip="{x:Static res:Strings.AudioDevicePicker_AutomaticTooltip}"
                              IsChecked="{Binding UseAutomatic, Mode=TwoWay}" />
                 <RadioButton Style="{StaticResource SegmentedButton}" GroupName="audioDeviceMode"
                              Content="{x:Static res:Strings.AudioDevicePicker_Custom}"
+                             ToolTip="{x:Static res:Strings.AudioDevicePicker_CustomTooltip}"
                              IsChecked="{Binding UseCustom, Mode=TwoWay}" />
             </StackPanel>
 
@@ -42,8 +44,10 @@
                                     <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{x:Static res:Strings.AudioDevicePicker_DefaultTag}" Style="{StaticResource CaptionText}"
+                                                   ToolTip="{x:Static res:Strings.AudioDevicePicker_DefaultTagTooltip}"
                                                    Visibility="{Binding IsDefaultConsole, Converter={StaticResource BoolToVisibility}}" Margin="0,0,8,0" />
                                         <TextBlock Text="{x:Static res:Strings.AudioDevicePicker_CommsTag}" Style="{StaticResource CaptionText}"
+                                                   ToolTip="{x:Static res:Strings.AudioDevicePicker_CommsTagTooltip}"
                                                    Visibility="{Binding IsDefaultCommunications, Converter={StaticResource BoolToVisibility}}" />
                                     </StackPanel>
                                 </StackPanel>

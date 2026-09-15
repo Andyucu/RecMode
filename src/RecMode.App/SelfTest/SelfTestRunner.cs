@@ -777,5 +777,7 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             Buffer.BlockCopy(_frame, 0, destination, 0, _frame.Length);
             return true;
         }
+
+        public long FrameSequence => 1;
     }
 }

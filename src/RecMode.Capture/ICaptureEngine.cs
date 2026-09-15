@@ -33,6 +33,10 @@ public interface ICaptureEngine : IDisposable
     /// <summary>Unique frames delivered by WGC so far (on-change; the pacer duplicates to CFR).</summary>
     long CapturedFrameCount { get; }
 
+    /// <summary>Monotonically increasing sequence that changes only when a new frame is published. Used by the
+    /// pacer to skip redundant full-buffer copies when the desktop is static (CFR duplication path).</summary>
+    long FrameSequence { get; }
+
     /// <summary>
     /// Raised (never on the calling thread) if a background capture thread (e.g. Desktop Duplication's pump)
     /// fails unexpectedly and had to stop itself. Capture keeps running in a degraded state (frames simply

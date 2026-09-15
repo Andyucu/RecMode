@@ -52,6 +52,7 @@
                     <TextBlock x:Name="DurationLabel" Text="{x:Static res:Strings.ScheduleEdit_Duration}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
                     <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                               ItemsSource="{Binding Durations}" SelectedItem="{Binding DurationMinutes}"
+                              ToolTip="{x:Static res:Strings.ScheduleEdit_DurationTooltip}"
                               AutomationProperties.LabeledBy="{Binding ElementName=DurationLabel}" />
                 </StackPanel>
             </Grid>
@@ -59,6 +60,7 @@
             <TextBlock x:Name="ProfileLabel" Text="{x:Static res:Strings.ScheduleEdit_Profile}" Style="{StaticResource CaptionText}" Margin="0,0,0,4" />
             <ComboBox Style="{StaticResource AppComboBox}" ItemContainerStyle="{StaticResource AppComboBoxItem}"
                       ItemsSource="{Binding ProfileOptions}" SelectedItem="{Binding SelectedProfileOption}" Margin="0,0,0,16"
+                      ToolTip="{x:Static res:Strings.ScheduleEdit_ProfileTooltip}"
                       AutomationProperties.LabeledBy="{Binding ElementName=ProfileLabel}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

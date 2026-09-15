@@ -18,4 +18,8 @@ public interface IWebcamFrameSource
     /// simultaneously. Copying under the lock costs one memcpy and removes the tear entirely.</para>
     /// </summary>
     bool TryGetLatestFrame(ref byte[] destination, out int width, out int height, out int stride);
+
+    /// <summary>Monotonically increasing sequence that changes only when a new frame is published. Used by
+    /// the compositor to skip redundant GPU uploads when the camera image is unchanged.</summary>
+    long FrameSequence { get; }
 }

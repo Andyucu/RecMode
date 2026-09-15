@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using Velopack;
 using Velopack.Exceptions;
 using Velopack.Sources;
@@ -41,7 +42,21 @@ public sealed class UpdateChecker : IUpdateChecker
         try
         {
             var mgr = new UpdateManager(new GithubSource(GitHubRepositoryUrl, accessToken: null, prerelease: true));
-            UpdateInfo? info = await mgr.CheckForUpdatesAsync();
+            // Bound how long the CALLER waits for the Velopack check. Velopack performs its own GitHub HTTP
+            // requests with no timeout of its own (its CheckForUpdatesAsync takes no CancellationToken in
+            // this package version), and CheckForUpdatesOnLaunch defaults true — so a black-holed network
+            // (captive portal, a corporate proxy that drops instead of rejecting) used to park the
+            // launch-time fire-and-forget task indefinitely. WaitAsync bounds the await only — the
+            // underlying request keeps running on a threadpool thread regardless — so its eventual outcome
+            // is observed explicitly below: a late failure must not surface as an unobserved-task exception
+            // long after this method returned. The 10s ceiling mirrors CheckPortableAsync's HttpClient
+            // timeout; TimeoutException is caught further down and reported as a normal check failure,
+            // which the launch-time path treats as silent.
+            Task<UpdateInfo?> velopackCheck = mgr.CheckForUpdatesAsync();
+            _ = velopackCheck.ContinueWith(
+                static t => _ = t.Exception,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            UpdateInfo? info = await velopackCheck.WaitAsync(TimeSpan.FromSeconds(10), ct);
             if (info is null) return new UpdateCheckResult { Status = UpdateCheckStatus.UpToDate };
 
             _mgr = mgr;
@@ -57,7 +72,7 @@ public sealed class UpdateChecker : IUpdateChecker
         {
             // A portable/dev copy must not replace its own possibly removable/read-only folder.
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or TimeoutException)
         {
             return new UpdateCheckResult { Status = UpdateCheckStatus.Failed, Error = ex.Message };
         }

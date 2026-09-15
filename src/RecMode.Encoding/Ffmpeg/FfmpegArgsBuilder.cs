@@ -44,6 +44,16 @@ public sealed record FfmpegJob
     /// only real distinction SVT-AV1's screen-content mode cares about is "rendered UI/text" vs. "camera
     /// video"). Ignored by every encoder except libsvtav1.</summary>
     public bool IsScreenContent { get; init; } = true;
+
+    /// <summary>The container the user actually selected — i.e. what the file will end up as. Null for a
+    /// normal (non-safe-recording) job, where <see cref="Container"/> already is that container. Set ONLY by
+    /// the safe-recording path, whose <see cref="Container"/> is a temporary crash-safe MKV that gets remuxed
+    /// (<c>-c copy</c>) into this container on stop. Audio args MUST be steered by this one, not by the temp
+    /// MKV: steering by <see cref="Container"/> under safe recording silently changed MP4/MOV's AAC rule into
+    /// MKV's "takes anything", so an Opus/FLAC stream was written into the temp MKV that the later
+    /// stream-copy remux into MP4/MOV can't carry (those containers have no usable tag for it) — the remux
+    /// failed and the user never got their file.</summary>
+    public MediaContainer? FinalContainer { get; init; }
 }
 
 /// <summary>
@@ -69,7 +79,9 @@ public static class FfmpegArgsBuilder
         {
             audioIn = $"-f f32le -ar 48000 -ac 2 -i \\\\.\\pipe\\{job.AudioPipeName}";
             audioMap = "-map 0:v:0 -map 1:a:0";
-            audioEnc = BuildAudioArgs(job.Container, job.AudioCodec, job.AudioBitrateKbps);
+            // Steer by the FINAL container (what the file will actually be), never by the temp safe-recording
+            // MKV — see FfmpegJob.FinalContainer. Null FinalContainer = Container is already the final one.
+            audioEnc = BuildAudioArgs(job.FinalContainer ?? job.Container, job.AudioCodec, job.AudioBitrateKbps);
         }
 
         string encoder = BuildEncoderArgs(job);
@@ -172,8 +184,10 @@ public static class FfmpegArgsBuilder
     public const int MinCrf = 1;
     public const int MaxCrf = 51;
 
-    /// <summary>SVT-AV1 supports CRF up to 63 (vs. the H.264/HEVC-family 0–51 range); clamping AV1 to 51 would
-    /// leave the bottom third of its useful low-quality/small-file range unreachable from the slider.</summary>
+    /// <summary>SVT-AV1 supports CRF up to 63 (vs. the H.264/HEVC-family 0–51 range); clamping software AV1
+    /// to 51 would leave the bottom third of its useful low-quality/small-file range unreachable from the
+    /// slider. Hardware AV1 encoders deliberately stay at <see cref="MaxCrf"/> — see
+    /// <see cref="EffectiveQualityValue"/> for why.</summary>
     public const int MaxCrfAv1 = 63;
 
     /// <summary>
@@ -217,13 +231,18 @@ public static class FfmpegArgsBuilder
 
     /// <summary>The actual numeric CRF/CQ/QP/global_quality value that will be passed to ffmpeg for
     /// <paramref name="encoder"/> at <paramref name="quality"/> — the curved <see cref="QualityToCrf"/> mapping
-    /// (using AV1's wider range where applicable) plus this encoder's calibration offset, re-clamped to a valid
-    /// range. Shared by <see cref="Build"/> and the Record screen's quality label so what the UI shows always
+    /// (using AV1's wider range for software encoders) plus this encoder's calibration offset, re-clamped to a
+    /// valid range. Hardware AV1 is deliberately clamped to <see cref="MaxCrf"/>: nvenc's <c>-cq</c> option
+    /// range is 0–51 in its option table (it has changed across ffmpeg releases — some builds advertise 0–63
+    /// for AV1, others reject anything above 51, and a rejected argument means ffmpeg refuses to start and the
+    /// recording silently falls through the encoder fallback chain to a worse encoder). 51 is valid on every
+    /// variant; the wider range stays available where it is unambiguously valid — libsvtav1's <c>-crf</c>.
+    /// Shared by <see cref="Build"/> and the Record screen's quality label so what the UI shows always
     /// matches what actually gets encoded.</summary>
     public static int EffectiveQualityValue(EncoderInfo encoder, int quality)
     {
         ArgumentNullException.ThrowIfNull(encoder);
-        int maxCrf = encoder.Codec == VideoCodec.Av1 ? MaxCrfAv1 : MaxCrf;
+        int maxCrf = encoder.Codec == VideoCodec.Av1 && !encoder.IsHardware ? MaxCrfAv1 : MaxCrf;
         int crf = QualityToCrf(quality, maxCrf);
         return Math.Clamp(crf + QualityCorrectionOffset(encoder.Backend), MinCrf, maxCrf);
     }
@@ -337,7 +356,11 @@ public static class FfmpegArgsBuilder
             "libsvtav1" => $"-c:v libsvtav1 -preset {SvtAv1Preset(effort)} -crf {c} -svtav1-params asm=avx2:scm={(job.IsScreenContent ? 1 : 0)}",
 
             "h264_nvenc" or "hevc_nvenc" or "av1_nvenc" =>
-                $"-c:v {encoder.FfmpegId} -preset {NvencPreset(effort)} -rc vbr -cq {c}",
+                // -b:v 0 is REQUIRED alongside -rc vbr -cq: AVCodecContext.bit_rate otherwise defaults to
+                // 200 kbps and nvenc uses it as the VBR average target, capping every recording near
+                // 200 kbps no matter what -cq says — the quality slider would barely do anything (the
+                // classic ffmpeg nvenc pitfall; same reason the guardrail below passes maxrate explicitly).
+                $"-c:v {encoder.FfmpegId} -preset {NvencPreset(effort)} -rc vbr -b:v 0 -cq {c}",
 
             // AMF: cqp is the simplest honest mapping for Phase 1 (qvbr tuning comes in Phase 3).
             "h264_amf" or "hevc_amf" or "av1_amf" =>
