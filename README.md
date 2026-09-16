@@ -214,14 +214,7 @@ Everything stays inside this folder: settings, library metadata, logs, the downl
 
 ## Status and known limitations
 
-RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor:
-
-- NVENC and QSV encoding on real NVIDIA / Intel hardware (development machine is AMD).
-- Multi-monitor **All Displays** compositing on machines with two or more physical monitors.
-- Real webcam hardware verification (synthetic test path is verified).
-- **Smooth cursor**, **live redaction**, and the **HDR-to-SDR** pass on the GPU capture path — the development sandbox has no D3D11 device, so the code paths are exercised only on machines with a usable GPU.
-- An **actual transcription run** (it needs the opt-in speech-model download and a recording containing speech); the caption formats, extraction arguments and search are covered by tests.
-- A real screen-reader (Narrator) accessibility pass, and Windows 10 (build 19041) regression testing.
+RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor.
 
 ## License
 
