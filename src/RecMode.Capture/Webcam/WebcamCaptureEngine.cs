@@ -170,6 +170,10 @@ public sealed class WebcamCaptureEngine : ICaptureEngine
 
     public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect) { } // nonsensical when the webcam already IS the source
     public void SetBrightness(double value) { } // no GPU pass to apply it — see class doc comment
+    public void SetRedaction(RegionRect? sourceRect) { } // no GPU pass — coordinator's gate refuses to record rather than fail open
+    public bool RedactionActive => false;
+    public void SetCursorOverlay(ICursorFrameSource? source, double scale) { } // no GPU pass — the caller keeps the OS cursor instead
+    public bool SupportsRedaction => false;
     public void SetZoomTarget(RegionRect? rect) { }
     public void SetBaseRect(RegionRect rect) { }
 

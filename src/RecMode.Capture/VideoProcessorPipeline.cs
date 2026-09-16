@@ -30,11 +30,30 @@ internal abstract class VideoProcessorPipeline : IDisposable
     protected readonly ID3D11Texture2D StagingTexture;
 
     private readonly Dictionary<IntPtr, ID3D11VideoProcessorInputView> _inputViewCache = [];
-    private readonly VideoProcessorStream[] _streamBuffer = new VideoProcessorStream[1];
-    private readonly VideoProcessorStream[] _streamBufferWithWebcam = new VideoProcessorStream[2];
+    // Sized 4 = the D3D11 VideoProcessor's documented input-stream cap, and exactly what the four possible
+    // layers need: captured content, webcam overlay, redaction fill, composited cursor. Reused per frame
+    // rather than reallocated (§3.9).
+    private readonly VideoProcessorStream[] _streamBuffer = new VideoProcessorStream[4];
     private readonly WebcamOverlayCompositor _webcamCompositor;
+    // The same uploader again: it is really "upload a BGRA frame, hand back an input view", which is exactly
+    // what a composited cursor needs too (plan §7 smooth cursor).
+    private readonly WebcamOverlayCompositor _cursorCompositor;
+    private ICursorFrameSource? _cursorSource;
+    private double _cursorScale = 1.0;
+    private byte[] _cursorFrameBuffer = []; // scratch for reading the cursor's image size; reused, not reallocated
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+
+    // Live redaction (plan §7 privacy): a fixed solid-black 2×2 surface, composited as an extra VideoProcessor
+    // stream over the marked rect — the same second-stream mechanism as the webcam overlay, with a fill
+    // instead of a camera frame. Created once in the constructor and never updated. RenderTarget is required,
+    // not decorative: CreateVideoProcessorInputView rejects a texture without it (the exact E_INVALIDARG the
+    // webcam upload texture hit on 2026-07-06). _redactionRect is source-pixel space; guarded by _zoomLock
+    // because the UI thread sets it while the capture callback thread reads it every frame.
+    private static readonly byte[] OpaqueBlackBgra = [0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
+    private readonly ID3D11Texture2D _redactionTexture;
+    private readonly ID3D11VideoProcessorInputView _redactionInputView;
+    private RegionRect? _redactionRect;
 
     // Brightness (§ brightness slider): the device's actual filter range varies (driver-dependent), so the
     // user-facing -100..100 value is mapped into it via VideoProcessorFilterRange.Multiplier at apply time
@@ -125,6 +144,35 @@ internal abstract class VideoProcessorPipeline : IDisposable
             _zoomStartTimestamp = Stopwatch.GetTimestamp();
 
             _webcamCompositor = new WebcamOverlayCompositor(device, context, VideoDevice, Enumerator);
+            _cursorCompositor = new WebcamOverlayCompositor(device, context, VideoDevice, Enumerator);
+
+            // See the field docs. 2×2 rather than 1×1 (some drivers reject a 1×1 input view), 8 bytes/row.
+            _redactionTexture = device.CreateTexture2D(new Texture2DDescription
+            {
+                Width = 2,
+                Height = 2,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = Format.B8G8R8A8_UNorm,
+                SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.ShaderResource | BindFlags.RenderTarget,
+                CPUAccessFlags = CpuAccessFlags.None,
+            });
+            unsafe
+            {
+                fixed (byte* black = OpaqueBlackBgra)
+                {
+                    Context.UpdateSubresource(_redactionTexture, 0u, null, (IntPtr)black, 8u, 0u);
+                }
+            }
+            _redactionInputView = VideoDevice.CreateVideoProcessorInputView(_redactionTexture, Enumerator,
+                new VideoProcessorInputViewDescription
+                {
+                    FourCC = 0,
+                    ViewDimension = VideoProcessorInputViewDimension.Texture2D,
+                    Texture2D = new Texture2DVideoProcessorInputView { MipSlice = 0, ArraySlice = 0 },
+                });
 
             Result filterHr = Enumerator.GetVideoProcessorFilterRange(VideoProcessorFilter.Brightness, out _brightnessRange);
             _brightnessSupported = filterHr.Success;
@@ -140,6 +188,9 @@ internal abstract class VideoProcessorPipeline : IDisposable
             // refs) leaked per failed attempt. Release whatever was assigned, in Dispose()'s order, and let
             // the original exception propagate — callers already treat construction failure as "fall back".
             _webcamCompositor?.Dispose();
+            _cursorCompositor?.Dispose();
+            _redactionInputView?.Dispose();
+            _redactionTexture?.Dispose();
             OutputView?.Dispose();
             StagingTexture?.Dispose();
             GpuTexture?.Dispose();
@@ -183,6 +234,42 @@ internal abstract class VideoProcessorPipeline : IDisposable
     {
         _webcamSource = source;
         _webcamRect = rect;
+    }
+
+    /// <summary>Marks a source-pixel rect to blank out in the output (live redaction, plan §7 privacy); null
+    /// clears it. Mapped through the current crop/zoom every frame, so it keeps covering the same content
+    /// while smart zoom animates. Safe to call from any thread.</summary>
+    public void SetRedaction(RegionRect? sourceRect)
+    {
+        lock (_zoomLock)
+        {
+            _redactionRect = sourceRect;
+        }
+    }
+
+    /// <summary>Enables/disables the composited cursor (plan §7 smooth cursor); null disables it. Only the GPU
+    /// path can draw one, which is why capture must keep using the OS cursor when this is unavailable —
+    /// suppressing the real cursor without a replacement would simply remove the pointer from the recording.
+    /// <paramref name="scale"/> multiplies the cursor image's size.</summary>
+    public void SetCursorOverlay(ICursorFrameSource? source, double scale)
+    {
+        _cursorSource = source;
+        _cursorScale = Math.Clamp(scale, 0.25, 4.0);
+    }
+
+    /// <summary>True if a redaction rect is set AND overlaps the recorded area, i.e. the next frame will
+    /// actually blank something. The coordinator's fail-closed gate reads this before recording: a privacy
+    /// feature that "requested, but had no effect" must never quietly record unredacted.</summary>
+    public bool RedactionActive
+    {
+        get
+        {
+            lock (_zoomLock)
+            {
+                return _redactionRect is { } rect &&
+                    RedactionMath.MapToOutput(rect, _restRect, OutputWidth, OutputHeight) is not null;
+            }
+        }
     }
 
     /// <summary>Sets the captured-video brightness adjustment, -100 (darkest) .. 100 (brightest), 0 = unchanged.
@@ -254,36 +341,106 @@ internal abstract class VideoProcessorPipeline : IDisposable
             new Vortice.RawRect(rect.X, rect.Y, rect.X + rect.Width, rect.Y + rect.Height));
     }
 
-    /// <summary>Blts <paramref name="src"/> through the VideoProcessor (compositing the webcam overlay, if
-    /// set and available) and reads the result back via the subclass's format-specific readback.</summary>
+    /// <summary>Blts <paramref name="src"/> through the VideoProcessor (compositing the webcam overlay and
+    /// blanking any marked redaction rect) and reads the result back via the subclass's format-specific
+    /// readback.</summary>
     protected void BltAndReadback(ID3D11Texture2D src, byte[] dest)
     {
         ID3D11VideoProcessorInputView inputView = GetOrCreateInputView(src);
         ApplyBrightnessFilter();
         ApplyZoomRect();
 
-        if (_webcamSource is not null && _webcamRect is { } rect)
+        int streamCount = 1;
+        _streamBuffer[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
+
+        if (_webcamSource is not null && _webcamRect is { } webcamRect)
         {
             ID3D11VideoProcessorInputView? webcamView = _webcamCompositor.Update(_webcamSource);
             if (webcamView is not null)
             {
-                _streamBufferWithWebcam[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
-                _streamBufferWithWebcam[1] = new VideoProcessorStream { Enable = true, InputSurface = webcamView };
                 VideoContext.VideoProcessorSetStreamDestRect(Processor, 1, true,
-                    new Vortice.RawRect(rect.X, rect.Y, rect.X + rect.Width, rect.Y + rect.Height));
-                VideoContext.VideoProcessorBlt(Processor, OutputView, 0, 2, _streamBufferWithWebcam);
-
-                Context.CopyResource(StagingTexture, GpuTexture);
-                ReadbackTightlyPacked(dest);
-                return;
+                    new Vortice.RawRect(webcamRect.X, webcamRect.Y, webcamRect.X + webcamRect.Width, webcamRect.Y + webcamRect.Height));
+                _streamBuffer[1] = new VideoProcessorStream { Enable = true, InputSurface = webcamView };
+                streamCount = 2;
             }
         }
 
-        _streamBuffer[0] = new VideoProcessorStream { Enable = true, InputSurface = inputView };
-        VideoContext.VideoProcessorBlt(Processor, OutputView, 0, 1, _streamBuffer);
+        // Redaction is composited last, so it also covers the webcam if the marked area overlaps the
+        // picture-in-picture box — a marked area must never show anything, whatever else lands there.
+        if (TryGetRedactionOutputRect(out Vortice.RawRect redactionRect))
+        {
+            VideoContext.VideoProcessorSetStreamDestRect(Processor, (uint)streamCount, true, redactionRect);
+            _streamBuffer[streamCount] = new VideoProcessorStream { Enable = true, InputSurface = _redactionInputView };
+            streamCount++;
+        }
+
+        // Composited cursor, drawn after everything else so it is always the topmost layer (it represents the
+        // user's pointer, and the OS one is suppressed while this runs).
+        if (streamCount < _streamBuffer.Length &&
+            _cursorSource is { } cursor &&
+            cursor.TryGetPosition(out int cursorX, out int cursorY) &&
+            _cursorCompositor.Update(cursor) is { } cursorView)
+        {
+            cursor.TryGetLatestFrame(ref _cursorFrameBuffer, out int cursorW, out int cursorH, out _);
+            if (cursorW > 0 && cursorH > 0 &&
+                TryMapCursorToOutput(cursorX, cursorY, cursorW, cursorH, out Vortice.RawRect cursorRect))
+            {
+                VideoContext.VideoProcessorSetStreamDestRect(Processor, (uint)streamCount, true, cursorRect);
+                _streamBuffer[streamCount] = new VideoProcessorStream { Enable = true, InputSurface = cursorView };
+                streamCount++;
+            }
+        }
+
+        VideoContext.VideoProcessorBlt(Processor, OutputView, 0, (uint)streamCount, _streamBuffer);
 
         Context.CopyResource(StagingTexture, GpuTexture);
         ReadbackTightlyPacked(dest);
+    }
+
+    /// <summary>Where the cursor image lands in the output: its source-space top-left (already hotspot- and
+    /// smoothing-adjusted) mapped through the current zoom, scaled, and clamped like any other overlay.</summary>
+    private bool TryMapCursorToOutput(int sourceX, int sourceY, int width, int height, out Vortice.RawRect dest)
+    {
+        dest = default;
+        RegionRect view;
+        lock (_zoomLock)
+        {
+            view = CurrentZoomRectLocked();
+        }
+
+        int scaledWidth = Math.Max(1, (int)Math.Round(width * _cursorScale));
+        int scaledHeight = Math.Max(1, (int)Math.Round(height * _cursorScale));
+        if (RedactionMath.MapToOutput(new RegionRect(sourceX, sourceY, scaledWidth, scaledHeight), view, OutputWidth, OutputHeight)
+            is not { } mapped)
+        {
+            return false;
+        }
+
+        dest = new Vortice.RawRect(mapped.X, mapped.Y, mapped.X + mapped.Width, mapped.Y + mapped.Height);
+        return true;
+    }
+
+    /// <summary>The marked redaction rect in output pixels for this frame (tracking the current zoom), or
+    /// false when nothing of it is on screen.</summary>
+    private bool TryGetRedactionOutputRect(out Vortice.RawRect dest)
+    {
+        dest = default;
+        RegionRect view;
+        RegionRect? source;
+        lock (_zoomLock)
+        {
+            source = _redactionRect;
+            view = CurrentZoomRectLocked();
+        }
+
+        if (source is not { } rect ||
+            RedactionMath.MapToOutput(rect, view, OutputWidth, OutputHeight) is not { } mapped)
+        {
+            return false;
+        }
+
+        dest = new Vortice.RawRect(mapped.X, mapped.Y, mapped.X + mapped.Width, mapped.Y + mapped.Height);
+        return true;
     }
 
     /// <summary>Maps <see cref="StagingTexture"/> and copies it into <paramref name="dest"/> in the
@@ -336,6 +493,9 @@ internal abstract class VideoProcessorPipeline : IDisposable
         }
         _inputViewCache.Clear();
         _webcamCompositor.Dispose();
+        _cursorCompositor.Dispose();
+        _redactionInputView.Dispose();
+        _redactionTexture.Dispose();
 
         OutputView.Dispose();
         StagingTexture.Dispose();

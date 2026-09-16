@@ -342,6 +342,64 @@
                         <TextBlock Grid.Column="1" Text="{Binding MicVolumeLabel}" Style="{StaticResource CaptionText}"
                                    MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </Grid>
+
+                    <!-- Microphone noise suppression (plan §7) -->
+                    <Grid Margin="0,14,0,0" ToolTip="{x:Static res:Strings.Record_MicNoiseSuppressionTooltip}"
+                          IsEnabled="{Binding MicEnabled}">
+                        <TextBlock x:Name="MicNoiseSuppressionLabel" Text="{x:Static res:Strings.Record_MicNoiseSuppression}" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding IsMicNoiseSuppressionEnabled, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=MicNoiseSuppressionLabel}" />
+                    </Grid>
+                    <Grid Margin="0,6,0,0" IsEnabled="{Binding IsMicNoiseSuppressionEnabled}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Slider Grid.Column="0" Style="{StaticResource AppSlider}" Minimum="0" Maximum="100"
+                                Value="{Binding MicNoiseSuppressionStrength}" VerticalAlignment="Center"
+                                ToolTip="{x:Static res:Strings.Record_MicNoiseSuppressionStrengthTooltip}"
+                                AutomationProperties.Name="{x:Static res:Strings.Record_MicNoiseSuppression}" />
+                        <TextBlock Grid.Column="1" Text="{Binding MicNoiseSuppressionStrengthLabel}" Style="{StaticResource CaptionText}"
+                                   MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
+
+                    <!-- Separate audio tracks (plan §7 "audio pro"): mic/system as distinct tracks alongside
+                         the mixed one, for rebalancing later. MKV/MOV only. -->
+                    <Grid Margin="0,14,0,0" ToolTip="{x:Static res:Strings.Record_SeparateAudioTracksTooltip}"
+                          IsEnabled="{Binding SeparateAudioTracksAvailable}">
+                        <TextBlock x:Name="SeparateAudioTracksLabel" Text="{x:Static res:Strings.Record_SeparateAudioTracks}" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding SeparateAudioTracks, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=SeparateAudioTracksLabel}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Privacy: live redaction (plan §7) — the marked rect is blanked in the recorded frames. -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="{x:Static res:Strings.Record_PrivacyHeader}" Style="{StaticResource BodyStrongText}" Margin="0,0,0,12" />
+
+                    <Grid Margin="0,0,0,10" ToolTip="{x:Static res:Strings.Record_RedactAreaTooltip}">
+                        <TextBlock x:Name="RedactAreaLabel" Text="{x:Static res:Strings.Record_RedactArea}" VerticalAlignment="Center" />
+                        <ToggleButton Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"
+                                      IsChecked="{Binding RedactAreaEnabled, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanEditSettings}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=RedactAreaLabel}" />
+                    </Grid>
+
+                    <Grid IsEnabled="{Binding CanEditSettings}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="{x:Static res:Strings.Record_RedactAreaChoose}" Command="{Binding ChooseRedactAreaCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="28" Padding="10,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding RedactAreaLabel}" Style="{StaticResource CaptionText}"
+                                   VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="2" Content="{x:Static res:Strings.Record_RedactAreaClear}" Command="{Binding ClearRedactAreaCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="28" Padding="10,0"
+                                ToolTip="{x:Static res:Strings.Record_RedactAreaClear}" />
+                    </Grid>
                 </StackPanel>
             </Border>
 

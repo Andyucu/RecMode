@@ -55,7 +55,52 @@
   <data name="Nav_Library" xml:space="preserve"><value>Library</value></data>
   <data name="Nav_Schedule" xml:space="preserve"><value>Schedule</value></data>
   <data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Nav_Transcripts" xml:space="preserve"><value>Transcripts</value></data>
   <data name="Nav_About" xml:space="preserve"><value>About</value></data>
+  <data name="Transcripts_Header" xml:space="preserve"><value>Transcripts</value></data>
+  <data name="Transcripts_Description" xml:space="preserve"><value>Captions and searchable transcripts, produced entirely on this PC — recordings are never uploaded anywhere. Transcribing takes roughly as long as the recording itself.</value></data>
+  <data name="Transcripts_Model" xml:space="preserve"><value>Speech model</value></data>
+  <data name="Transcripts_CancelDownloadTooltip" xml:space="preserve"><value>Stop the download — the partly-downloaded file is discarded</value></data>
+  <data name="Transcripts_TranscribeTooltip" xml:space="preserve"><value>Generate captions for this recording on this PC; nothing is uploaded</value></data>
+  <data name="Transcripts_ModelReady" xml:space="preserve"><value>Speech model ready — transcription runs entirely on this PC.</value></data>
+  <data name="Transcripts_ModelNeeded" xml:space="preserve"><value>One-time download of {0} MB. Nothing is ever uploaded; the model is the only thing that touches the network.</value></data>
+  <data name="Transcripts_EmptyNoRecordings" xml:space="preserve"><value>No recordings to transcribe yet.</value></data>
+  <data name="Transcripts_EmptyNoMatches" xml:space="preserve"><value>No transcript matches that search.</value></data>
+  <data name="Transcripts_ScanFailed" xml:space="preserve"><value>Couldn't read the recordings folder.</value></data>
+  <data name="Transcripts_Downloading" xml:space="preserve"><value>Downloading the speech model…</value></data>
+  <data name="Transcripts_DownloadDone" xml:space="preserve"><value>Model downloaded. Transcribe a recording whenever you like.</value></data>
+  <data name="Transcripts_DownloadFailed" xml:space="preserve"><value>The speech model couldn't be downloaded.</value></data>
+  <data name="Transcripts_DownloadFailedHint" xml:space="preserve"><value>Check your connection and try again.</value></data>
+  <data name="Transcripts_DownloadCancelled" xml:space="preserve"><value>Download cancelled.</value></data>
+  <data name="Transcripts_CancelDownload" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Transcripts_NeedModelFirst" xml:space="preserve"><value>Download the speech model first.</value></data>
+  <data name="Transcripts_NeedModelFirstHint" xml:space="preserve"><value>It's a one-time download; nothing is uploaded.</value></data>
+  <data name="Transcripts_TranscribingNamed" xml:space="preserve"><value>Transcribing {0}…</value></data>
+  <data name="Transcripts_NoSpeech" xml:space="preserve"><value>No speech detected in that recording.</value></data>
+  <data name="Transcripts_Transcribed" xml:space="preserve"><value>Transcribed {0} segment(s).</value></data>
+  <data name="Transcripts_OpenFailed" xml:space="preserve"><value>Couldn't open that recording.</value></data>
+  <data name="Transcripts_ListTruncated" xml:space="preserve"><value>Showing the {0} most recent recordings.</value></data>
+  <data name="Transcripts_ModelTiny" xml:space="preserve"><value>Tiny (fastest, least accurate)</value></data>
+  <data name="Transcripts_ModelBase" xml:space="preserve"><value>Base (recommended)</value></data>
+  <data name="Transcripts_ModelSmall" xml:space="preserve"><value>Small (slowest, most accurate)</value></data>
+  <data name="Transcript_MissingFile" xml:space="preserve"><value>That recording no longer exists.</value></data>
+  <data name="Transcript_NoFfmpeg" xml:space="preserve"><value>Transcription needs the bundled ffmpeg, which wasn't found.</value></data>
+  <data name="Transcript_NoModel" xml:space="preserve"><value>Transcription needs a speech model, which hasn't been downloaded yet.</value></data>
+  <data name="Transcript_NoModelHint" xml:space="preserve"><value>RecMode never uploads your recordings — the model runs locally.</value></data>
+  <data name="Transcript_StatusExtracting" xml:space="preserve"><value>Extracting audio…</value></data>
+  <data name="Transcript_NoAudio" xml:space="preserve"><value>That recording has no audio track to transcribe.</value></data>
+  <data name="Transcript_ExtractFailed" xml:space="preserve"><value>Couldn't extract the audio for transcription.</value></data>
+  <data name="Transcript_StatusTranscribing" xml:space="preserve"><value>Transcribing…</value></data>
+  <data name="Transcript_Failed" xml:space="preserve"><value>Transcription failed.</value></data>
+  <data name="Transcript_FailedHint" xml:space="preserve"><value>See the log for details.</value></data>
+  <data name="Transcripts_DownloadModel" xml:space="preserve"><value>Download model</value></data>
+  <data name="Transcripts_Search" xml:space="preserve"><value>Search transcripts</value></data>
+  <data name="Transcripts_SearchTooltip" xml:space="preserve"><value>Type to find a recording by the words spoken in it</value></data>
+  <data name="Transcripts_ClearSearch" xml:space="preserve"><value>Clear</value></data>
+  <data name="Transcripts_Transcribe" xml:space="preserve"><value>Transcribe</value></data>
+  <data name="Transcripts_Open" xml:space="preserve"><value>Open</value></data>
+  <data name="Transcripts_SaveAs" xml:space="preserve"><value>Save as…</value></data>
+  <data name="Transcripts_SaveAsTooltip" xml:space="preserve"><value>Save this transcript as a text file, or as .srt/.vtt captions</value></data>
 
   <data name="Record_SourceHeader" xml:space="preserve"><value>Source</value></data>
   <data name="Source_Screen" xml:space="preserve"><value>Screen</value></data>
@@ -115,6 +160,19 @@
   <data name="Record_Microphone" xml:space="preserve"><value>Microphone</value></data>
   <data name="Record_MicrophoneTooltip" xml:space="preserve"><value>Include your microphone</value></data>
   <data name="Record_MicVolumeTooltip" xml:space="preserve"><value>Adjust the microphone level in the recording</value></data>
+  <data name="Record_MicNoiseSuppression" xml:space="preserve"><value>Reduce background noise</value></data>
+  <data name="Record_MicNoiseSuppressionTooltip" xml:space="preserve"><value>Filters steady background (hiss, fan, rumble) out of the microphone in the mixed audio. The separate mic track stays unprocessed, so nothing is lost.</value></data>
+  <data name="Record_MicNoiseSuppressionStrengthTooltip" xml:space="preserve"><value>How much background noise to remove</value></data>
+  <data name="Toolbar_NoiseSuppressionTooltip" xml:space="preserve"><value>Reduce microphone background noise in the mixed audio (the raw mic track is untouched)</value></data>
+  <data name="Toolbar_NoiseSuppressionLabel" xml:space="preserve"><value>Reduce background noise</value></data>
+  <data name="Record_SeparateAudioTracks" xml:space="preserve"><value>Separate audio tracks</value></data>
+  <data name="Record_SeparateAudioTracksTooltip" xml:space="preserve"><value>Also save the microphone and system audio as their own tracks, so you can rebalance them later without touching the mixed track. Available for MKV and MOV.</value></data>
+  <data name="Record_PrivacyHeader" xml:space="preserve"><value>Privacy</value></data>
+  <data name="Record_RedactArea" xml:space="preserve"><value>Redact area</value></data>
+  <data name="Record_RedactAreaTooltip" xml:space="preserve"><value>Blacks out the marked rectangle in the recording — it never reaches the encoder. Needs the GPU capture path; if it can't be applied, RecMode refuses to start rather than record unredacted.</value></data>
+  <data name="Record_RedactAreaChoose" xml:space="preserve"><value>Choose area…</value></data>
+  <data name="Record_RedactAreaClear" xml:space="preserve"><value>Clear</value></data>
+  <data name="Record_RedactAreaNone" xml:space="preserve"><value>No area marked</value></data>
   <data name="Record_WebcamHeader" xml:space="preserve"><value>Webcam</value></data>
   <data name="Record_WebcamOverlayTooltip" xml:space="preserve"><value>Overlay your camera as a picture-in-picture box on the recording</value></data>
   <data name="Record_ShowWebcam" xml:space="preserve"><value>Show webcam</value></data>
@@ -135,6 +193,16 @@
   <data name="Settings_Recording" xml:space="preserve"><value>Recording</value></data>
   <data name="Settings_Hotkeys" xml:space="preserve"><value>Hotkeys</value></data>
   <data name="Settings_Performance" xml:space="preserve"><value>Performance</value></data>
+  <data name="Settings_Privacy" xml:space="preserve"><value>Privacy</value></data>
+  <data name="Settings_RedactArea" xml:space="preserve"><value>Redact area</value></data>
+  <data name="Settings_RedactAreaDesc" xml:space="preserve"><value>Blank out a marked rectangle in recordings — it never reaches the encoder. Needs the GPU capture path; if it can't be applied, recording is refused rather than recorded unredacted.</value></data>
+  <data name="Settings_RedactAreaRegion" xml:space="preserve"><value>Area to hide</value></data>
+  <data name="Settings_SmoothCursor" xml:space="preserve"><value>Smooth cursor</value></data>
+  <data name="Settings_SmoothCursorDesc" xml:space="preserve"><value>Draws an eased, smoothly moving cursor instead of the raw captured pointer — the jumpiness that makes screen recordings look rough. Needs the GPU capture path; on the compatibility path the normal cursor is captured instead.</value></data>
+  <data name="Settings_CursorScale" xml:space="preserve"><value>Cursor size</value></data>
+  <data name="Settings_CursorScaleTooltip" xml:space="preserve"><value>How large to draw the composited cursor</value></data>
+  <data name="Settings_AddChapter" xml:space="preserve"><value>Add chapter</value></data>
+  <data name="Settings_HotkeyAddChapterTooltip" xml:space="preserve"><value>Stamp a chapter marker while recording, so the finished file can be navigated by chapter in any player</value></data>
   <data name="Settings_Effort" xml:space="preserve"><value>Encoder effort</value></data>
   <data name="Settings_EffortDesc" xml:space="preserve"><value>Faster uses less CPU/GPU; Quality makes smaller files but needs more headroom</value></data>
   <data name="Settings_ThreadCap" xml:space="preserve"><value>CPU thread cap (software encoding)</value></data>
@@ -318,6 +386,11 @@
   <data name="Toolbar_StopTooltip" xml:space="preserve"><value>Stop the recording (F9)</value></data>
   <data name="Toolbar_HighlightClicksTooltip" xml:space="preserve"><value>Highlight mouse clicks on screen — handy to turn on for a moment to point something out, then off again</value></data>
   <data name="Toolbar_HighlightClicksLabel" xml:space="preserve"><value>Clicks</value></data>
+  <data name="Toolbar_RedactTooltip" xml:space="preserve"><value>Blank out the marked area in this recording. Mark the area on the Record screen first; needs the GPU capture path.</value></data>
+  <data name="Toolbar_RedactLabel" xml:space="preserve"><value>Redact area</value></data>
+  <data name="Toolbar_AddChapterTooltip" xml:space="preserve"><value>Mark a chapter at this point (Ctrl+Shift+K by default) — the saved file gets real chapters you can jump between in any player</value></data>
+  <data name="Toolbar_AddChapterLabel" xml:space="preserve"><value>Add chapter</value></data>
+  <data name="Toolbar_ChaptersLabel" xml:space="preserve"><value>Chapters marked</value></data>
   <data name="AudioDevicePicker_Title" xml:space="preserve"><value>System audio devices</value></data>
   <data name="AudioDevicePicker_ButtonLabel" xml:space="preserve"><value>Select audio devices…</value></data>
   <data name="AudioDevicePicker_Automatic" xml:space="preserve"><value>Automatic (recommended)</value></data>

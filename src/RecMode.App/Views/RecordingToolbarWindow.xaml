@@ -31,6 +31,9 @@
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtlePressedBrush}" />
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -71,6 +74,9 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SubtlePressedBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.4" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -307,6 +313,38 @@
                     </Style>
                 </Button.Style>
             </Button>
+            <!-- Mic noise suppression: reduces background hiss/fan/rumble in the mixed audio. Accent while on.
+                 The raw mic (separate track) is never touched, so this is non-destructive. -->
+            <Button Command="{Binding ToggleMicNoiseSuppressionCommand}"
+                    ToolTip="{x:Static res:Strings.Toolbar_NoiseSuppressionTooltip}"
+                    AutomationProperties.Name="{x:Static res:Strings.Toolbar_NoiseSuppressionLabel}" Margin="6,0,0,0">
+                <!-- Waveform with a slash: "quieter background". -->
+                <Viewbox Width="14" Height="14">
+                    <Canvas Width="16" Height="16">
+                        <Line X1="4" Y1="6" X2="4" Y2="10"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        <Line X1="7.5" Y1="3.5" X2="7.5" Y2="12.5"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        <Line X1="11" Y1="6" X2="11" Y2="10"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        <Line X1="3" Y1="13.5" X2="13" Y2="2.5"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    </Canvas>
+                </Viewbox>
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource ToolbarIconButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMicNoiseSuppressionEnabled}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
             <Button Command="{Binding ToggleHighlightClicksCommand}"
                     ToolTip="{x:Static res:Strings.Toolbar_HighlightClicksTooltip}"
                     AutomationProperties.Name="{x:Static res:Strings.Toolbar_HighlightClicksLabel}" Margin="6,0,0,0">
@@ -330,6 +368,55 @@
                     </Style>
                 </Button.Style>
             </Button>
+
+            <!-- Privacy: live redaction. Always present (the user looked for it here) — dimmed/disabled when
+                 there's no marked area yet, or the active capture can't blank one, so it never arms a no-op
+                 or lights up over an unredacted file. The glyph turns accent while armed. -->
+            <Button Command="{Binding ToggleRedactionCommand}"
+                    ToolTip="{x:Static res:Strings.Toolbar_RedactTooltip}"
+                    AutomationProperties.Name="{x:Static res:Strings.Toolbar_RedactLabel}" Margin="6,0,0,0"
+                    IsEnabled="{Binding CanToggleRedaction}">
+                <!-- Redact: a marked rectangle with a diagonal strike through it. -->
+                <Viewbox Width="14" Height="14">
+                    <Canvas Width="16" Height="16">
+                        <Rectangle Canvas.Left="2.5" Canvas.Top="3.5" Width="11" Height="9" RadiusX="1.5" RadiusY="1.5"
+                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   StrokeThickness="1.6" Fill="Transparent" />
+                        <Line X1="3.5" Y1="12.5" X2="12.5" Y2="3.5"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    </Canvas>
+                </Viewbox>
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource ToolbarIconButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRedacting}" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <!-- Chapter marker: stamps a chapter at the current moment, into the file as a real seekable
+                 chapter (hotkey too, default Ctrl+Shift+K). The counter next to it is the hotkey's only
+                 feedback, so it only appears once something has actually been stamped. -->
+            <Button Command="{Binding AddChapterCommand}"
+                    ToolTip="{x:Static res:Strings.Toolbar_AddChapterTooltip}"
+                    AutomationProperties.Name="{x:Static res:Strings.Toolbar_AddChapterLabel}" Margin="6,0,0,0">
+                <!-- Bookmark ribbon. -->
+                <Viewbox Width="14" Height="14">
+                    <Canvas Width="16" Height="16">
+                        <Polygon Points="4,2.5 12,2.5 12,13.5 8,10.5 4,13.5"
+                                 Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                 StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent" />
+                    </Canvas>
+                </Viewbox>
+            </Button>
+            <TextBlock Text="{Binding ChapterCount}" Style="{StaticResource CaptionText}"
+                       VerticalAlignment="Center" Margin="4,0,0,0"
+                       Visibility="{Binding HasChapters, Converter={StaticResource BoolToVisibility}}"
+                       AutomationProperties.Name="{x:Static res:Strings.Toolbar_ChaptersLabel}" />
 
             <Border Width="1" Height="18" Margin="8,0" Background="{DynamicResource StrokeCardBrush}" />
 

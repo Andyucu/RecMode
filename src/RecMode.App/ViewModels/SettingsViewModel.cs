@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using RecMode.App.Services;
 using RecMode.App.Themes;
+using RecMode.Capture;
 using RecMode.Core.Errors;
 using RecMode.Core.Infrastructure;
 using RecMode.Core.Input;
@@ -28,6 +29,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private readonly Services.HotkeyBindings _hotkeys;
     private readonly Services.IUpdateChecker _updateChecker;
     private readonly IErrorReporter _errors;
+    private readonly IRegionPicker _regionPicker;
     private string? _capturingHotkey;
     private readonly DispatcherTimer _captureTimeoutTimer;
     private string _updateStatusText = "";
@@ -61,9 +63,13 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     private bool _bitrateGuardrailEnabled;
     private EncoderEffort _effort;
     private ShellLayout _layout;
+    private bool _redactAreaEnabled;
+    private bool _smoothCursorEnabled;
+    private double _cursorScale;
 
     public SettingsViewModel(ISettingsService settings, ThemeManager theme, IAppPaths paths, IStartupManager startup,
-        Services.HotkeyBindings hotkeys, Services.IUpdateChecker updateChecker, IErrorReporter errors)
+        Services.HotkeyBindings hotkeys, Services.IUpdateChecker updateChecker, IErrorReporter errors,
+        IRegionPicker regionPicker)
     {
         _settings = settings;
         _theme = theme;
@@ -72,6 +78,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _hotkeys = hotkeys;
         _updateChecker = updateChecker;
         _errors = errors;
+        _regionPicker = regionPicker;
 
         RecModeSettings s = settings.Current;
         _selectedTheme = s.Theme;
@@ -100,6 +107,9 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _startWithWindows = _startup.IsEnabled; // registry is the source of truth
         _closeToTray = s.CloseToTray;
         _enableCrashMinidumps = s.EnableCrashMinidumps;
+        _redactAreaEnabled = s.RedactAreaEnabled;
+        _smoothCursorEnabled = s.SmoothCursorEnabled;
+        _cursorScale = Math.Clamp(s.CursorScale, 0.5, 3.0);
 
         // Capturing a hotkey suspends every global hotkey for the duration (see HotkeyBindings.Suspend) —
         // if the user abandons the capture without going through CancelCapture/CompleteCapture (Alt-Tab
@@ -116,6 +126,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         CancelHotkeyCommand = new RelayCommand(CancelCapture);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !_checkingForUpdates);
         ApplyUpdateCommand = new AsyncRelayCommand(ApplyUpdateAsync, () => _canApplyUpdate);
+        ChooseRedactAreaCommand = new RelayCommand(ChooseRedactArea);
+        ClearRedactAreaCommand = new RelayCommand(ClearRedactArea, () => HasRedactArea);
     }
 
     public IReadOnlyList<VideoCodec> Codecs { get; } = [VideoCodec.H264, VideoCodec.Hevc, VideoCodec.Av1];
@@ -137,6 +149,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     public string HotkeyScreenshot => _settings.Current.HotkeyScreenshot;
     public string HotkeyNextProfile => _settings.Current.HotkeyNextProfile;
     public string HotkeyMicMute => _settings.Current.HotkeyMicMute;
+    public string HotkeyAddChapter => _settings.Current.HotkeyAddChapter;
 
     /// <summary>Non-null while listening for a new chord for one hotkey ("startstop" / "pause" / "screenshot").</summary>
     public bool IsCapturingHotkey => _capturingHotkey is not null;
@@ -224,6 +237,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             case "screenshot": _settings.Current.HotkeyScreenshot = chordText; OnPropertyChanged(nameof(HotkeyScreenshot)); break;
             case "nextprofile": _settings.Current.HotkeyNextProfile = chordText; OnPropertyChanged(nameof(HotkeyNextProfile)); break;
             case "micmute": _settings.Current.HotkeyMicMute = chordText; OnPropertyChanged(nameof(HotkeyMicMute)); break;
+            case "addchapter": _settings.Current.HotkeyAddChapter = chordText; OnPropertyChanged(nameof(HotkeyAddChapter)); break;
             default: return;
         }
 
@@ -240,6 +254,7 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             ("screenshot", _settings.Current.HotkeyScreenshot),
             ("nextprofile", _settings.Current.HotkeyNextProfile),
             ("micmute", _settings.Current.HotkeyMicMute),
+            ("addchapter", _settings.Current.HotkeyAddChapter),
         ];
 
         return configured.Any(item => item.Action != action &&
@@ -620,6 +635,90 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
     /// call <see cref="CancelCapture"/> to resume them.</summary>
     public void OnNavigatedFrom() => CancelCapture();
 
+    /// <summary>Privacy: blank out a marked rectangle in recordings (plan §7). Same persisted settings as the
+    /// Record screen's Privacy card — both edit the one area, so whichever page is used they stay consistent
+    /// (the Record screen re-reads on navigation). Redaction needs the GPU capture path; if it can't be
+    /// applied the recording is refused rather than recorded unredacted.</summary>
+    public bool RedactAreaEnabled
+    {
+        get => _redactAreaEnabled;
+        set => Persist(ref _redactAreaEnabled, value, v => _settings.Current.RedactAreaEnabled = v);
+    }
+
+    /// <summary>Smooth cursor (plan §7): capture with the OS cursor off and composite an eased, scaled cursor
+    /// instead. GPU capture path only — on the fallback the OS cursor is left in the recording rather than
+    /// hidden with nothing to replace it.</summary>
+    public bool SmoothCursorEnabled
+    {
+        get => _smoothCursorEnabled;
+        set => Persist(ref _smoothCursorEnabled, value, v => _settings.Current.SmoothCursorEnabled = v);
+    }
+
+    /// <summary>Cursor size multiplier for the composited cursor (1.0 = the cursor's real size).</summary>
+    public double CursorScale
+    {
+        get => _cursorScale;
+        set
+        {
+            Persist(ref _cursorScale, value, v => _settings.Current.CursorScale = v);
+            OnPropertyChanged(nameof(CursorScaleLabel));
+        }
+    }
+
+    public string CursorScaleLabel => $"{CursorScale:0.0}x";
+
+    public bool HasRedactArea =>        _settings.Current.RedactAreaWidth > 0 && _settings.Current.RedactAreaHeight > 0;
+
+    public string RedactAreaLabel => HasRedactArea
+        ? $"{_settings.Current.RedactAreaWidth} × {_settings.Current.RedactAreaHeight}  ({_settings.Current.RedactAreaX}, {_settings.Current.RedactAreaY})"
+        : Resources.Strings.Record_RedactAreaNone;
+
+    public IRelayCommand ChooseRedactAreaCommand { get; }
+    public IRelayCommand ClearRedactAreaCommand { get; }
+
+    private void ChooseRedactArea()
+    {
+        MonitorInfo? monitor = CaptureCapabilities.PrimaryOrFirstMonitor();
+        if (monitor is null)
+        {
+            _errors.Warn("record.redaction-unavailable", "No display was found to mark an area on.");
+            return;
+        }
+
+        RegionRect? picked = _regionPicker.Pick(monitor);
+        if (picked is not { } r)
+        {
+            return; // cancelled — leave everything as it was
+        }
+
+        _settings.Current.RedactAreaX = r.X;
+        _settings.Current.RedactAreaY = r.Y;
+        _settings.Current.RedactAreaWidth = r.Width;
+        _settings.Current.RedactAreaHeight = r.Height;
+        _settings.Current.RedactAreaEnabled = true;
+        _settings.RequestSave();
+
+        _redactAreaEnabled = true;
+        OnPropertyChanged(nameof(RedactAreaEnabled));
+        OnPropertyChanged(nameof(HasRedactArea));
+        OnPropertyChanged(nameof(RedactAreaLabel));
+        ClearRedactAreaCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ClearRedactArea()
+    {
+        _settings.Current.RedactAreaEnabled = false;
+        _settings.Current.RedactAreaWidth = 0;
+        _settings.Current.RedactAreaHeight = 0;
+        _settings.RequestSave();
+
+        _redactAreaEnabled = false;
+        OnPropertyChanged(nameof(RedactAreaEnabled));
+        OnPropertyChanged(nameof(HasRedactArea));
+        OnPropertyChanged(nameof(RedactAreaLabel));
+        ClearRedactAreaCommand.NotifyCanExecuteChanged();
+    }
+
     private void RefreshFromSettings()
     {
         RecModeSettings s = _settings.Current;
@@ -649,6 +748,9 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
         _startWithWindows = _startup.IsEnabled;
         _closeToTray = s.CloseToTray;
         _enableCrashMinidumps = s.EnableCrashMinidumps;
+        _redactAreaEnabled = s.RedactAreaEnabled;
+        _smoothCursorEnabled = s.SmoothCursorEnabled;
+        _cursorScale = Math.Clamp(s.CursorScale, 0.5, 3.0);
         foreach (string property in new[] { nameof(SelectedTheme), nameof(SelectedAccent), nameof(SelectedCodec),
             nameof(SelectedContainer), nameof(SelectedAudioCodec), nameof(SelectedAudioBitrate),
             nameof(AudioSyncOffsetMs), nameof(AudioSyncOffsetLabelText), nameof(AudioSyncOffsetDescription), nameof(CaptureCommunicationsRoleAudio), nameof(OutputFolder),
@@ -656,6 +758,8 @@ public sealed class SettingsViewModel : ObservableObject, INavigationAware
             nameof(HighlightClicks), nameof(ShowKeystrokes), nameof(AutoZoomEnabled), nameof(AutoSplitEnabled), nameof(AutoSplitSizeMb), nameof(CheckForUpdates),
             nameof(CpuThreadCap), nameof(LowerEncoderPriority), nameof(BitrateGuardrailEnabled), nameof(SelectedEffort),
             nameof(SelectedLayout), nameof(StartWithWindows), nameof(CloseToTray), nameof(EnableCrashMinidumps), nameof(HotkeyStartStop), nameof(HotkeyPauseResume),
-            nameof(HotkeyScreenshot), nameof(HotkeyNextProfile), nameof(HotkeyMicMute) }) OnPropertyChanged(property);
+            nameof(HotkeyScreenshot), nameof(HotkeyNextProfile), nameof(HotkeyMicMute), nameof(HotkeyAddChapter),
+            nameof(RedactAreaEnabled), nameof(HasRedactArea), nameof(RedactAreaLabel),
+            nameof(SmoothCursorEnabled), nameof(CursorScale), nameof(CursorScaleLabel) }) OnPropertyChanged(property);
     }
 }

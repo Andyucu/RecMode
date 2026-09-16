@@ -1,0 +1,121 @@
+<UserControl x:Class="RecMode.App.Views.TranscriptsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="clr-namespace:RecMode.App.Resources"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DesignHeight="700" d:DesignWidth="900">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="{x:Static res:Strings.Transcripts_Header}" Style="{StaticResource SectionHeader}" />
+            <TextBlock Text="{x:Static res:Strings.Transcripts_Description}" Style="{StaticResource CaptionText}"
+                       TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Speech model: the one opt-in download. Nothing else here touches the network. -->
+        <Border Grid.Row="1" Style="{StaticResource SettingsCard}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE8BD;" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock x:Name="TranscriptModelLabel" Text="{x:Static res:Strings.Transcripts_Model}" Style="{StaticResource BodyStrongText}" />
+                    <TextBlock Text="{Binding ModelStatusText}" Style="{StaticResource SettingsCardDesc}" TextWrapping="Wrap" />
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding DownloadProgress, Mode=OneWay}" Height="4" Margin="0,6,0,0"
+                                 Visibility="{Binding IsDownloadingModel, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ComboBox Style="{StaticResource AppComboBox}" Width="150" Margin="0,0,8,0"
+                              ItemsSource="{Binding ModelSizes}" SelectedItem="{Binding SelectedModel}"
+                              ItemContainerStyle="{StaticResource AppComboBoxItem}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=TranscriptModelLabel}" />
+                    <Button Content="{x:Static res:Strings.Transcripts_DownloadModel}" Command="{Binding DownloadModelCommand}"
+                            Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0"
+                            ToolTip="{Binding ModelStatusText}"
+                            Visibility="{Binding IsModelReady, Converter={StaticResource InverseBoolToVisibility}}" />
+                    <Button Content="{x:Static res:Strings.Transcripts_CancelDownload}" Command="{Binding CancelDownloadCommand}"
+                            Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
+                            ToolTip="{x:Static res:Strings.Transcripts_CancelDownloadTooltip}"
+                            Visibility="{Binding IsDownloadingModel, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Search across every stored transcript. -->
+        <Grid Grid.Row="2" Margin="0,12,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0" Style="{StaticResource AppTextBox}"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="{x:Static res:Strings.Transcripts_SearchTooltip}"
+                     AutomationProperties.Name="{x:Static res:Strings.Transcripts_Search}" />
+            <Button Grid.Column="1" Content="{x:Static res:Strings.Transcripts_ClearSearch}" Command="{Binding ClearSearchCommand}"
+                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+        </Grid>
+
+        <TextBlock Grid.Row="2" Text="{Binding TruncatedMessage}" Style="{StaticResource CaptionText}"
+                   HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-4"
+                   Visibility="{Binding IsTruncated, Converter={StaticResource BoolToVisibility}}" />
+
+        <TextBlock Grid.Row="3" Text="{Binding EmptyMessage}" Style="{StaticResource CaptionText}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+        <ListBox Grid.Row="3" ItemsSource="{Binding VisibleItems}" Background="Transparent" BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource BodyStrongText}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Meta}" Style="{StaticResource CaptionText}" Margin="0,2,0,0" />
+                                <TextBlock Text="{Binding Excerpt}" Style="{StaticResource CaptionText}" Margin="0,6,0,0"
+                                           TextWrapping="Wrap" MaxHeight="60" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="{x:Static res:Strings.Transcripts_Transcribe}"
+                                        Command="{Binding DataContext.TranscribeCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
+                                        IsEnabled="{Binding CanTranscribe}"
+                                        ToolTip="{x:Static res:Strings.Transcripts_TranscribeTooltip}"
+                                        Height="28" Padding="12,0" />
+                                <Button Content="{x:Static res:Strings.Transcripts_Open}"
+                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
+                                        Height="28" Padding="12,0" Margin="8,0,0,0" />
+                                <Button Content="{x:Static res:Strings.Transcripts_SaveAs}"
+                                        Command="{Binding DataContext.SaveTranscriptCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" Style="{StaticResource SecondaryButton}"
+                                        Height="28" Padding="12,0" Margin="8,0,0,0"
+                                        ToolTip="{x:Static res:Strings.Transcripts_SaveAsTooltip}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>

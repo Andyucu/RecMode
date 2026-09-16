@@ -106,13 +106,16 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var s = host.Services.GetRequiredService<ISettingsService>();
             s.Current.Brightness = 100;
         }
-        // "split" mode: force the smallest allowed auto-split threshold and a high-bitrate quality so a
-        // rollover happens quickly, to verify the segment rotation end-to-end.
+        // "split" mode: force a small auto-split threshold and a high-bitrate quality so a rollover happens
+        // quickly, to verify the segment rotation end-to-end.
         if (mode == "split")
         {
             var s = host.Services.GetRequiredService<ISettingsService>();
             s.Current.AutoSplitEnabled = true;
             s.Current.AutoSplitSizeMb = 100;
+            // The settings value floors at 100 MB, so the real threshold comes from the coordinator's test
+            // seam instead — see TestAutoSplitThresholdBytes for why the old form tested nothing.
+            host.Services.GetRequiredService<RecordingCoordinator>().TestAutoSplitThresholdBytes = 4L * 1024 * 1024;
         }
         // "keystroke" mode: turns on the keystroke visualizer, then injects a real Ctrl+Z key press via
         // SendInput mid-recording — exercising the actual GlobalKeyboardHook + KeystrokeVisualizerService wiring
@@ -123,6 +126,26 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var s = host.Services.GetRequiredService<ISettingsService>();
             s.Current.ShowKeystrokes = true;
         }
+        // "separate-audio" mode: enable separate mic/system tracks and mux to MKV (a real multi-track container)
+        // so a downstream ffprobe can confirm the mixed track plus the per-source tracks all land in the file —
+        // exercising the real 6-channel pipe → pan-split → mux path end to end.
+        if (mode == "separate-audio")
+        {
+            var s = host.Services.GetRequiredService<ISettingsService>();
+            s.Current.SystemAudioEnabled = true;
+            s.Current.MicrophoneEnabled = true;
+            s.Current.SeparateAudioTracks = true;
+        }
+        // "chapters" mode: marks two chapters mid-recording so a downstream ffprobe can confirm the saved file
+        // carries a real chapter table. Container comes from settings (MKV exercises the standalone post-pass,
+        // MP4/MOV exercises the safe-recording remux carrying them).
+        if (mode == "chapters")
+        {
+            var s = host.Services.GetRequiredService<ISettingsService>();
+            s.Current.SystemAudioEnabled = false;
+            s.Current.MicrophoneEnabled = false;
+        }
+        bool splitFailed = false;
         var coordinator = host.Services.GetRequiredService<RecordingCoordinator>();
         var probe = host.Services.GetRequiredService<RecMode.Encoding.Encoders.IEncoderProbe>();
         string resultPath = System.IO.Path.Combine(paths.DataDirectory, "selftest-result.txt");
@@ -136,11 +159,19 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 string stem = System.IO.Path.GetFileNameWithoutExtension(finished.OutputPath).Split("_part")[0];
                 int segments = System.IO.Directory.GetFiles(dir, $"{stem}*.mp4").Length;
                 extra = $"segments={segments}\n";
+                // One segment means rotation never ran — the entire point of this mode. Fail instead of
+                // printing a green tick over an untested code path.
+                if (mode == "split" && segments < 2)
+                {
+                    extra += "reason=no-rollover\n";
+                    splitFailed = true;
+                }
             }
+            bool ok = finished.Success && !splitFailed;
             System.IO.File.WriteAllText(resultPath,
-                $"success={finished.Success}\nexit={finished.ExitCode}\nframes={finished.FramesWritten}\npath={finished.OutputPath}\n{extra}");
+                $"success={ok}\nexit={finished.ExitCode}\nframes={finished.FramesWritten}\npath={finished.OutputPath}\n{extra}");
             Log.Information("Self-test finished: {@Result}", finished);
-            dispatcher.BeginInvoke(() => shutdown(finished.Success ? 0 : 3));
+            dispatcher.BeginInvoke(() => shutdown(ok ? 0 : 3));
         };
 
         Task.Run(() =>
@@ -157,7 +188,17 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                     : region ? RecMode.Capture.CaptureTarget.FromRegion(monitor, new RecMode.Capture.RegionRect(100, 100, 1280, 720))
                     : RecMode.Capture.CaptureTarget.FromMonitor(monitor);
                 int quality = mode == "split" ? 100 : 70;
-                if (!coordinator.Start(target, encoder, MediaContainer.Mp4, 60, quality))
+                // Separate-audio verification needs a container that actually carries multiple tracks; chapters
+                // follow the user's own container so both the standalone and safe-remux passes can be exercised.
+                MediaContainer container = mode switch
+                {
+                    "separate-audio" => MediaContainer.Mkv,
+                    "chapters" => host.Services.GetRequiredService<ISettingsService>().Current.Container
+                        is MediaContainer.Mkv or MediaContainer.Mov ? host.Services.GetRequiredService<ISettingsService>().Current.Container
+                        : MediaContainer.Mp4,
+                    _ => MediaContainer.Mp4,
+                };
+                if (!coordinator.Start(target, encoder, container, 60, quality))
                 {
                     System.IO.File.WriteAllText(resultPath, "success=false\nreason=start-returned-false\n");
                     dispatcher.BeginInvoke(() => shutdown(3));
@@ -175,7 +216,11 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 }
                 else if (mode == "split")
                 {
-                    Thread.Sleep(280000); // static-desktop content compresses hard; needs real time to cross the 100 MB floor
+                    // 60 s against the seam's 4 MB threshold, not 280 s against the settings floor of 100 MB: at
+                    // this machine's ~0.17 MB/s on a static desktop the old form produced 48 MB —
+                    // under half the threshold — so it NEVER rolled over, reported success with
+                    // segments=1, and tested none of the rotation code it exists to cover.
+                    Thread.Sleep(60000);
                 }
                 else if (mode == "downgrade")
                 {
@@ -190,6 +235,14 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                     Thread.Sleep(1500);
                     SendCtrlZ();
                     Thread.Sleep(2000); // keep recording while the pill pops in/holds/fades (~1.35s cycle)
+                }
+                else if (mode == "chapters")
+                {
+                    Thread.Sleep(2000);
+                    coordinator.AddChapter();
+                    Thread.Sleep(2000);
+                    coordinator.AddChapter();
+                    Thread.Sleep(1500);
                 }
                 else
                 {
@@ -455,7 +508,12 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
             var ffmpeg = host.Services.GetRequiredService<IFfmpegLocator>();
             string ffmpegPath = ffmpeg.Resolve().FfmpegPath!;
             var psi = new System.Diagnostics.ProcessStartInfo(ffmpegPath,
-                $"-y -ss 1.8 -i \"{result.OutputPath}\" -frames:v 1 -vf scale=64:64 \"{framePng}\"")
+                // Full resolution, NOT -vf scale=64:64. Downscaling a 1-px ink stroke from ~1250x870 to 64x64
+                // averages it into the background until only a handful of pixels clear the red threshold —
+                // this test returned 7 (pass) and 3 (fail) on consecutive runs of identical code, i.e. it was
+                // a coin flip. The stroke is emphatically there: ~1250 red pixels at full resolution. A test
+                // that flips run-to-run is worse than no test, because it trains everyone to ignore it.
+                $"-y -ss 1.8 -i \"{result.OutputPath}\" -frames:v 1 \"{framePng}\"")
             {
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -480,7 +538,10 @@ internal sealed class SelfTestRunner(IHost host, IAppPaths paths, Dispatcher dis
                 }
             }
 
-            bool foundRed = redPixels > 5;
+            // Threshold sized for a full-resolution frame: a drawn stroke measures in the hundreds-to-low
+            // thousands here, and a missing one measures 0, so there is a ~100x margin on both sides instead
+            // of the ±2 the downscaled version had.
+            bool foundRed = redPixels > 100;
             System.IO.File.WriteAllText(resultPath,
                 $"success={foundRed}\nredPixels={redPixels}\nframe={framePng}\npath={result.OutputPath}\n");
             shutdown(foundRed ? 0 : 3);

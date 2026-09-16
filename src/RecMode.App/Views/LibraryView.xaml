@@ -93,6 +93,13 @@
                                         <TextBlock Text="{Binding DisplayName}" Style="{StaticResource BodyStrongText}"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Meta}" Style="{StaticResource CaptionText}" Margin="0,2,0,0" />
+                                        <!-- Chapter jump-list reference. The real chapters are in the file (any
+                                             player can seek them); this is the at-a-glance list. -->
+                                        <TextBlock Text="{Binding ChaptersBadge}" Style="{StaticResource CaptionText}" Margin="0,2,0,0"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   ToolTip="{Binding ChaptersText}"
+                                                   AutomationProperties.Name="{Binding ChaptersText}"
+                                                   Visibility="{Binding HasChapters, Converter={StaticResource BoolToVisibility}}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

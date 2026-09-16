@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.133%20Beta-blue)](#install)
+[![Version](https://img.shields.io/badge/version-0.9.134%20Beta-blue)](#install)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
@@ -211,8 +211,6 @@ Everything stays inside this folder: settings, library metadata, logs, the downl
 ## Status and known limitations
 
 RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor:
-
-The latest review hardening includes safe live microphone toggling, static-desktop-safe capture health checks, preview backpressure, race-safe scheduling and library indexing, keyboard region selection, locale-aware schedule validation, and improved screen-reader/live-region metadata. The local Release validation suite currently passes 718 tests with zero warnings.
 
 - NVENC and QSV encoding on real NVIDIA / Intel hardware (development machine is AMD).
 - Multi-monitor **All Displays** compositing on machines with two or more physical monitors.

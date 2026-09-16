@@ -44,6 +44,9 @@ public sealed class WgcCaptureEngine : ICaptureEngine
     private readonly CaptureLatencyTracker _latencyTracker = new(TimeSpan.FromSeconds(10));
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+    private RegionRect? _redactionRect;
+    private ICursorFrameSource? _cursorSource;
+    private double _cursorScale = 1.0;
     private double _brightness;
     private GdiCaptureEngine? _softwareFallback;
 
@@ -140,6 +143,8 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             converter = new Nv12Converter(_device, _context, srcW, srcH, dstW, dstH, target.Region, sourceIsHdr);
             converter.SetWebcamOverlay(_webcamSource, _webcamRect);
             converter.SetBrightness(_brightness);
+            converter.SetRedaction(_redactionRect);
+            converter.SetCursorOverlay(_cursorSource, _cursorScale);
             int byteSize = converter.Nv12ByteSize;
             byte[] latest = new byte[byteSize];
             byte[] scratch = new byte[byteSize];
@@ -349,6 +354,8 @@ public sealed class WgcCaptureEngine : ICaptureEngine
             _converter = new Nv12Converter(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
             _converter.SetWebcamOverlay(_webcamSource, _webcamRect);
             _converter.SetBrightness(_brightness);
+            _converter.SetRedaction(_redactionRect);
+            _converter.SetCursorOverlay(_cursorSource, _cursorScale);
             OutputWidth = dstW; OutputHeight = dstH; Nv12ByteSize = _converter.Nv12ByteSize;
             _latest = new byte[Nv12ByteSize]; _scratch = new byte[Nv12ByteSize]; _hasLatest = false; _capturedFrames = 0;
             _ddaStopping = false; _ddaThreadExited.Reset();
@@ -468,6 +475,24 @@ public sealed class WgcCaptureEngine : ICaptureEngine
         _brightness = value;
         _converter?.SetBrightness(value);
     }
+
+    public void SetRedaction(RegionRect? sourceRect)
+    {
+        if (_softwareFallback is not null) return;
+        _redactionRect = sourceRect;
+        _converter?.SetRedaction(sourceRect);
+    }
+
+    public bool RedactionActive => _softwareFallback is null && _converter?.RedactionActive == true;
+
+    public void SetCursorOverlay(ICursorFrameSource? source, double scale)
+    {
+        if (_softwareFallback is not null) return;
+        _cursorSource = source;
+        _cursorScale = scale;
+        _converter?.SetCursorOverlay(source, scale);
+    }
+    public bool SupportsRedaction => _softwareFallback is null;
 
     public void SetZoomTarget(RegionRect? rect)
     {

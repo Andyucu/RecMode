@@ -10,6 +10,7 @@ public sealed partial class RecordViewModel
 
     private bool _systemAudioEnabled;
     private bool _micEnabled;
+    private bool _separateAudioTracks;
     private double _systemMeter;
     private double _micMeter;
     private double _systemVolume;
@@ -94,6 +95,71 @@ public sealed partial class RecordViewModel
             }
         }
     }
+
+    /// <summary>Write the mic and system audio as distinct tracks alongside the always-present mixed track
+    /// (plan §7 "audio pro") — record once, rebalance later. MKV/MOV only; see
+    /// <see cref="SeparateAudioTracksAvailable"/>. Takes effect on the next recording (the pipe's channel
+    /// layout is fixed when the encoder starts).</summary>
+    public bool SeparateAudioTracks
+    {
+        get => _separateAudioTracks;
+        set
+        {
+            if (SetProperty(ref _separateAudioTracks, value))
+            {
+                _settings.Current.SeparateAudioTracks = value;
+                _settings.RequestSave();
+            }
+        }
+    }
+
+    /// <summary>Whether the currently selected container can carry separate audio tracks. Drives the toggle's
+    /// enabled state — MP4/WebM can't.</summary>
+    public bool SeparateAudioTracksAvailable =>
+        RecMode.Core.Settings.MediaCompatibility.SupportsSeparateAudioTracks(SelectedFormat);
+
+    private bool _micNoiseSuppressionEnabled;
+    private double _micNoiseSuppressionStrength;
+
+    /// <summary>Microphone noise suppression (plan §7): drops steady background between speech in the mixed
+    /// track. Applied live to a recording in progress, so the toolbar toggle takes effect on the file being
+    /// written. The separate mic track stays raw — see <see cref="AudioMixer.MicNoiseSuppressionStrength"/>.</summary>
+    public bool IsMicNoiseSuppressionEnabled
+    {
+        get => _micNoiseSuppressionEnabled;
+        set
+        {
+            if (SetProperty(ref _micNoiseSuppressionEnabled, value))
+            {
+                _settings.Current.MicNoiseSuppression = value;
+                _settings.RequestSave();
+                ApplyMicNoiseSuppression();
+            }
+        }
+    }
+
+    /// <summary>Strength 0–100 (→ <see cref="RecModeSettings.MicNoiseSuppressionStrength"/>). 100 gates to
+    /// roughly −30 dB.</summary>
+    public double MicNoiseSuppressionStrength
+    {
+        get => _micNoiseSuppressionStrength;
+        set
+        {
+            if (SetProperty(ref _micNoiseSuppressionStrength, value))
+            {
+                _settings.Current.MicNoiseSuppressionStrength = (int)Math.Round(value);
+                _settings.RequestSave();
+                OnPropertyChanged(nameof(MicNoiseSuppressionStrengthLabel));
+                ApplyMicNoiseSuppression();
+            }
+        }
+    }
+
+    public string MicNoiseSuppressionStrengthLabel => $"{(int)Math.Round(MicNoiseSuppressionStrength)}%";
+
+    private void ApplyMicNoiseSuppression() =>
+        _coordinator.SetMicNoiseSuppression(
+            _micNoiseSuppressionEnabled ? (int)Math.Round(_micNoiseSuppressionStrength) : 0);
 
     public bool MicEnabled
     {

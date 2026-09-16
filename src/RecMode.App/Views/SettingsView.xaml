@@ -299,6 +299,30 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C9;" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="SmoothCursorLabel" Text="{x:Static res:Strings.Settings_SmoothCursor}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_SmoothCursorDesc}" Style="{StaticResource SettingsCardDesc}" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0" IsEnabled="{Binding SmoothCursorEnabled}">
+                            <Slider Style="{StaticResource AppSlider}" Width="180" Minimum="0.5" Maximum="3"
+                                    Value="{Binding CursorScale}" VerticalAlignment="Center"
+                                    ToolTip="{x:Static res:Strings.Settings_CursorScaleTooltip}"
+                                    AutomationProperties.Name="{x:Static res:Strings.Settings_CursorScale}" />
+                            <TextBlock Text="{Binding CursorScaleLabel}" Style="{StaticResource CaptionText}"
+                                       MinWidth="36" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Top" Margin="0,2,0,0"
+                                  IsChecked="{Binding SmoothCursorEnabled, Mode=TwoWay}"
+                                  ToolTip="{x:Static res:Strings.Settings_SmoothCursorDesc}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=SmoothCursorLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C9;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
                         <TextBlock x:Name="ClicksLabel" Text="{x:Static res:Strings.Settings_Clicks}" Style="{StaticResource BodyStrongText}" />
                         <TextBlock Text="{x:Static res:Strings.Settings_ClicksDesc}" Style="{StaticResource SettingsCardDesc}" />
                     </StackPanel>
@@ -357,6 +381,46 @@
                         <ToggleButton Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
                                       IsChecked="{Binding AutoSplitEnabled, Mode=TwoWay}"
                                       AutomationProperties.LabeledBy="{Binding ElementName=AutoSplitLabel}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===== Privacy ===== -->
+            <TextBlock Text="{x:Static res:Strings.Settings_Privacy}" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE72E;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="RedactAreaToggleLabel" Text="{x:Static res:Strings.Settings_RedactArea}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{x:Static res:Strings.Settings_RedactAreaDesc}" Style="{StaticResource SettingsCardDesc}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleButton Grid.Column="2" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
+                                  IsChecked="{Binding RedactAreaEnabled, Mode=TwoWay}"
+                                  ToolTip="{x:Static res:Strings.Record_RedactAreaTooltip}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=RedactAreaToggleLabel}" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource CardIcon}" Text="&#xE7C9;" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <TextBlock x:Name="RedactAreaRegionLabel" Text="{x:Static res:Strings.Settings_RedactAreaRegion}" Style="{StaticResource BodyStrongText}" />
+                        <TextBlock Text="{Binding RedactAreaLabel}" Style="{StaticResource SettingsCardDesc}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="{x:Static res:Strings.Record_RedactAreaChoose}" Command="{Binding ChooseRedactAreaCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="28" Padding="10,0" Margin="0,0,8,0"
+                                ToolTip="{x:Static res:Strings.Record_RedactAreaTooltip}"
+                                AutomationProperties.LabeledBy="{Binding ElementName=RedactAreaRegionLabel}" />
+                        <Button Content="{x:Static res:Strings.Record_RedactAreaClear}" Command="{Binding ClearRedactAreaCommand}"
+                                Style="{StaticResource SecondaryButton}" Height="28" Padding="10,0"
+                                AutomationProperties.LabeledBy="{Binding ElementName=RedactAreaRegionLabel}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -494,6 +558,21 @@
                             <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="micmute" Click="OnChangeHotkey"
                                     ToolTip="{x:Static res:Strings.Settings_HotkeyMuteMicTooltip}"
                                     AutomationProperties.Name="Change mic mute shortcut"
+                                    Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
+                        </Grid>
+                        <Border Height="1" Background="{DynamicResource StrokeCardBrush}" Margin="0,9" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Static res:Strings.Settings_AddChapter}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource KeyCap}" MinWidth="90">
+                                <TextBlock Text="{Binding HotkeyAddChapter}" Style="{StaticResource MonoText}" FontSize="11"
+                                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Button Grid.Column="2" Content="{x:Static res:Strings.Hotkey_Change}" Tag="addchapter" Click="OnChangeHotkey"
+                                    ToolTip="{x:Static res:Strings.Settings_HotkeyAddChapterTooltip}"
+                                    AutomationProperties.Name="Change add chapter shortcut"
                                     Style="{StaticResource SecondaryButton}" Height="28" Padding="12,0" Margin="8,0,0,0" />
                         </Grid>
 

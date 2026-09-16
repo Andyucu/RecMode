@@ -27,7 +27,12 @@ public sealed record LibraryIndexEntry(
     DateTimeOffset CreatedAt,
     int Quality = 0,
     bool SystemAudioEnabled = false,
-    bool MicrophoneEnabled = false);
+    bool MicrophoneEnabled = false,
+    /// <summary>Titles of the chapters written into the file, in order, or null when the recording has none.
+    /// Recorded here so the Library can show a jump-list without probing every file with ffprobe — the file
+    /// itself carries the real chapters (any player can seek them). Default-valued, so index rows written
+    /// before this field existed deserialize unchanged.</summary>
+    List<string>? Chapters = null);
 
 /// <summary>Reads/writes the recordings metadata index (<c>library.json</c>).</summary>
 public interface ILibraryIndex

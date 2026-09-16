@@ -82,12 +82,21 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         _errors = errors;
         _systemAudioEnabled = settings.Current.SystemAudioEnabled;
         _micEnabled = settings.Current.MicrophoneEnabled;
+        _separateAudioTracks = settings.Current.SeparateAudioTracks;
+        _micNoiseSuppressionEnabled = settings.Current.MicNoiseSuppression;
+        _micNoiseSuppressionStrength = settings.Current.MicNoiseSuppressionStrength;
         _systemVolume = settings.Current.SystemVolume;
         _micVolume = settings.Current.MicVolume;
         _webcamEnabled = settings.Current.WebcamEnabled;
         _webcamPosition = settings.Current.WebcamPosition;
         _webcamSizePercent = settings.Current.WebcamSizePercent;
         _followWindowEnabled = settings.Current.FollowWindow;
+        _redactAreaEnabled = settings.Current.RedactAreaEnabled;
+        if (settings.Current.RedactAreaWidth > 0 && settings.Current.RedactAreaHeight > 0)
+        {
+            _redactArea = new RegionRect(settings.Current.RedactAreaX, settings.Current.RedactAreaY,
+                settings.Current.RedactAreaWidth, settings.Current.RedactAreaHeight);
+        }
 
         if (settings.Current.RegionWidth > 0 && settings.Current.RegionHeight > 0)
         {
@@ -98,6 +107,13 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         Formats = [MediaContainer.Mp4, MediaContainer.Mkv, MediaContainer.Mov, MediaContainer.WebM];
         FrameRates = [10, 15, 20, 25, 30, 60, 120];
         _selectedFormat = Formats.Contains(settings.Current.Container) ? settings.Current.Container : MediaContainer.Mkv;
+        // A stale "separate tracks" setting from when a different container was selected can't be honored on
+        // MP4/WebM; clear it rather than showing a checked-but-disabled toggle.
+        if (_separateAudioTracks && !SeparateAudioTracksAvailable)
+        {
+            _separateAudioTracks = false;
+            settings.Current.SeparateAudioTracks = false;
+        }
         _selectedFrameRate = FrameRates.Contains(settings.Current.FrameRate) ? settings.Current.FrameRate : 30;
         _quality = Math.Clamp(settings.Current.Quality, 0, 100);
         _brightness = Math.Clamp(settings.Current.Brightness, -100, 100);
@@ -112,8 +128,13 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         ToggleManualZoomCommand = new RelayCommand(ToggleManualZoom);
         ToggleMicMuteCommand = new RelayCommand(ToggleMicMute, () => _coordinator.IsRecording && MicEnabled);
         ToggleHighlightClicksCommand = new RelayCommand(() => IsHighlightingClicks = !IsHighlightingClicks);
+        ToggleMicNoiseSuppressionCommand = new RelayCommand(() => IsMicNoiseSuppressionEnabled = !IsMicNoiseSuppressionEnabled);
+        AddChapterCommand = new RelayCommand(AddChapter);
         SaveProfileCommand = new RelayCommand(SaveProfile);
         DeleteProfileCommand = new RelayCommand(DeleteProfile, () => CanDeleteProfile);
+        ChooseRedactAreaCommand = new RelayCommand(ChooseRedactArea);
+        ClearRedactAreaCommand = new RelayCommand(ClearRedactArea, () => HasRedactArea);
+        ToggleRedactionCommand = new RelayCommand(ToggleRedaction);
         SetQualityPresetCommand = new RelayCommand<string>(v => { if (int.TryParse(v, out int q)) Quality = q; });
         SelectAudioDevicesCommand = new RelayCommand(SelectAudioDevices);
 
@@ -203,6 +224,14 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public IRelayCommand ToggleManualZoomCommand { get; }
     public IRelayCommand ToggleMicMuteCommand { get; }
     public IRelayCommand ToggleHighlightClicksCommand { get; }
+
+    /// <summary>Toolbar toggle for microphone noise suppression — flips the same persisted setting the Record
+    /// screen's audio card edits, and applies it to a recording in progress.</summary>
+    public IRelayCommand ToggleMicNoiseSuppressionCommand { get; }
+
+    /// <summary>Stamps a chapter marker on the recording in progress (toolbar button / global hotkey). No-op
+    /// when nothing is recording.</summary>
+    public IRelayCommand AddChapterCommand { get; }
     public IRelayCommand SaveProfileCommand { get; }
     public IRelayCommand DeleteProfileCommand { get; }
 
@@ -498,7 +527,23 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     public MediaContainer SelectedFormat
     {
         get => _selectedFormat;
-        set { if (SetProperty(ref _selectedFormat, value)) { _settings.Current.Container = value; _settings.RequestSave(); } }
+        set
+        {
+            if (!SetProperty(ref _selectedFormat, value))
+            {
+                return;
+            }
+
+            _settings.Current.Container = value;
+            // Separate audio tracks are MKV/MOV-only; switching to MP4/WebM must not leave the (now inert)
+            // option ticked, or the persisted setting would claim something the container can't do.
+            if (_separateAudioTracks && !SeparateAudioTracksAvailable)
+            {
+                SeparateAudioTracks = false;
+            }
+            OnPropertyChanged(nameof(SeparateAudioTracksAvailable));
+            _settings.RequestSave();
+        }
     }
 
     public int SelectedFrameRate
@@ -623,6 +668,14 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
             {
                 OnPropertyChanged(nameof(RecordButtonText));
                 OnPropertyChanged(nameof(CanEditSettings));
+                OnPropertyChanged(nameof(CanToggleRedaction));
+                // The toolbar's redact light reflects whether redaction actually got armed at start; it's
+                // reset on stop so a stale "hidden" indicator can't outlive the recording.
+                IsRedacting = value && RedactAreaEnabled && _coordinator.CaptureSupportsRedaction;
+                if (value)
+                {
+                    ChapterCount = 0; // the counter is per-recording
+                }
                 ToggleMicMuteCommand.NotifyCanExecuteChanged();
                 // Hand the meters over to (or back from) the recording's own mixer, so only one WASAPI
                 // capture graph is ever open at a time — see RefreshMeteringSource.
@@ -642,6 +695,26 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
     }
 
     public string PauseButtonText => IsPaused ? "Resume" : "Pause";
+
+    private int _chapterCount;
+
+    /// <summary>Chapters stamped during the current recording (toolbar/hotkey). Shown as a small counter next
+    /// to the toolbar's chapter button so the hotkey has visible feedback; reset when a recording starts.</summary>
+    public int ChapterCount
+    {
+        get => _chapterCount;
+        private set { if (SetProperty(ref _chapterCount, value)) OnPropertyChanged(nameof(HasChapters)); }
+    }
+
+    public bool HasChapters => _chapterCount > 0;
+
+    private void AddChapter()
+    {
+        if (_coordinator.AddChapter())
+        {
+            ChapterCount++;
+        }
+    }
 
     /// <summary>The "Highlight mouse clicks" setting (§Phase 8), also exposed here — not just on the Settings
     /// screen — so it can be flipped on/off from the floating recording toolbar mid-recording, for pinpointing
@@ -865,6 +938,7 @@ public sealed partial class RecordViewModel : ObservableObject, INavigationAware
         LoadDevices();
         LoadPerAppAudioTargets();
         LoadWebcamDevices();
+        RefreshRedactionFromSettings();
         StartPreview();
         StartMetering();
         if (!IsRecording)

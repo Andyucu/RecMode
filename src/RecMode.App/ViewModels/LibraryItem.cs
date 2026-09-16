@@ -21,6 +21,19 @@ public sealed class LibraryItem : INotifyPropertyChanged
     /// <summary>True for screenshots (a real thumbnail is loaded); false for videos (a play badge is shown).</summary>
     public required bool IsImage { get; init; }
 
+    /// <summary>Chapter titles this recording carries, from the library index (null/empty when it has none).
+    /// The real chapters are written into the file itself, so this is the Library's jump-list reference —
+    /// any player can seek them, and the tooltip lists the titles without needing an in-app player.</summary>
+    public IReadOnlyList<string>? Chapters { get; init; }
+
+    public bool HasChapters => Chapters is { Count: > 0 };
+
+    public string ChaptersBadge => Chapters is { Count: > 0 } c
+        ? $"{c.Count} chapter{(c.Count == 1 ? "" : "s")}"
+        : "";
+
+    public string ChaptersText => Chapters is { Count: > 0 } c ? string.Join(" · ", c) : "";
+
     /// <summary>
     /// Lazily decoded on first read, not eagerly for every item in the folder. <see cref="LibraryViewModel"/>
     /// used to decode a 160px thumbnail for every screenshot up front, in <c>BuildItems</c>, before the list

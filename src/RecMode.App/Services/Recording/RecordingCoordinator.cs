@@ -34,6 +34,7 @@ public sealed class RecordingCoordinator : IDisposable
     private readonly RecordingStateMachine _stateMachine;
 
     private ICaptureEngine? _capture;
+    private CursorCaptureSource? _cursorSource;
     // Guards every read-then-invoke of _capture from outside the pacer loop (SetBrightness/SetZoomTarget/
     // SetBaseRect/CaptureSupportsZoom — called from the UI thread and, for auto-zoom, a threadpool timer)
     // against RetargetCapture/Finalize concurrently swapping or disposing it on the pacer thread. `_capture?.
@@ -96,6 +97,17 @@ public sealed class RecordingCoordinator : IDisposable
     // because startup never got this far" — both produced the same hardcoded RecordingResult(false, -1, "", 0).
     private RecordingResult? _lastRotatedSegmentResult;
 
+    // Chapter markers (plan §7): stamped by the global hotkey / floating toolbar during a recording, then
+    // written into the finished file as real seekable chapters (see WriteChapters). Segment-local, because
+    // each auto-split segment is a separate file with its own timebase; cleared after every finalized segment.
+    private readonly List<(double StartSeconds, string Title)> _segmentChapters = [];
+
+    /// <summary>Guards <see cref="_segmentChapters"/>. AddChapter runs on the UI thread (global hotkey, the
+    /// floating toolbar) while the finalize/rotation paths read and clear the list from the pacer thread or a
+    /// Task.Run(Stop) — a plain List can't take that: an Add landing during BuildSegmentChapters' own indexed
+    /// walk throws or reads a torn entry, and stamping a marker as a recording stops is exactly the moment a
+    /// user would do it.</summary>
+    private readonly object _chapterLock = new();
     // Mid-stream hw→sw Degraded fallback (§3.6 / Phase 3 tail): the encoder actually in use for the current
     // segment, and whether a downgrade has already been attempted this recording (once per recording).
     private EncoderInfo? _activeEncoder;
@@ -107,6 +119,12 @@ public sealed class RecordingCoordinator : IDisposable
     // WebcamCaptureSource, so the GPU picture-in-picture compositing can be verified without camera hardware.
     private IWebcamFrameSource? _testForcedWebcamSource;
     internal void TestForceWebcamSource(IWebcamFrameSource source) => _testForcedWebcamSource = source;
+
+    // Test-only seam (--selftest-split): overrides the auto-split rollover threshold, which the settings path
+    // floors at 100 MB. On a static desktop the encoder needs ~5 minutes to produce that much, so the split
+    // self-test sat through 280 s and still finished with ONE segment — reporting success while exercising
+    // none of the rotation code it exists to cover. A small threshold makes it a real test in about a minute.
+    internal long TestAutoSplitThresholdBytes { get; set; }
 #endif
 
     // Draw-on-screen annotation for Window-source recordings (see SetAnnotating): the target actually passed
@@ -231,8 +249,62 @@ public sealed class RecordingCoordinator : IDisposable
 
             _capture = CreateCaptureEngine(target);
             _capture.Faulted += OnCaptureFaulted;
-            _capture.Start(target, dstW, dstH, _settings.Current.CaptureCursor, fps);
+
+            // Smooth cursor (plan §7): composite our own eased cursor and stop the OS one from being captured.
+            // Only the GPU pipeline can draw the replacement — on the fallback we deliberately leave the OS
+            // cursor in the recording rather than suppressing it and showing nothing.
+            bool smoothCursor = _settings.Current.SmoothCursorEnabled;
+            if (smoothCursor && !_capture.SupportsZoom)
+            {
+                smoothCursor = false;
+                _errors.Warn("record.smooth-cursor-unsupported",
+                    "Smooth cursor isn't available for this recording.",
+                    "Capture fell back to a compatibility mode that can't composite the cursor, so the normal cursor is used instead.");
+            }
+
+            // Resolve the sampler's coordinate space BEFORE starting capture, not after. The OS cursor is
+            // suppressed whenever smooth cursor is on, so deciding "can I actually composite one?" after
+            // Start() had already suppressed it meant an unresolvable target (a window closing mid-start, a
+            // stale HMONITOR after a display change) produced a recording with no pointer at all, silently.
+            // Same fail-closed rule as redaction, in the opposite direction: when in doubt, keep the real one.
+            RegionRect cursorBounds = default;
+            if (smoothCursor && !CaptureCapabilities.TryGetTextureBounds(target, out cursorBounds))
+            {
+                smoothCursor = false;
+                _errors.Warn("record.smooth-cursor-unsupported",
+                    "Smooth cursor isn't available for this recording.",
+                    "The capture source's screen position couldn't be resolved, so the normal cursor is used instead.");
+            }
+
+            bool captureCursorOs = !smoothCursor && _settings.Current.CaptureCursor;
+            _capture.Start(target, dstW, dstH, captureCursorOs, fps);
             _capture.SetBrightness(_settings.Current.Brightness);
+
+            if (smoothCursor)
+            {
+                _cursorSource = new CursorCaptureSource(cursorBounds);
+                _cursorSource.Start();
+                _capture.SetCursorOverlay(_cursorSource, _settings.Current.CursorScale);
+            }
+
+            // Live redaction (plan §7 privacy): arm the marked rect BEFORE anything can reach the encoder, and
+            // fail closed if it can't actually be applied — a privacy feature that silently records
+            // unredacted because capture fell back to GDI (or the marked area lies outside what's being
+            // captured) is the one outcome that must never happen. Refusing to start is the only acceptable
+            // behavior, so it is a BlockingError, not a warning.
+            if (!ApplyRedaction(target))
+            {
+                // Logged explicitly: ErrorReporter only raises the UI event, so without this the one line that
+                // explains why a recording was refused never reaches the log.
+                Log.Warning("Redaction requested but could not be applied (target={Kind}, bounds resolvable={Bounds}); refusing to record unredacted",
+                    target.Kind, CaptureCapabilities.TryGetTextureBounds(target, out _));
+                _errors.Block("record.redaction-unavailable",
+                    "The redacted area couldn't be applied, so the recording wasn't started.",
+                    "Redaction needs the GPU capture path, and the marked area has to overlap what's being recorded. " +
+                    "Turn off \"Redact area\", or choose an area inside the selected source.");
+                SafeTeardown();
+                return false;
+            }
 
             // Smart auto-zoom needs the GPU VideoProcessor pipeline to crop with; the GDI software fallback
             // (Windows.Graphics.Capture unavailable) has no such mechanism. Rather than the setting silently
@@ -313,7 +385,7 @@ public sealed class RecordingCoordinator : IDisposable
                 // this instant rather than a stale replay of whatever was captured while waiting for the
                 // encoder to connect. See IAudioMixer.ClearBuffers's doc comment.
                 _mixer.ClearBuffers();
-                StartAudioPumpThread(audioPipe, _stateMachine.Elapsed);
+                StartAudioPumpThread(audioPipe, _stateMachine.Elapsed, job.SeparateAudioTracks);
             }
 
             Log.Information("Recording started: {Enc} {W}x{H}@{Fps} safe={Safe} audio={Audio} -> {Path}",
@@ -636,12 +708,36 @@ public sealed class RecordingCoordinator : IDisposable
     private bool RetargetCapture(CaptureTarget target)
     {
         ICaptureEngine? next = null;
+        CursorCaptureSource? nextCursor = null;
+        CursorCaptureSource? previousCursor = _cursorSource;
         try
         {
             next = _captureFactory();
             next.Faulted += OnCaptureFaulted;
-            next.Start(target, _dstW, _dstH, _settings.Current.CaptureCursor, _targetFps);
+            // Smooth cursor suppresses the OS cursor, so the new engine must be started with the SAME
+            // decision the original Start() made, not the raw setting: passing CaptureCursor here put the
+            // un-smoothed OS cursor back into the recording mid-session (or, with the setting off, removed
+            // the pointer entirely, since nothing was compositing a replacement on the new engine either).
+            bool smoothCursor = previousCursor is not null;
+            next.Start(target, _dstW, _dstH, !smoothCursor && _settings.Current.CaptureCursor, _targetFps);
             next.SetBrightness(_settings.Current.Brightness);
+
+            if (smoothCursor)
+            {
+                // The sampler converts screen coordinates into the capture texture's own space, and the
+                // texture just changed (a resized window, or the annotation Region proxy) — so it is rebuilt
+                // for the new target rather than reused with the old origin. Failing to map means we cannot
+                // composite a cursor, and the OS one is suppressed, so this aborts the retarget (see the
+                // catch) rather than continuing into a pointer-less recording.
+                if (!CaptureCapabilities.TryGetTextureBounds(target, out RegionRect cursorBounds))
+                {
+                    throw new InvalidOperationException("The smooth cursor can't be mapped onto the new capture target.");
+                }
+
+                nextCursor = new CursorCaptureSource(cursorBounds);
+                nextCursor.Start();
+                next.SetCursorOverlay(nextCursor, _settings.Current.CursorScale);
+            }
 #if RECMODE_SELFTEST
             IWebcamFrameSource? webcamSource = _testForcedWebcamSource ?? (IWebcamFrameSource?)_webcamCapture;
 #else
@@ -665,10 +761,41 @@ public sealed class RecordingCoordinator : IDisposable
                 next.Faulted -= OnCaptureFaulted;
                 next.Dispose();
             }
+            nextCursor?.Dispose(); // same leak shape as `next` — it owns a running sampler thread
             _errors.Warn("record.annotate-retarget-failed",
                 "Couldn't switch capture for drawing — the recording will continue without it.",
                 "Try again, or switch to Monitor/Region capture to draw on the recording.", ex);
             return false;
+        }
+
+        // Redaction must survive a capture swap, and must fail CLOSED when it can't. The new engine starts
+        // with nothing redacted, so without this a follow-window resize or the annotation Region-proxy swap
+        // would quietly continue recording the marked area in the clear — the precise outcome Start()'s gate
+        // refuses to allow in the first place, arriving later and with no indication to the user. The rect is
+        // re-mapped from screen coordinates because the target itself just changed. If it can't be re-armed
+        // we abandon the retarget and keep the old engine, which still has it armed: losing the retarget
+        // (a resize follow, or drawing) is recoverable, losing the redaction is not.
+        if (_redactionArmed)
+        {
+            bool restored = TryMapRedaction(target, out RegionRect? redactRect) && redactRect is not null;
+            if (restored)
+            {
+                next.SetRedaction(redactRect);
+                restored = next.RedactionActive;
+            }
+
+            if (!restored)
+            {
+                next.Faulted -= OnCaptureFaulted;
+                next.Dispose();
+                nextCursor?.Dispose();
+                Log.Warning("Abandoned capture retarget to {Kind}: the redacted area could not be re-applied to the new target",
+                    target.Kind);
+                _errors.Warn("record.redaction-retarget-failed",
+                    "Kept the current capture so the redacted area stays hidden.",
+                    "The marked area couldn't be applied after the source changed, so the switch was cancelled. The recording continues, still redacted.");
+                return false;
+            }
         }
 
         ICaptureEngine old;
@@ -681,10 +808,20 @@ public sealed class RecordingCoordinator : IDisposable
             // old.SetBrightness(...) at the exact moment old.Stop()/Dispose() run below.
             old = _capture!;
             _capture = next;
+            if (nextCursor is not null)
+            {
+                _cursorSource = nextCursor;
+            }
         }
         old.Faulted -= OnCaptureFaulted;
         old.Stop();
         old.Dispose();
+        // Disposed only after the swap: the outgoing engine can still be mid-frame against it right up until
+        // Stop() returns, and the sampler owns a background thread plus GDI objects.
+        if (nextCursor is not null && !ReferenceEquals(previousCursor, nextCursor))
+        {
+            previousCursor?.Dispose();
+        }
         return true;
     }
 
@@ -739,11 +876,16 @@ public sealed class RecordingCoordinator : IDisposable
         _baseFileName = fileName;
         _segmentIndex = 1;
         _lastRotatedSegmentResult = null; // defensive; Finalize() already clears it on every normal path
+        ClearChapters(); // defensive; a previous recording's markers must never leak into this one
         _autoSplitEnabled = _settings.Current.AutoSplitEnabled;
         _autoSplitThresholdBytes = Math.Max(100, _settings.Current.AutoSplitSizeMb) * 1024L * 1024L;
         _downgradeAttempted = false;
 #if RECMODE_SELFTEST
         _testForceDowngrade = false;
+        if (TestAutoSplitThresholdBytes > 0)
+        {
+            _autoSplitThresholdBytes = TestAutoSplitThresholdBytes; // see the seam's own comment
+        }
 #endif
 
         // Snapshot metadata for the library index (written on successful finalize).
@@ -758,6 +900,13 @@ public sealed class RecordingCoordinator : IDisposable
         _metaMicEnabled = _settings.Current.MicrophoneEnabled;
 
         bool audioEnabled = _settings.Current.SystemAudioEnabled || _settings.Current.MicrophoneEnabled;
+        // Separate per-source tracks (plan §7 "audio pro"): only for MKV/MOV — the container the USER picked
+        // (`container`), not the temp safe-recording MKV, since MP4 tolerates multiple audio tracks poorly and
+        // an MP4 job safe-records through MKV. Needs at least one real source, or there'd be nothing to
+        // separate from the mixed track.
+        bool separateTracks = _settings.Current.SeparateAudioTracks
+            && audioEnabled
+            && RecMode.Core.Settings.MediaCompatibility.SupportsSeparateAudioTracks(container);
         // The pipe's DACL (FfmpegRecordingSession.CreateSecurePipe) is what actually keeps other accounts
         // out; the GUID suffix is defense-in-depth so the name itself isn't derivable from public process
         // info (pid + uptime), same reasoning as the old name being enumerable at \\.\pipe\.
@@ -776,6 +925,9 @@ public sealed class RecordingCoordinator : IDisposable
             AudioPipeName = audioPipeName,
             AudioCodec = _settings.Current.AudioCodec,
             AudioBitrateKbps = _settings.Current.AudioBitrateKbps,
+            SeparateAudioTracks = separateTracks,
+            SeparateMicTrack = separateTracks && _settings.Current.MicrophoneEnabled,
+            SeparateSystemTrack = separateTracks && _settings.Current.SystemAudioEnabled,
             CpuThreadCap = _settings.Current.CpuThreadCap,
             BelowNormalPriority = _settings.Current.BelowNormalEncoderPriority,
             Effort = _settings.Current.Effort,
@@ -831,6 +983,9 @@ public sealed class RecordingCoordinator : IDisposable
             captureCommsRoleAudio: _settings.Current.CaptureCommunicationsRoleAudio);
         _mixer.SystemGain = _settings.Current.SystemVolume / 100f;
         _mixer.MicGain = _settings.Current.MicVolume / 100f;
+        _mixer.MicNoiseSuppressionStrength = _settings.Current.MicNoiseSuppression
+            ? _settings.Current.MicNoiseSuppressionStrength
+            : 0;
 
         // A requested audio source that failed to start is not fatal — recording continues without it —
         // but silently dropping it would leave the user wondering why the file has no audio.
@@ -1024,6 +1179,17 @@ public sealed class RecordingCoordinator : IDisposable
         }
     }
 
+    /// <summary>Applies the microphone noise-suppression strength (0 = off) to the live recording's mixer, so
+    /// the toolbar toggle takes effect on the file being written rather than only the next one. Same benign
+    /// unlocked read as <see cref="SetAudioGains"/>.</summary>
+    public void SetMicNoiseSuppression(int strength)
+    {
+        if (_mixer is { } mixer)
+        {
+            mixer.MicNoiseSuppressionStrength = strength;
+        }
+    }
+
     /// <summary>Called by <see cref="RecordViewModel.MicEnabled"/> when toggled mid-recording — direct user
     /// request. Previously the mic capture actually opened by <see cref="StartAudioMixer"/> was fixed for the
     /// whole recording (set once from <c>_settings.Current.MicrophoneEnabled</c> at <see cref="Start"/> time),
@@ -1052,6 +1218,200 @@ public sealed class RecordingCoordinator : IDisposable
     public void SetBrightness(double value)
     {
         lock (_captureAccessLock) { _capture?.SetBrightness(value); }
+    }
+
+    /// <summary>Maps the persisted screen-space redaction rect onto the capture target's own pixel space and
+    /// arms it. Returns false when redaction was requested but can't take effect — no GPU VideoProcessor pass
+    /// (GDI fallback / webcam source), no resolvable target bounds, or the mapped rect doesn't overlap what's
+    /// being captured. Callers must treat false as "do not record" (see the gate in <see cref="Start"/>).</summary>
+    private bool ApplyRedaction(CaptureTarget target)
+    {
+        // Reset first: this runs once per recording start, and a stale `true` left by a previous recording
+        // would make RetargetCapture try to restore a redaction this one never armed.
+        _redactionArmed = false;
+
+        if (!TryMapRedaction(target, out RegionRect? sourceRect))
+        {
+            return false;
+        }
+
+        if (sourceRect is null)
+        {
+            return true; // not requested
+        }
+
+        lock (_captureAccessLock)
+        {
+            ICaptureEngine? capture = _capture;
+            if (capture is null)
+            {
+                return false;
+            }
+
+            capture.SetRedaction(sourceRect);
+            _redactionArmed = capture.RedactionActive;
+            return _redactionArmed;
+        }
+    }
+
+    /// <summary>Maps the persisted screen-space redaction rect into <paramref name="target"/>'s own texture
+    /// pixel space. Returns false only when redaction IS requested but can't be mapped (no marked area, or no
+    /// resolvable texture bounds — e.g. a webcam source); <paramref name="sourceRect"/> is null when redaction
+    /// simply isn't requested, which is not a failure. Screen coordinates are the stored form precisely
+    /// because the target can change mid-recording (follow-window resize, the annotation Region proxy) — the
+    /// mapped rect is only valid for the target it was computed from.</summary>
+    private bool TryMapRedaction(CaptureTarget target, out RegionRect? sourceRect)
+    {
+        sourceRect = null;
+        if (!_settings.Current.RedactAreaEnabled)
+        {
+            return true;
+        }
+
+        if (_settings.Current.RedactAreaWidth <= 0 || _settings.Current.RedactAreaHeight <= 0 ||
+            !CaptureCapabilities.TryGetTextureBounds(target, out RegionRect bounds))
+        {
+            return false;
+        }
+
+        sourceRect = new RegionRect(
+            _settings.Current.RedactAreaX - bounds.X,
+            _settings.Current.RedactAreaY - bounds.Y,
+            _settings.Current.RedactAreaWidth,
+            _settings.Current.RedactAreaHeight);
+        return true;
+    }
+
+    /// <summary>Whether the active capture can redact at all (a GPU VideoProcessor pass) — lets the floating
+    /// toolbar decide whether to enable its live redaction toggle rather than offer a no-op.</summary>
+    public bool CaptureSupportsRedaction
+    {
+        get { lock (_captureAccessLock) { return _capture?.SupportsRedaction ?? false; } }
+    }
+
+    /// <summary>Arms (or clears, when null) live redaction on the active recording — the toolbar's mid-recording
+    /// toggle. <paramref name="sourceRect"/> is in the capture's own pixel space; the caller maps it. Returns
+    /// whether redaction is active afterward, so enabling that couldn't actually be applied (no GPU pass, or
+    /// the rect doesn't overlap the captured area) is reported back for the caller to revert instead of
+    /// leaving the user believing an area is hidden.</summary>
+    public bool SetRedaction(RegionRect? sourceRect)
+    {
+        lock (_captureAccessLock)
+        {
+            ICaptureEngine? capture = _capture;
+            if (capture is null)
+            {
+                return false;
+            }
+
+            capture.SetRedaction(sourceRect);
+            _redactionArmed = sourceRect is not null && capture.RedactionActive;
+            return sourceRect is null || _redactionArmed;
+        }
+    }
+
+    /// <summary>Whether redaction is currently armed on the live capture — the coordinator's own record of it,
+    /// so a mid-recording capture swap can restore it (see <see cref="RetargetCapture"/>). Deliberately NOT
+    /// derived from the settings flag: the toolbar can clear redaction mid-recording without touching the
+    /// stored preference, and a retarget must not silently re-arm what the user just turned off.</summary>
+    private volatile bool _redactionArmed;
+
+    /// <summary>Stamps a chapter at the current moment (plan §7): the floating toolbar and the global hotkey
+    /// both land here. Returns false when nothing is recording. Titles are numbered; the file gets real
+    /// chapters, so any player can jump between them.</summary>
+    public bool AddChapter()
+    {
+        if (!IsRecording)
+        {
+            return false;
+        }
+
+        double local = (_stateMachine.Elapsed - _currentSegmentStartedAt).TotalSeconds;
+        if (local < 0)
+        {
+            local = 0;
+        }
+
+        int number;
+        lock (_chapterLock)
+        {
+            number = _segmentChapters.Count + 1;
+            _segmentChapters.Add((local, $"Chapter {number}"));
+        }
+
+        Log.Information("Chapter {Number} marked at {Seconds:0.###}s (segment-local)", number, local);
+        return true;
+    }
+
+    private int ChapterCount { get { lock (_chapterLock) { return _segmentChapters.Count; } } }
+
+    private List<string>? ChapterTitles()
+    {
+        lock (_chapterLock)
+        {
+            return _segmentChapters.Count > 0 ? _segmentChapters.ConvertAll(c => c.Title) : null;
+        }
+    }
+
+    private void ClearChapters()
+    {
+        lock (_chapterLock)
+        {
+            _segmentChapters.Clear();
+        }
+    }
+
+    /// <summary>Turns the segment's stamped markers into a chapter table. The last chapter has no successor to
+    /// bound it, so it runs to the end of the file; <paramref name="segmentDurationSeconds"/> is the segment's
+    /// own duration (frames ÷ fps), known once it has been finalized.</summary>
+    private IReadOnlyList<ChapterMark> BuildSegmentChapters(double segmentDurationSeconds)
+    {
+        (double StartSeconds, string Title)[] stamped;
+        lock (_chapterLock)
+        {
+            stamped = [.. _segmentChapters]; // snapshot: everything below walks it without holding the lock
+        }
+
+        if (stamped.Length == 0)
+        {
+            return [];
+        }
+
+        var marks = new List<ChapterMark>(stamped.Length);
+        for (int i = 0; i < stamped.Length; i++)
+        {
+            double start = stamped[i].StartSeconds;
+            double end = i + 1 < stamped.Length
+                ? stamped[i + 1].StartSeconds
+                : Math.Max(start + 0.001, segmentDurationSeconds);
+            if (end <= start)
+            {
+                end = start + 0.001; // a zero-length chapter is rejected/ignored by players
+            }
+
+            marks.Add(new ChapterMark(start, end, stamped[i].Title));
+        }
+
+        return marks;
+    }
+
+    /// <summary>Writes chapters into a finished, non-safe-remux recording (e.g. a direct MKV) by stream-copying
+    /// it once. Failure is logged, not surfaced: chapters are navigation sugar, and the recording itself is
+    /// already complete and valid — unlike the safe-recording remux, where failing means the user's chosen
+    /// container couldn't be produced.</summary>
+    private void ApplyChaptersToFile(string path, double durationSeconds)
+    {
+        if (_ffmpegPath is null || ChapterCount == 0 || path.Length == 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<ChapterMark> marks = BuildSegmentChapters(durationSeconds);
+        if (!Remuxer.ApplyChapters(_ffmpegPath, path, marks))
+        {
+            Log.Warning("Couldn't write {Count} chapter(s) into {Path}; the recording itself is unaffected",
+                marks.Count, path);
+        }
     }
 
     /// <summary>True if the active capture is actually on the GPU VideoProcessor pipeline, so a zoom target
@@ -1146,7 +1506,7 @@ public sealed class RecordingCoordinator : IDisposable
     /// with PTS covering the whole rotation gap, all written back-to-back the instant the pacer resumes; the
     /// audio pump must anchor its own PTS=0 to that same pre-gap instant, or real audio ends up shifted ahead
     /// of the video content it was recorded alongside by the length of the gap.</para></summary>
-    private void StartAudioPumpThread(NamedPipeServerStream audioPipe, TimeSpan segmentStartedAt)
+    private void StartAudioPumpThread(NamedPipeServerStream audioPipe, TimeSpan segmentStartedAt, bool separateTracks)
     {
         // Disposes the previous rotation's CancellationTokenSource. By the time this runs — either from
         // Start() the first time (where _audioStop is still null, so this is a no-op) or from RotateSegment
@@ -1174,7 +1534,7 @@ public sealed class RecordingCoordinator : IDisposable
                 {
                     TimeSpan elapsed = _stateMachine.Elapsed - segmentStartedAt;
                     return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
-                }, stopSource.Token, syncOffsetMs);
+                }, stopSource.Token, syncOffsetMs, separateTracks);
             }
             catch (OperationCanceledException) when (stopSource.IsCancellationRequested) { }
             catch (Exception ex)
@@ -1619,6 +1979,8 @@ public sealed class RecordingCoordinator : IDisposable
             capture.Faulted -= OnCaptureFaulted;
         }
         capture?.Dispose();
+        _cursorSource?.Dispose();
+        _cursorSource = null;
         _mixer?.Dispose();
         _audioStop?.Dispose();
         _session = null;
@@ -1630,10 +1992,12 @@ public sealed class RecordingCoordinator : IDisposable
         _pendingRetarget = null;
 
         // Safe recording: remux the crash-safe MKV to MP4 without re-encoding. Skipped when usedStashedResult
-        // — RotateSegment already remuxed (and library-indexed) this exact file before stashing it.
+        // — RotateSegment already remuxed (and library-indexed) this exact file before stashing it. Any
+        // chapters stamped during this segment ride along with this same remux (see Remuxer's chapter input).
+        double finalDuration = _metaFps > 0 ? (double)result.FramesWritten / _metaFps : 0;
         if (!usedStashedResult && result.Success && _safeRemux)
         {
-            if (Remux(_recordingPath, _finalPath))
+            if (Remux(_recordingPath, _finalPath, BuildSegmentChapters(finalDuration)))
             {
                 TryDelete(_recordingPath);
                 result = result with { OutputPath = _finalPath };
@@ -1646,6 +2010,11 @@ public sealed class RecordingCoordinator : IDisposable
                 result = result with { OutputPath = _recordingPath };
             }
         }
+        else if (!usedStashedResult && result.Success && ChapterCount > 0)
+        {
+            // No remux happens for a direct MKV recording, so chapters need their own (stream-copy) pass.
+            ApplyChaptersToFile(result.OutputPath, finalDuration);
+        }
 
         if (!usedStashedResult && result.Success && result.OutputPath.Length > 0)
         {
@@ -1654,8 +2023,11 @@ public sealed class RecordingCoordinator : IDisposable
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
                 Path.GetFileName(result.OutputPath), directory, _metaSource, _metaCodec, _metaContainer,
                 _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
-                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
+                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled,
+                ChapterTitles()));
         }
+
+        ClearChapters(); // next recording starts with a clean chapter list
 
         Log.Information("Recording finalized: success={Success} frames={Frames} -> {Path}",
             result.Success, result.FramesWritten, result.OutputPath);
@@ -1761,9 +2133,10 @@ public sealed class RecordingCoordinator : IDisposable
             return;
         }
 
+        double segmentDuration = _targetFps > 0 ? (double)segResult.FramesWritten / _targetFps : 0;
         if (segResult.Success && _safeRemux)
         {
-            if (Remux(prevRecordingPath, prevFinalPath))
+            if (Remux(prevRecordingPath, prevFinalPath, BuildSegmentChapters(segmentDuration)))
             {
                 TryDelete(prevRecordingPath);
             }
@@ -1772,20 +2145,30 @@ public sealed class RecordingCoordinator : IDisposable
                 prevFinalPath = prevRecordingPath;
             }
         }
+        else if (segResult.Success)
+        {
+            // Direct (non-safe) container — no remux otherwise, so chapters get their own stream-copy pass.
+            ApplyChaptersToFile(prevFinalPath, segmentDuration);
+        }
 
         if (segResult.Success && prevFinalPath.Length > 0)
         {
-            double duration = _targetFps > 0 ? (double)segResult.FramesWritten / _targetFps : 0;
+            double duration = segmentDuration;
             string directory = Path.GetDirectoryName(prevFinalPath) ?? string.Empty;
             _libraryIndex.Add(new RecMode.Core.Library.LibraryIndexEntry(
                 Path.GetFileName(prevFinalPath), directory, _metaSource, _metaCodec, _metaContainer,
                 _metaWidth, _metaHeight, _metaFps, duration, DateTimeOffset.Now,
-                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled));
+                _metaQuality, _metaSystemAudioEnabled, _metaMicEnabled,
+                ChapterTitles()));
 
             // Stash in case a concurrent Stop() bails this method out at the _stopRequested check right
             // below — see the field's own doc comment.
             _lastRotatedSegmentResult = segResult with { OutputPath = prevFinalPath };
         }
+
+        // This segment's chapters have been written (or its finalize failed, in which case the whole recording
+        // is stopping). Either way the next segment starts with a clean chapter list.
+        ClearChapters();
 
         // Stop() (UI thread/tray/hotkey) can set this concurrently while the finalize/remux/library-write
         // above was in flight — that block reaches real wall-clock time (finalize alone waits up to 20s), and
@@ -1853,7 +2236,7 @@ public sealed class RecordingCoordinator : IDisposable
 
         if (_mixer is not null && _session.AudioPipe is { } audioPipe)
         {
-            StartAudioPumpThread(audioPipe, segmentStartedAt);
+            StartAudioPumpThread(audioPipe, segmentStartedAt, _jobTemplate!.SeparateAudioTracks);
         }
 
         Log.Information("Segment rotation: started segment {Index} (encoder={Enc}) -> {Path}",
@@ -1956,8 +2339,11 @@ public sealed class RecordingCoordinator : IDisposable
         return null;
     }
 
-    private bool Remux(string mkvPath, string mp4Path) =>
-        _ffmpegPath is not null && RecMode.Encoding.Ffmpeg.Remuxer.RemuxToMp4(_ffmpegPath, mkvPath, mp4Path, _activeEncoder?.Codec);
+    /// <summary>Safe-recording remux, carrying any stamped chapters with it (free — the remux runs anyway).</summary>
+    private bool Remux(string mkvPath, string mp4Path, IReadOnlyList<ChapterMark> chapters) =>
+        _ffmpegPath is not null &&
+        RecMode.Encoding.Ffmpeg.Remuxer.RemuxToMp4(_ffmpegPath, mkvPath, mp4Path, _activeEncoder?.Codec,
+            chapters: chapters);
 
     private static void TryDelete(string path)
     {

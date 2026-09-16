@@ -19,10 +19,24 @@ public sealed record FfmpegJob
     public required string PipeName { get; init; }
     public required string OutputPath { get; init; }
 
-    /// <summary>Set to add a second (audio) input: f32le 48 kHz stereo over this named pipe.</summary>
+    /// <summary>Set to add a second (audio) input: f32le 48 kHz stereo over this named pipe. When
+    /// <see cref="SeparateAudioTracks"/> is set the pipe carries 6 interleaved channels instead (see that
+    /// property).</summary>
     public string? AudioPipeName { get; init; }
     public AudioCodec AudioCodec { get; init; } = AudioCodec.Aac;
     public int AudioBitrateKbps { get; init; } = 192;
+
+    /// <summary>Mux the mixed audio track (always present) plus distinct mic/system tracks from the 6-channel
+    /// audio pipe (mixed, mic, system — see <c>AudioMixer.PumpUntil</c>). MKV/MOV only; MP4/WebM recordings
+    /// must leave this false. Which per-source tracks actually get muxed is controlled by
+    /// <see cref="SeparateMicTrack"/>/<see cref="SeparateSystemTrack"/>.</summary>
+    public bool SeparateAudioTracks { get; init; }
+
+    /// <summary>Add a distinct microphone track when <see cref="SeparateAudioTracks"/> is set.</summary>
+    public bool SeparateMicTrack { get; init; }
+
+    /// <summary>Add a distinct system-audio track when <see cref="SeparateAudioTracks"/> is set.</summary>
+    public bool SeparateSystemTrack { get; init; }
 
     /// <summary>Software-encoder thread cap (§3.3). 0 = ffmpeg default (all cores). Ignored by hardware encoders.</summary>
     public int CpuThreadCap { get; init; }
@@ -77,8 +91,38 @@ public static class FfmpegArgsBuilder
         string audioIn = "", audioMap = "", audioEnc = "";
         if (job.AudioPipeName is not null)
         {
-            audioIn = $"-f f32le -ar 48000 -ac 2 -i \\\\.\\pipe\\{job.AudioPipeName}";
-            audioMap = "-map 0:v:0 -map 1:a:0";
+            if (job.SeparateAudioTracks)
+            {
+                // The pipe carries three stereo pairs (mixed, mic, system). ffmpeg assigns the 6-channel raw
+                // stream a 5.1 layout, so a pan per output extracts each pair into its own stereo stream — the
+                // mixed pair is the normal track the video always carries; the other two are the direct
+                // per-source tracks for rebalancing later. Only the tracks whose source is active are muxed.
+                audioIn = $"-f f32le -ar 48000 -ac {MediaCompatibility.SeparateAudioChannelCount} -i \\\\.\\pipe\\{job.AudioPipeName}";
+                var filters = new List<string> { "[1:a]pan=stereo|c0=c0|c1=c1[mix]" };
+                var maps = new List<string> { "-map 0:v:0 -map \"[mix]\"" };
+                // Titles, not decoration: the transcript feature picks the "Microphone" stream to caption
+                // (the mix carries system audio too, which measurably worsens recognition), and a titled
+                // track also tells the user what each one is in any player.
+                var titles = new List<string> { "-metadata:s:a:0 title=Mixed" };
+                if (job.SeparateMicTrack)
+                {
+                    filters.Add("[1:a]pan=stereo|c0=c2|c1=c3[mic]");
+                    maps.Add("-map \"[mic]\"");
+                    titles.Add($"-metadata:s:a:{titles.Count} title=Microphone");
+                }
+                if (job.SeparateSystemTrack)
+                {
+                    filters.Add("[1:a]pan=stereo|c0=c4|c1=c5[sys]");
+                    maps.Add("-map \"[sys]\"");
+                    titles.Add($"-metadata:s:a:{titles.Count} title=System");
+                }
+                audioMap = $"-filter_complex \"{string.Join(';', filters)}\" {string.Join(' ', maps)} {string.Join(' ', titles)}";
+            }
+            else
+            {
+                audioIn = $"-f f32le -ar 48000 -ac 2 -i \\\\.\\pipe\\{job.AudioPipeName}";
+                audioMap = "-map 0:v:0 -map 1:a:0";
+            }
             // Steer by the FINAL container (what the file will actually be), never by the temp safe-recording
             // MKV — see FfmpegJob.FinalContainer. Null FinalContainer = Container is already the final one.
             audioEnc = BuildAudioArgs(job.FinalContainer ?? job.Container, job.AudioCodec, job.AudioBitrateKbps);
@@ -147,6 +191,19 @@ public static class FfmpegArgsBuilder
         if (job.AudioPipeName is not null)
         {
             ValidatePipeName(job.AudioPipeName, nameof(job.AudioPipeName));
+        }
+        if (job.SeparateAudioTracks)
+        {
+            if (job.AudioPipeName is null)
+            {
+                throw new ArgumentException("SeparateAudioTracks requires an audio pipe.", nameof(job));
+            }
+            MediaContainer final = job.FinalContainer ?? job.Container;
+            if (!MediaCompatibility.SupportsSeparateAudioTracks(final))
+            {
+                throw new ArgumentException(
+                    $"Separate audio tracks aren't supported in {final}; use MKV or MOV.", nameof(job));
+            }
         }
     }
 

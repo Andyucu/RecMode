@@ -14,6 +14,12 @@ public sealed class AudioMixer : IAudioMixer
 {
     public const int Rate = 48000;
     public const int Chans = 2;
+
+    /// <summary>Interleaved channel count of the audio pipe when separate per-source tracks are requested
+    /// (<see cref="PumpUntil"/>'s <c>separateTracks</c>): three stereo pairs in the order mixed, mic, system.
+    /// ffmpeg's <c>pan</c> filter splits them back into one stereo stream per track — see
+    /// <c>FfmpegArgsBuilder</c>. Layout is 5.1 (FL/FR = mixed, FC/LFE = mic, BL/BR = system).</summary>
+    public const int SeparateTrackChannels = RecMode.Core.Settings.MediaCompatibility.SeparateAudioChannelCount;
     private const int ChunkFloats = 4096; // interleaved stereo floats — shared by PumpUntil's buffers and Mix's scratch buffer
 
     // "System audio" can be more than one physical device (plan: multi-device loopback) — every entry gets
@@ -36,6 +42,16 @@ public sealed class AudioMixer : IAudioMixer
     private volatile MixSource[] _systemSources = [];
     private readonly float[] _systemScratch = new float[ChunkFloats];
     private volatile MixSource? _mic;
+    private readonly MicNoiseSuppressor _micSuppressor = new();
+    private volatile int _micNoiseSuppressionStrength;
+
+    /// <summary>Requests that the suppressor forget its learned noise floor. A flag rather than a direct
+    /// <see cref="MicNoiseSuppressor.Reset"/> call because the suppressor documents itself as single-threaded
+    /// — its filter and envelope state belongs to the audio pump thread — while every caller that wants a
+    /// reset (the strength setter, <see cref="Start"/>, a live mic toggle) runs on the UI thread. Resetting
+    /// from there tore that state out from under an in-flight <c>Process</c> call. <see cref="Mix"/> consumes
+    /// this on the pump thread instead, so the reset happens on the thread that owns the state.</summary>
+    private volatile bool _micSuppressorResetRequested;
     private bool _meteringOnly;
 
     /// <summary>Serializes writers only (Start/Stop/SetMicEnabled). Readers are lock-free — see _systemSources.
@@ -73,6 +89,30 @@ public sealed class AudioMixer : IAudioMixer
 
     public float MicGain { get => _mic?.Gain ?? 1f; set { if (_mic is { } m) m.Gain = value; } }
     public bool MicMuted { get => _mic?.Muted ?? true; set { if (_mic is { } m) m.Muted = value; } }
+
+    /// <summary>Microphone noise-suppression strength, 0 (off) to 100 — see <see cref="MicNoiseSuppressor"/>.
+    /// Affects the MIXED track only; the separate per-source mic track stays raw by design. Setting this
+    /// resets the suppressor's learned noise floor when it is switched off, so a later re-enable starts
+    /// listening fresh instead of resuming a stale estimate.</summary>
+    public int MicNoiseSuppressionStrength
+    {
+        get => _micNoiseSuppressionStrength;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, 100);
+            if (clamped == _micNoiseSuppressionStrength)
+            {
+                return;
+            }
+
+            if (clamped == 0)
+            {
+                _micSuppressorResetRequested = true;
+            }
+
+            _micNoiseSuppressionStrength = clamped;
+        }
+    }
 
     /// <summary>
     /// Combined level across every system source. Sums rather than taking the max, because <see cref="Mix"/>
@@ -163,6 +203,7 @@ public sealed class AudioMixer : IAudioMixer
                 micSource = new MixSource(capture, meteringOnly);
                 micSource.Start();
                 _mic = micSource;
+                _micSuppressorResetRequested = true; // a fresh source must relearn its own noise floor
             }
             catch (Exception ex)
             {
@@ -409,6 +450,7 @@ public sealed class AudioMixer : IAudioMixer
                     if (!mixerStopped)
                     {
                         _mic = micSource;
+                        _micSuppressorResetRequested = true; // a freshly enabled mic must relearn, not resume a stale floor
                         micSource = null; // ownership transferred — must not be disposed below
                         capture = null;
                     }
@@ -447,19 +489,26 @@ public sealed class AudioMixer : IAudioMixer
         _mic?.ClearBuffer();
     }
 
-    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0)
+    public long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0,
+        bool separateTracks = false)
     {
+        // 2 channels normally; 6 (three stereo pairs: mixed, mic, system) when separate per-source tracks are
+        // requested. Pacing/accounting below stays in stereo-sample units regardless — only the number of
+        // interleaved channels written per sample, and the byte count, change.
+        int planes = separateTracks ? SeparateTrackChannels / Chans : 1;
+
         float[] sysBuf = new float[ChunkFloats];
         float[] micBuf = new float[ChunkFloats];
+        float[] micTrackBuf = new float[ChunkFloats];
         float[] mixBuf = new float[ChunkFloats];
-        byte[] outBytes = new byte[ChunkFloats * 4];
+        byte[] outBytes = new byte[ChunkFloats * 4 * planes];
 
         long floatsWritten = 0;
 
         // A/V sync offset, applied as real samples at the front of the stream (see IAudioMixer.PumpUntil).
         // Positive: prepend silence, pushing every real sample that much later relative to video. Negative:
         // discard that much leading audio, pulling the rest earlier. Computed once, up front — applying a
-        // shift mid-stream would be an audible discontinuity, not a sync correction.
+        // shift mid-stream would be an audible discontinuity, not a sync correction. Applied to all planes.
         (long silenceRemaining, long discardRemaining) = AudioSyncOffset.ComputePlan(offsetMs, Rate, Chans);
         long silencePrepended = silenceRemaining;
 
@@ -471,7 +520,7 @@ public sealed class AudioMixer : IAudioMixer
                 int n = (int)Math.Min(silenceRemaining, ChunkFloats);
                 // .AsTask() is required, not incidental — see FfmpegRecordingSession.WriteFrame: a bare
                 // ValueTask.GetAwaiter().GetResult() throws as soon as the write goes async.
-                pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
+                pipe.WriteAsync(outBytes.AsMemory(0, n * 4 * planes), token).AsTask().GetAwaiter().GetResult();
                 silenceRemaining -= n;
                 floatsWritten += n;
             }
@@ -489,7 +538,7 @@ public sealed class AudioMixer : IAudioMixer
             while (floatsWritten < targetFloats)
             {
                 int n = (int)Math.Min(targetFloats - floatsWritten, ChunkFloats);
-                Mix(sysBuf, micBuf, mixBuf, n);
+                Mix(sysBuf, micBuf, micTrackBuf, mixBuf, n);
 
                 long dropped = 0;
                 if (discardRemaining > 0)
@@ -506,27 +555,56 @@ public sealed class AudioMixer : IAudioMixer
                     n -= (int)dropped;
                 }
 
-                // Copy from mixBuf[dropped..], not mixBuf[0..]: Mix() above always fills mixBuf starting at
-                // index 0 for the full original chunk length, so once a partial discard trims the leading
-                // `dropped` samples off, the samples actually being KEPT start at that offset, not at 0.
-                // Copying from 0 wrote the very samples meant to be dropped and silently lost the tail of the
-                // chunk instead — a splice discontinuity (an audible click) a fraction of a second into every
-                // recording made with a negative AudioSyncOffsetMs, on exactly the one chunk where the discard
-                // ends partway through.
-                Buffer.BlockCopy(mixBuf, (int)dropped * 4, outBytes, 0, n * 4);
+                if (separateTracks)
+                {
+                    InterleaveSeparateTracks(mixBuf, micTrackBuf, sysBuf, (int)dropped, n, outBytes);
+                }
+                else
+                {
+                    // Copy from mixBuf[dropped..], not mixBuf[0..]: Mix() above always fills mixBuf starting at
+                    // index 0 for the full original chunk length, so once a partial discard trims the leading
+                    // `dropped` samples off, the samples actually being KEPT start at that offset, not at 0.
+                    // Copying from 0 wrote the very samples meant to be dropped and silently lost the tail of the
+                    // chunk instead — a splice discontinuity (an audible click) a fraction of a second into every
+                    // recording made with a negative AudioSyncOffsetMs, on exactly the one chunk where the discard
+                    // ends partway through.
+                    Buffer.BlockCopy(mixBuf, (int)dropped * 4, outBytes, 0, n * 4);
+                }
+
                 // .AsTask() is required, not incidental — see FfmpegRecordingSession.WriteFrame: a bare
                 // ValueTask.GetAwaiter().GetResult() throws as soon as the write goes async.
-                pipe.WriteAsync(outBytes.AsMemory(0, n * 4), token).AsTask().GetAwaiter().GetResult();
+                pipe.WriteAsync(outBytes.AsMemory(0, n * 4 * planes), token).AsTask().GetAwaiter().GetResult();
                 floatsWritten += n;
             }
 
             Thread.Sleep(5);
         }
 
-        return floatsWritten * 4;
+        return floatsWritten * 4 * planes;
     }
 
-    private void Mix(float[] sysBuf, float[] micBuf, float[] mixBuf, int n)
+    /// <summary>Interleaves the three stereo buffers into the 6-channel <paramref name="dest"/> (mixed, mic,
+    /// system), starting at stereo-sample <paramref name="offset"/> and writing <paramref name="count"/>
+    /// stereo samples. <paramref name="micTrackBuf"/> is the post-gain/post-mute mic contribution (see
+    /// <see cref="Mix"/>); the mixed and system buffers are already in that form.</summary>
+    internal static void InterleaveSeparateTracks(float[] mixBuf, float[] micTrackBuf, float[] sysBuf, int offset, int count, byte[] dest)    {
+        int frames = count / 2;
+        Span<float> outFloats = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(
+            dest.AsSpan(0, frames * SeparateTrackChannels * 4));
+        for (int f = 0; f < frames; f++)
+        {
+            int s = offset + f * 2;
+            int d = f * SeparateTrackChannels;
+            outFloats[d] = mixBuf[s];
+            outFloats[d + 1] = mixBuf[s + 1];
+            outFloats[d + 2] = micTrackBuf[s];
+            outFloats[d + 3] = micTrackBuf[s + 1];
+            outFloats[d + 4] = sysBuf[s];
+            outFloats[d + 5] = sysBuf[s + 1];
+        }
+    }
+
+    private void Mix(float[] sysBuf, float[] micBuf, float[] micTrackBuf, float[] mixBuf, int n)
     {
         Array.Clear(sysBuf, 0, n);
         Array.Clear(micBuf, 0, n);
@@ -560,6 +638,35 @@ public sealed class AudioMixer : IAudioMixer
         int micRead = mic?.ReadMixed(micBuf, n) ?? 0;
         bool micOn = mic is { Muted: false };
         float micGain = mic?.Gain ?? 0f;
+
+        // The direct mic track is post-gain but deliberately PRE-cleanup: the noise suppressor must never be
+        // the only copy of what the microphone actually heard (plan §7 — "keep the raw mic on its own separate
+        // track so the cleanup is never destructive"). Built before the suppressor rewrites the buffer below.
+        for (int i = 0; i < micRead; i++)
+        {
+            micTrackBuf[i] = micBuf[i] * micGain;
+        }
+
+        if (micRead < n)
+        {
+            // The scratch buffer is reused across chunks; a short read must leave silence after it, not the
+            // previous chunk's tail (same class of bug the Mix scratch buffer's bounded accumulate fixed).
+            Array.Clear(micTrackBuf, micRead, n - micRead);
+        }
+
+        // Consumed here, on the pump thread, rather than applied by whichever UI thread asked for it —
+        // see _micSuppressorResetRequested.
+        if (_micSuppressorResetRequested)
+        {
+            _micSuppressorResetRequested = false;
+            _micSuppressor.Reset();
+        }
+
+        int suppression = _micNoiseSuppressionStrength;
+        if (suppression > 0 && micRead > 0)
+        {
+            _micSuppressor.Process(micBuf, micRead, suppression);
+        }
 
         for (int i = 0; i < n; i++)
         {

@@ -31,5 +31,10 @@ public interface IPreviewEngine : IDisposable
     /// <summary>Sets the captured-video brightness adjustment, -100..100, 0 = unchanged; call before or after <see cref="Start"/>.</summary>
     void SetBrightness(double value);
 
+    /// <summary>Marks a source-pixel rect to blank out in the preview (live redaction, plan §7 privacy);
+    /// null clears it. Preview-only visuals — the recording gate that actually enforces redaction lives in
+    /// <c>RecordingCoordinator</c>, which refuses to record when it can't be applied.</summary>
+    void SetRedaction(RegionRect? sourceRect);
+
     void Stop();
 }

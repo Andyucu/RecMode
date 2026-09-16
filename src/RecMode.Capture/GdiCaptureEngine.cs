@@ -186,6 +186,12 @@ internal sealed class GdiCaptureEngine : ICaptureEngine
     public bool TryGetLatestFrame(byte[] dest) { lock (_sync) { if (!_hasLatest) return false; Buffer.BlockCopy(_latest, 0, dest, 0, _latest.Length); return true; } }
     public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect) { }
     public void SetBrightness(double value) { }
+    public void SetRedaction(RegionRect? sourceRect) { } // no VideoProcessor pass — fail closed at the coordinator, never here
+    // The GDI fallback can never blank a marked area (no GPU pass). Always false so RecordingCoordinator's
+    // redaction gate refuses to record rather than silently producing an unredacted file.
+    public bool RedactionActive => false;
+    public void SetCursorOverlay(ICursorFrameSource? source, double scale) { } // no GPU pass — the caller keeps the OS cursor instead
+    public bool SupportsRedaction => false;
     public void SetZoomTarget(RegionRect? rect) { } // no VideoProcessor pass to crop in the GDI fallback path
     public void SetBaseRect(RegionRect rect) { }
     public void Stop() { IsRunning = false; _stopping = true; _thread?.Join(2000); _thread = null; }

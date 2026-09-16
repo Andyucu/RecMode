@@ -20,6 +20,7 @@
     <Window.Resources>
         <DataTemplate DataType="{x:Type vm:RecordViewModel}"><views:RecordView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:LibraryViewModel}"><views:LibraryView /></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TranscriptsViewModel}"><views:TranscriptsView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScheduleViewModel}"><views:ScheduleView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView /></DataTemplate>
         <DataTemplate DataType="{x:Type vm:AboutViewModel}"><views:AboutView /></DataTemplate>
@@ -187,6 +188,9 @@
                         <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
                                      Command="{Binding NavigateCommand}" CommandParameter="Library"
                                      IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                        <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Transcripts}" Tag="&#xE8BD;"
+                                     Command="{Binding NavigateCommand}" CommandParameter="Transcripts"
+                                     IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Transcripts, Mode=OneWay}" />
                         <RadioButton Style="{StaticResource NavButton}" GroupName="navSide" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
                                      Command="{Binding NavigateCommand}" CommandParameter="Schedule"
                                      IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />
@@ -221,6 +225,9 @@
                             <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Library}" Tag="&#xE8A9;"
                                          Command="{Binding NavigateCommand}" CommandParameter="Library"
                                          IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Library, Mode=OneWay}" />
+                            <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Transcripts}" Tag="&#xE8BD;"
+                                         Command="{Binding NavigateCommand}" CommandParameter="Transcripts"
+                                         IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Transcripts, Mode=OneWay}" />
                             <RadioButton Style="{StaticResource TopNavButton}" GroupName="navTop" Content="{x:Static res:Strings.Nav_Schedule}" Tag="&#xE787;"
                                          Command="{Binding NavigateCommand}" CommandParameter="Schedule"
                                          IsChecked="{Binding SelectedNav, Converter={StaticResource EnumToBool}, ConverterParameter=Schedule, Mode=OneWay}" />

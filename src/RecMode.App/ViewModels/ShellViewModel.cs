@@ -34,6 +34,7 @@ public sealed class ShellViewModel : ObservableObject
         ScheduleViewModel schedule,
         SettingsViewModel settings,
         AboutViewModel about,
+        TranscriptsViewModel transcripts,
         ISettingsService settingsService,
         ThemeManager theme,
         IErrorReporter errors)
@@ -43,6 +44,7 @@ public sealed class ShellViewModel : ObservableObject
         Schedule = schedule;
         Settings = settings;
         About = about;
+        Transcripts = transcripts;
         _settings = settingsService;
         _theme = theme;
 
@@ -112,6 +114,7 @@ public sealed class ShellViewModel : ObservableObject
     public ScheduleViewModel Schedule { get; }
     public SettingsViewModel Settings { get; }
     public AboutViewModel About { get; }
+    public TranscriptsViewModel Transcripts { get; }
 
     public ICommand NavigateCommand { get; }
     public ICommand ToggleThemeCommand { get; }
@@ -170,6 +173,7 @@ public sealed class ShellViewModel : ObservableObject
             "Schedule" => Schedule,
             "Settings" => Settings,
             "About" => About,
+            "Transcripts" => Transcripts,
             _ => Record,
         };
 

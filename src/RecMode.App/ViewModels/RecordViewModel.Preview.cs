@@ -114,6 +114,7 @@ public sealed partial class RecordViewModel
             engine.FrameAvailable += OnPreviewFrame;
             _preview = engine;
             _preview.SetBrightness(Brightness);
+            _preview.SetRedaction(CurrentRedactionSourceRect());
             PreviewImage = _previewBitmap;
             OnPropertyChanged(nameof(HasPreview));
             StartWebcamPreview();

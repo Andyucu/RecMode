@@ -171,6 +171,7 @@ public sealed class WebcamPreviewEngine : IPreviewEngine
 
     public void SetWebcamOverlay(IWebcamFrameSource? source, RegionRect? rect) { } // nonsensical when the webcam already IS the source
     public void SetBrightness(double value) { } // no GPU pass to apply it — see WebcamCaptureEngine's doc comment
+    public void SetRedaction(RegionRect? sourceRect) { } // preview-only visual; the recording gate blocks this path
 
     public void Stop()
     {

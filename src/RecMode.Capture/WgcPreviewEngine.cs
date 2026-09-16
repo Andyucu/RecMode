@@ -48,6 +48,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     private readonly FrameRateLimiter _rateLimiter = new(System.Diagnostics.Stopwatch.Frequency);
     private IWebcamFrameSource? _webcamSource;
     private RegionRect? _webcamRect;
+    private RegionRect? _redactionRect;
     private double _brightness;
 
     public bool IsRunning { get; private set; }
@@ -94,6 +95,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
             // switch, nav-to-Record, minimize/restore and the 400 ms resize debounce.
             scaler = new BgraScaler(_device, _context, srcW, srcH, dstW, dstH, target.Region);
             scaler.SetWebcamOverlay(_webcamSource, _webcamRect); scaler.SetBrightness(_brightness);
+            scaler.SetRedaction(_redactionRect);
             byte[] latest = new byte[scaler.ByteSize]; byte[] scratch = new byte[scaler.ByteSize];
 
             lock (_disposeGuard)
@@ -173,6 +175,7 @@ public sealed class WgcPreviewEngine : IPreviewEngine
         _scaler = new BgraScaler(_device, _context, _ddaSource.VirtualWidth, _ddaSource.VirtualHeight, dstW, dstH);
         _scaler.SetWebcamOverlay(_webcamSource, _webcamRect);
         _scaler.SetBrightness(_brightness);
+        _scaler.SetRedaction(_redactionRect);
         Width = dstW;
         Height = dstH;
         Stride = _scaler.Stride;
@@ -257,6 +260,12 @@ public sealed class WgcPreviewEngine : IPreviewEngine
     {
         _brightness = value;
         _scaler?.SetBrightness(value);
+    }
+
+    public void SetRedaction(RegionRect? sourceRect)
+    {
+        _redactionRect = sourceRect;
+        _scaler?.SetRedaction(sourceRect);
     }
 
     public void Stop()

@@ -92,9 +92,44 @@ public sealed class RecModeSettings
     public AudioCodec AudioCodec { get; set; } = AudioCodec.Aac;
     public int AudioBitrateKbps { get; set; } = 192;
 
+    /// <summary>
+    /// Write the microphone and system audio as their own distinct tracks alongside the normal mixed track,
+    /// so levels can be rebalanced in an editor instead of being baked into one stream (OBS-style; plan §7
+    /// "audio pro"). <b>On by default (direct user request, 2026-09-16)</b> — the per-source tracks are the
+    /// thing you cannot recreate after the fact, and the cost is a little file size, so they are recorded
+    /// unless the user opts out. The mixed track is always present; this only ADDS the per-source tracks.
+    /// Honored for MKV/MOV only (<see cref="MediaCompatibility.SupportsSeparateAudioTracks"/>); MP4/WebM
+    /// recordings ignore it, and the Record screen's toggle disables itself for those.
+    /// </summary>
+    public bool SeparateAudioTracks { get; set; } = true;
+
     /// <summary>Per-source capture volume, 0–100 (→ mixer gain). 100 = unity.</summary>
     public int SystemVolume { get; set; } = 100;
     public int MicVolume { get; set; } = 100;
+
+    /// <summary>
+    /// Microphone noise suppression (plan §7): a zero-latency high-pass + adaptive downward expander applied
+    /// to the mic as it enters the MIXED track, so steady background (fan, hiss, rumble) drops out between
+    /// speech. Off by default. The separate per-source mic track stays raw and untouched, so the cleanup is
+    /// never destructive — you can always remix from the unprocessed mic.
+    /// </summary>
+    public bool MicNoiseSuppression { get; set; }
+
+    /// <summary>Strength 0–100 for <see cref="MicNoiseSuppression"/>; ≤0 is off (the mixer skips the DSP
+    /// entirely). 100 gates to about −30 dB.</summary>
+    public int MicNoiseSuppressionStrength { get; set; } = 50;
+
+    /// <summary>Which local speech-to-text model the Transcripts page uses (plan §7). The model file itself
+    /// is an opt-in download, never bundled — see the model store's doc comment.</summary>
+    public TranscriptModelSize TranscriptModel { get; set; } = TranscriptModelSize.Base;
+
+    /// <summary>Smooth cursor (plan §7): capture with the OS cursor off and composite our own eased, scaled
+    /// cursor instead. GPU capture path only — on the fallback the OS cursor is left alone, because hiding it
+    /// with nothing to replace it would remove the pointer from the recording. Off by default.</summary>
+    public bool SmoothCursorEnabled { get; set; }
+
+    /// <summary>Size multiplier for the composited cursor; 1.0 = the cursor's real size.</summary>
+    public double CursorScale { get; set; } = 1.0;
 
     /// <summary>
     /// A/V sync offset in milliseconds, applied to the recorded audio track. Positive delays audio (use when
@@ -110,6 +145,19 @@ public sealed class RecModeSettings
     /// </para>
     /// </summary>
     public int AudioSyncOffsetMs { get; set; }
+
+    /// <summary>
+    /// Live redaction (plan §7 privacy): blank out a marked rectangle in the recorded video so it never
+    /// reaches the encoder. Off by default — it can't do anything until an area has been marked.
+    /// <see cref="RedactAreaX"/> etc. are in absolute virtual-desktop physical pixels (the same space as
+    /// <see cref="RegionX"/>), mapped onto whichever source is captured at start. GPU capture path only: if
+    /// it can't be applied the recording is refused rather than recorded unredacted.
+    /// </summary>
+    public bool RedactAreaEnabled { get; set; }
+    public int RedactAreaX { get; set; }
+    public int RedactAreaY { get; set; }
+    public int RedactAreaWidth { get; set; }
+    public int RedactAreaHeight { get; set; }
 
     /// <summary>
     /// Per-app audio (plan §7): when set, "System audio" captures only this process's audio instead of the
@@ -171,6 +219,10 @@ public sealed class RecModeSettings
     /// on every press of that key system-wide, including normal typing in any other app.</summary>
     public string HotkeyMicMute { get; set; } = "Ctrl+Shift+M";
 
+    /// <summary>Stamps a chapter marker at the current moment while recording (plan §7). Same
+    /// modifier-chord rule as <see cref="HotkeyMicMute"/>. No-op when nothing is recording.</summary>
+    public string HotkeyAddChapter { get; set; } = "Ctrl+Shift+K";
+
     /// <summary>
     /// Window source helper: when true, RecMode re-resolves the selected window by process/title before
     /// preview/record/screenshot so apps that recreate their HWND can still be captured without repicking.
@@ -227,4 +279,13 @@ public sealed class RecModeSettings
     private List<RecordingProfile> _customProfiles = [];
     public List<RecordingProfile> CustomProfiles { get => _customProfiles; set => _customProfiles = value ?? []; }
     public string? SelectedProfileName { get; set; }
+}
+
+/// <summary>Local speech-to-text model sizes (plan §7 transcripts). Bigger is slower but more accurate;
+/// the download sizes shown in the UI come from the model store, not from here.</summary>
+public enum TranscriptModelSize
+{
+    Tiny,
+    Base,
+    Small,
 }

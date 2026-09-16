@@ -231,6 +231,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
                 DisplayName = Path.GetFileNameWithoutExtension(f.Name),
                 Meta = BuildMeta(f, entry),
                 IsImage = !videos,
+                Chapters = entry?.Chapters,
                 // Thumbnail is no longer set here — LibraryItem.Thumbnail lazily decodes on its own first
                 // read, i.e. only once virtualization actually realizes this item's container. See its doc
                 // comment for why eager decoding here defeated the point of a virtualized list.
@@ -303,6 +304,7 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
             if (item.IsImage == false)
             {
                 _index.Remove(Path.GetFileName(item.FilePath));
+                DeleteTranscriptSidecars(item.FilePath);
             }
             Items.Remove(item);
             OnPropertyChanged(nameof(IsEmpty));
@@ -310,6 +312,32 @@ public sealed class LibraryViewModel : ObservableObject, INavigationAware
         catch (Exception ex)
         {
             _errors.Warn("library.delete-failed", "Couldn't delete the file.", null, ex);
+        }
+    }
+
+    /// <summary>Removes the caption sidecars a transcription wrote beside a recording. They carry a different
+    /// extension, so the Library's own scan never lists them — without this they would sit in the recordings
+    /// folder forever after their recording is gone, invisible in the app and puzzling in Explorer. Best
+    /// effort: a sidecar that can't be removed is clutter, never a reason to fail the delete the user asked
+    /// for (the recording itself is already gone by this point).</summary>
+    private static void DeleteTranscriptSidecars(string mediaPath)
+    {
+        foreach (string sidecar in new[]
+                 {
+                     Services.Transcripts.ITranscriptionService.SrtPathFor(mediaPath),
+                     Services.Transcripts.ITranscriptionService.VttPathFor(mediaPath),
+                 })
+        {
+            try
+            {
+                if (File.Exists(sidecar))
+                {
+                    FileSystem.DeleteFile(sidecar, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
+            {
+            }
         }
     }
 

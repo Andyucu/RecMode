@@ -63,6 +63,28 @@ public interface ICaptureEngine : IDisposable
     /// <summary>Sets the captured-video brightness adjustment, -100..100, 0 = unchanged; call before or after <see cref="Start"/>.</summary>
     void SetBrightness(double value);
 
+    /// <summary>Marks a source-pixel rect to blank out in the captured output (live redaction, plan §7
+    /// privacy); null clears it. No-op on capture paths with no GPU VideoProcessor pass — which is exactly
+    /// why <see cref="RedactionActive"/> exists: a privacy feature must never fail open silently.</summary>
+    void SetRedaction(RegionRect? sourceRect);
+
+    /// <summary>True if this running capture will actually blank a marked rect (GPU path, and the rect
+    /// overlaps the captured area). Always false on the GDI software fallback and the webcam-source engine.
+    /// Only meaningful after <see cref="Start"/> and a <see cref="SetRedaction"/> call.</summary>
+    bool RedactionActive { get; }
+
+    /// <summary>Whether this capture path can apply redaction at all (a GPU VideoProcessor pass). Unlike
+    /// <see cref="RedactionActive"/> this is true before any rect is set, so a UI control can decide whether
+    /// to offer a live redaction toggle instead of enabling it into a no-op.</summary>
+    bool SupportsRedaction { get; }
+
+    /// <summary>Enables the composited (smoothed, scaled) cursor, replacing the OS cursor in the recorded
+    /// frames (plan §7); null disables it. Only meaningful on a path with a GPU VideoProcessor pass — the
+    /// caller must keep capturing the OS cursor otherwise, because suppressing it with nothing to replace it
+    /// would remove the pointer from the recording entirely. <see cref="SupportsZoom"/> is the same capability
+    /// question for cropping.</summary>
+    void SetCursorOverlay(ICursorFrameSource? source, double scale);
+
     /// <summary>Smart auto-zoom: animates the GPU crop toward <paramref name="rect"/> (source-local pixels),
     /// or back to the full un-zoomed view when null. No-ops on capture paths that don't run the VideoProcessor
     /// (the GDI software fallback) — fails closed, not an error, same as an unsupported brightness filter.</summary>
@@ -162,6 +184,32 @@ public static class CaptureCapabilities
             }
         }
 
+        bounds = default;
+        return false;
+    }
+
+    /// <summary>Absolute virtual-desktop physical-pixel bounds of the capture <em>texture</em> (its origin),
+    /// which is what source-pixel rects like redaction are relative to — for a Region source that is the
+    /// whole monitor the region is cropped from, NOT the region itself: the texture is the monitor, and the
+    /// crop is a GPU view rect applied within it. (Contrast <see cref="TryGetScreenBounds"/>, which returns
+    /// the recorded area and is what overlay windows should cover.)</summary>
+    public static bool TryGetTextureBounds(CaptureTarget target, out RegionRect bounds)
+    {
+        if (target.Kind == CaptureKind.AllDisplays && target.VirtualDesktopBounds is { } desktop)
+        {
+            bounds = desktop;
+            return desktop.Width > 0 && desktop.Height > 0;
+        }
+        if (target.Kind == CaptureKind.Window && CaptureInterop.TryGetWindowRect(target.Handle, out bounds))
+        {
+            return bounds.Width > 0 && bounds.Height > 0;
+        }
+        MonitorInfo? monitor = EnumerateMonitors().FirstOrDefault(m => m.Handle == target.Handle);
+        if (monitor is not null)
+        {
+            bounds = new RegionRect(monitor.X, monitor.Y, monitor.Width, monitor.Height);
+            return true;
+        }
         bounds = default;
         return false;
     }

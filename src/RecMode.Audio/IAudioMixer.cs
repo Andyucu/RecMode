@@ -20,6 +20,11 @@ public interface IAudioMixer : IDisposable
     float MicGain { get; set; }
     bool MicMuted { get; set; }
 
+    /// <summary>Microphone noise-suppression strength, 0 (off) to 100: a zero-latency high-pass + adaptive
+    /// downward expander applied to the mic as it enters the MIXED track. The separate per-source mic track
+    /// stays raw, so the cleanup is never destructive (plan §7). Live-togglable mid-recording.</summary>
+    int MicNoiseSuppressionStrength { get; set; }
+
     AudioLevel SystemLevel { get; }
     AudioLevel MicLevel { get; }
 
@@ -90,8 +95,16 @@ public interface IAudioMixer : IDisposable
     /// and a container start-offset's survival across that rewrite is undocumented and player-dependent
     /// (MP4 expresses it as an edit list, which some players ignore outright). Real samples always survive.
     /// </para>
+    /// <para>
+    /// <paramref name="separateTracks"/> writes <see cref="AudioMixer.SeparateTrackChannels"/> interleaved
+    /// channels (three stereo pairs: mixed, mic, system) instead of stereo, so ffmpeg can mux the mixed track
+    /// plus distinct mic/system tracks (OBS-style; MKV/MOV only). The mic/system pairs are each source's
+    /// post-gain/post-mute contribution, without the mix's soft-clip; the first pair is byte-identical to the
+    /// single-track output. All processing in this call is unchanged for the 2-channel case.
+    /// </para>
     /// </summary>
-    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0);
+    long PumpUntil(NamedPipeServerStream pipe, Func<TimeSpan> segmentElapsed, CancellationToken token, int offsetMs = 0,
+        bool separateTracks = false);
 }
 
 /// <summary>

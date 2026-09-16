@@ -52,6 +52,9 @@ internal static class Composition
 
         // Region selection.
         services.AddSingleton<IRegionPicker, RegionPicker>();
+        // Transcripts (plan §7): the model store is the opt-in download, the service is the local pipeline.
+        services.AddSingleton<RecMode.App.Services.Transcripts.IWhisperModelStore, RecMode.App.Services.Transcripts.WhisperModelStore>();
+        services.AddSingleton<RecMode.App.Services.Transcripts.ITranscriptionService, RecMode.App.Services.Transcripts.TranscriptionService>();
         services.AddSingleton<IWindowPicker, WindowPicker>();
 
         // MVP UX services (Phase 5).
@@ -89,6 +92,7 @@ internal static class Composition
         services.AddSingleton<ScheduleViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<AboutViewModel>();
+        services.AddSingleton<TranscriptsViewModel>();
         services.AddSingleton<ShellViewModel>();
 
         // Windows.

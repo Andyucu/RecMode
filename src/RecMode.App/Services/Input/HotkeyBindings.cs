@@ -17,6 +17,7 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
     private int _screenshot = -1;
     private int _nextProfile = -1;
     private int _micMute = -1;
+    private int _addChapter = -1;
     private bool _hooked;
     private Action<uint>? _onRegistrationFailed;
 
@@ -48,6 +49,7 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
         _pause = Register(s.HotkeyPauseResume, "F10");
         _screenshot = Register(s.HotkeyScreenshot, "F11");
         _micMute = Register(s.HotkeyMicMute, "Ctrl+Shift+M");
+        _addChapter = Register(s.HotkeyAddChapter, "Ctrl+Shift+K");
     }
 
     /// <summary>Re-registers all hotkeys from the current settings (call after the user remaps one). Each
@@ -116,6 +118,10 @@ public sealed class HotkeyBindings(GlobalHotkeys hotkeys, RecordViewModel record
         else if (id == _micMute)
         {
             record.ToggleMicMuteCommand.Execute(null);
+        }
+        else if (id == _addChapter)
+        {
+            record.AddChapterCommand.Execute(null);
         }
     }
 
