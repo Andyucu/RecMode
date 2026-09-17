@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.137%20Beta-blue)](#install)
+[![Version](https://img.shields.io/badge/version-0.9.143%20Beta-blue)](#install)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
@@ -52,7 +52,7 @@
 - System audio and microphone, each with enable toggle, volume slider, and live level meter.
 - **Limit to app** — capture only one running application's audio instead of the full system mix.
 - **Separate audio tracks** (MKV/MOV, **on by default**) — the mixed track is always there, plus distinct **Microphone** and **System** tracks, so levels can be rebalanced later instead of being baked into one stream. The per-source tracks are the thing you cannot recreate after the fact, which is why they are recorded unless you opt out.
-- **Save a single track out** from the Library's **Audio** tab — a stream copy, so it is instant and lossless, into a file extension that actually fits the codec.
+- **Play or save any single track** from the Library's **Audio** tab — play it on its own, or save it out as its own file. Both are a stream copy, so both are instant and lossless, into a file extension that actually fits the codec. **Show in folder** and **Delete** act on the recording that holds the tracks, since a track is part of that file rather than a file of its own.
 - **Reduce background noise** — a zero-latency high-pass + adaptive expander that drops steady hiss, fan and rumble between speech. The separate mic track stays raw, so the cleanup is never destructive.
 - Codecs steered by container: AAC (MP4/MOV), Opus (MKV/WebM), FLAC (MKV).
 
@@ -60,6 +60,8 @@
 
 - **Live redaction** — mark a rectangle (Record screen → **Privacy**, or the floating toolbar) and it is blanked out in the recorded frames; the marked area never reaches the encoder.
 - **Mark it mid-recording.** The thing you need to hide often appears *after* you start — a password prompt, a customer name, a token. The picker is capture-excluded while recording, so the act of marking what to hide isn't itself recorded.
+- The toolbar's redact button blanks the marked area while it is on, and **removes the mark** on a second press.
+- Starting with redaction on and **no area picked yet** is fine — it records unredacted until you mark one, which is the usual case when the thing to hide only turns up mid-recording.
 - Only available where the capture can actually composite it: with an area marked that **can't** be applied, RecMode **refuses to start rather than record unredacted**.
 - **Recordings never leave the machine.** The only feature that touches the network is the transcript model download, and it uploads nothing — see below.
 
@@ -69,7 +71,7 @@
 - **Search by spoken word** — one search box finds a recording by what was said in it, showing the matching line.
 - **Save as…** — write the transcript out wherever you want: plain text for pasting into a doc or bug report, or the `.srt` / `.vtt` caption file.
 - Captions come from the **microphone track** when the recording has one (the mix also carries system audio, which degrades recognition), falling back to the first audio stream otherwise.
-- The speech model is a **one-time, opt-in download** (75–466 MB, size shown before anything is fetched) because it's far too large to bundle in a portable zip. Nothing else about transcription touches the network.
+- The speech model is a **one-time, opt-in download** (75–466 MB, size shown before anything is fetched) because it's far too large to bundle in a portable zip. **Remove model** deletes it again and reclaims the space when you're done with it. Nothing else about transcription touches the network.
 
 ### Chapters
 
@@ -102,7 +104,8 @@ Save your own custom profiles, delete them, cycle presets with **F8**, or bind a
 
 ### Library, schedule, and settings
 
-- **Library** — **Videos**, **Screenshots** and **Audio** tabs, thumbnails, metadata from `library.json`, Record again, and chapter titles for recordings that have them. The Audio tab lists each recording's separate tracks and saves any one of them out on its own.
+- **Library** — **Videos**, **Screenshots** and **Audio** tabs, thumbnails, metadata from `library.json`, Record again, and chapter titles for recordings that have them. The Audio tab lists each recording's separate tracks with per-track **Play** and **Save as…**, plus **Show in folder** and **Delete** for the recording itself.
+- **Deleting always asks first** — a recording, a screenshot or a downloaded model alike — and the prompt says whether it goes to the Recycle Bin or can't be undone.
 - **Transcripts** — its own page: transcribe a recording locally, then search every transcript by the words spoken.
 - **Schedule** — recurring or one-off timed recordings; optional profile binding; fires while the app runs (including from tray).
 - **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles (including **smooth cursor** and **redaction**), remappable global hotkeys, performance controls, start with Windows, close-button behavior (exit or minimize to tray), and update check.
