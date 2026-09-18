@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.143%20Beta-blue)](#install)
+[![Version](https://img.shields.io/badge/version-0.9.157%20Beta-blue)](#install)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
@@ -61,6 +61,8 @@
 - **Live redaction** — mark a rectangle (Record screen → **Privacy**, or the floating toolbar) and it is blanked out in the recorded frames; the marked area never reaches the encoder.
 - **Mark it mid-recording.** The thing you need to hide often appears *after* you start — a password prompt, a customer name, a token. The picker is capture-excluded while recording, so the act of marking what to hide isn't itself recorded.
 - The toolbar's redact button blanks the marked area while it is on, and **removes the mark** on a second press.
+- **Frosted or black.** The panel is a soft **frosted-glass** panel by default, with plain **black** still selectable — both are fully opaque, so nothing behind either one is readable; the frost is texture, not transparency. That choice is deliberate rather than decorative: a translucent frost can leave large text legible, which is the one outcome a redaction must never have.
+- **It can follow the element it hides.** With **Follow the marked element** on, the panel tracks the thing you marked as it moves and keeps covering it. Best-effort by design — it follows rigid, high-contrast things (dialogs, buttons, text blocks) and can lose anything whose pixels change as it moves, like animation or scrolling content. When it loses the element the panel **holds its last position** and you get a warning, so it never quietly stops covering.
 - Starting with redaction on and **no area picked yet** is fine — it records unredacted until you mark one, which is the usual case when the thing to hide only turns up mid-recording.
 - Only available where the capture can actually composite it: with an area marked that **can't** be applied, RecMode **refuses to start rather than record unredacted**.
 - **Recordings never leave the machine.** The only feature that touches the network is the transcript model download, and it uploads nothing — see below.
@@ -70,6 +72,7 @@
 - **Local speech-to-text** — the **Transcripts** page turns a recording into `.srt` + `.vtt` captions beside it, using Whisper **on this PC**. Every comparable tool uploads your recording to do this; RecMode does not.
 - **Search by spoken word** — one search box finds a recording by what was said in it, showing the matching line.
 - **Save as…** — write the transcript out wherever you want: plain text for pasting into a doc or bug report, or the `.srt` / `.vtt` caption file.
+- **Transcribe without captions, if you prefer.** **Save subtitles with the recording** (on by default) decides whether a transcript also lands beside the video as `.srt`/`.vtt` and marks it as transcribed. Turn it off and the words still **survive and stay searchable** — they're kept in the app's own `Data/Transcripts/` folder instead — but nothing is written next to the recording, so the video itself stays unmarked.
 - Captions come from the **microphone track** when the recording has one (the mix also carries system audio, which degrades recognition), falling back to the first audio stream otherwise.
 - The speech model is a **one-time, opt-in download** (75–466 MB, size shown before anything is fetched) because it's far too large to bundle in a portable zip. **Remove model** deletes it again and reclaims the space when you're done with it. Nothing else about transcription touches the network.
 
