@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.157%20Beta-blue)](#install)
+[![Version](https://img.shields.io/badge/version-0.9.164%20Beta-blue)](#versioning-and-updates)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
@@ -46,6 +46,7 @@
 - **Safe recording** (default on) — writes a crash-safe MKV first, then remuxes to MP4/MOV on stop.
 - **Auto-split** for very large files (optional, FAT32-aware size threshold).
 - **Bitrate guardrail** (default on) to cap surprise file growth on complex content.
+- **Re-detect encoders** (Settings → Encoding defaults) after a driver or GPU change, instead of restarting the app.
 
 ### Audio
 
@@ -54,6 +55,7 @@
 - **Separate audio tracks** (MKV/MOV, **on by default**) — the mixed track is always there, plus distinct **Microphone** and **System** tracks, so levels can be rebalanced later instead of being baked into one stream. The per-source tracks are the thing you cannot recreate after the fact, which is why they are recorded unless you opt out.
 - **Play or save any single track** from the Library's **Audio** tab — play it on its own, or save it out as its own file. Both are a stream copy, so both are instant and lossless, into a file extension that actually fits the codec. **Show in folder** and **Delete** act on the recording that holds the tracks, since a track is part of that file rather than a file of its own.
 - **Reduce background noise** — a zero-latency high-pass + adaptive expander that drops steady hiss, fan and rumble between speech. The separate mic track stays raw, so the cleanup is never destructive.
+- **Clock-drift correction** — a capture device's clock never runs at exactly its nominal rate, so over hours its audio would slowly slide behind the video. RecMode continuously nudges each source back in line by a fraction of a percent, which is inaudible.
 - Codecs steered by container: AAC (MP4/MOV), Opus (MKV/WebM), FLAC (MKV).
 
 ### Privacy
@@ -111,7 +113,7 @@ Save your own custom profiles, delete them, cycle presets with **F8**, or bind a
 - **Deleting always asks first** — a recording, a screenshot or a downloaded model alike — and the prompt says whether it goes to the Recycle Bin or can't be undone.
 - **Transcripts** — its own page: transcribe a recording locally, then search every transcript by the words spoken.
 - **Schedule** — recurring or one-off timed recordings; optional profile binding; fires while the app runs (including from tray).
-- **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles (including **smooth cursor** and **redaction**), remappable global hotkeys, performance controls, start with Windows, close-button behavior (exit or minimize to tray), and update check.
+- **Settings** — appearance (theme, accent, Sidebar / Top bar / **Compact** layout), encoding defaults, output paths and filename pattern, recording toggles (including **smooth cursor** and **redaction**), remappable global hotkeys, performance controls, re-detect encoders, start with Windows, close-button behavior (exit or minimize to tray), and update check.
 - **About** — version, runtime info, privacy notes, and license/third-party notices.
 
 ### Distribution and privacy
@@ -193,6 +195,17 @@ Custom install path:
 ```powershell
 msiexec /i RecMode-win.msi VELOPACK_INSTALLDIR="D:\Apps\RecMode"
 ```
+
+## Versioning and updates
+
+RecMode is in **beta**, numbered `0.9.x-beta`. The last number goes up by one with every build, so a higher number is always newer. `1.0` will mark the end of the beta.
+
+- **Current version: 0.9.164-beta.** Your installed version is shown on the **About** page and in **Settings**.
+- **Releases** are published on [GitHub Releases](https://github.com/Andyucu/RecMode/releases), tagged `0.9.x-Beta`. Each one ships a portable zip, an MSI installer, and the update packages the installer uses. The download links above always fetch the newest *published* release, which can trail the version described here while a release is being prepared.
+- **Update check.** About 30 seconds after launch, RecMode asks GitHub whether a newer release exists. If one does, you get a message in the app and a Windows notification from the tray icon, so you see it even when RecMode started hidden in the tray. Nothing is downloaded or installed on its own.
+  - **Installed copy:** **Settings → Check now** shows **Update & restart**, which downloads just the changes and restarts into the new version. It's unavailable while a recording is running, so an update can never cut one off.
+  - **Portable copy:** you get a link to the new zip. Download it and replace the folder, keeping your `Data\` and `Recordings\`.
+  - Turn the check off with **Settings → Check for updates on launch**. It's the only request RecMode makes on its own, and it sends nothing about you or your recordings.
 
 ## Portable folder layout
 
