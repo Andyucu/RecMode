@@ -6,7 +6,7 @@
 
 **RecMode** is a modern Windows screen recorder built with **.NET 10** and **WPF**. It targets fast desktop capture, practical recording presets, hardware-accelerated encoding where available, and a clean Windows 11-style interface. Portable-first: extract a folder or install once, and all recordings and settings stay beside the app.
 
-[![Version](https://img.shields.io/badge/version-0.9.180%20Beta-blue)](#versioning-and-updates)
+[![Version](https://img.shields.io/badge/version-0.9.221%20Beta-blue)](#versioning-and-updates)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](#requirements)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white)](#requirements)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](#license)
@@ -18,13 +18,15 @@
 | **Capture** | Full display, single window (dropdown or click-to-pick), custom region, or all displays on multi-monitor setups |
 | **Encoding** | H.264, HEVC, or AV1 via NVIDIA NVENC, AMD AMF, Intel QSV, or software fallback |
 | **Containers** | MP4, MKV, MOV, WebM with compatibility checks |
-| **Audio** | System loopback, microphone, per-app isolation, **separate mic/system tracks** (on by default), microphone **noise suppression** |
+| **Audio** | System loopback, microphone, per-app isolation, **separate mic/system tracks** (on by default), microphone **noise removal** (Off / Light / **Strong**, on by default) |
 | **Privacy** | **Live redaction** — mark a rectangle and it never reaches the encoder, before or *during* a recording; **no telemetry, ever** |
 | **Captions** | **Offline transcripts** (Whisper, on your PC) written as `.srt`/`.vtt`, searchable by the words spoken, exportable as text or captions |
 | **Navigation** | **Chapter markers** stamped while recording, written into the file as real seekable chapters |
 | **Overlays** | Webcam picture-in-picture, click highlights, draw-on-screen annotation, **smooth cursor** |
 | **Automation** | Global hotkeys, scheduled recordings, CLI flags, system-tray quick actions |
-| **Library** | Browse videos, screenshots and **audio tracks**; open, reveal, delete, **Record again**, or save any single audio track out on its own |
+| **Editing** | **Cut editor** for recordings (cut, split, overlays, per-track gain, waveforms, export) and a **screenshot editor** (arrows, boxes, text, blur, numbered steps, crop, magnifier); originals are never touched |
+| **Screenshots** | **Copy text from screen** (OCR), **scrolling capture** (beta) that stitches one tall picture of a whole page, annotate before sharing |
+| **Library** | Browse videos, screenshots and **audio tracks**; open, reveal, delete, **Record again**, edit, annotate, or save any single audio track out on its own |
 
 ## Features
 
@@ -32,7 +34,7 @@
 
 - **Screen** — record a chosen monitor, or **All Displays** when you have two or more monitors.
 - **Window** — pick from a list, use **Manual Pick** to click a window on screen, or enable **Follow selected window** for apps that recreate their window handle.
-- **Region** — drag a rectangle with presets (1920×1080, 1280×720, Full); re-open the picker any time by clicking the Region tile.
+- **Region** — drag a rectangle with presets (1920×1080, 1280×720, Full); re-open the picker any time by clicking the Region tile. Your last region is remembered, so it comes back on the next launch — and if you then record on a display it no longer fits (a different monitor, a lower resolution), the area is reduced to what fits and RecMode tells you it did, rather than recording a stretched or mis-cropped picture.
 - **Webcam** — record your camera directly as the capture source (separate from the picture-in-picture overlay, below).
 - **Live preview** — see what will be recorded before you press Record (pauses while recording to save resources).
 
@@ -43,6 +45,7 @@
 - **Brightness** adjustment and **HDR-to-SDR tone mapping** applied on the GPU in the capture pipeline (live in preview and during recording).
 - **Smooth cursor** (Settings → Recording) — captures with the cursor off and composites an eased, size-adjustable cursor instead, for the polished motion raw pointer sampling can't give. GPU capture path only; on the compatibility path the normal cursor is captured.
 - **Smart auto-zoom** (beta) — smoothly zooms in around each click, easing back out after a few idle seconds (Screen and Region sources); manual zoom is also available.
+- **Keep zoom editable** (Settings, off by default; needs smart auto-zoom) — records the full, un-zoomed frame and saves each click beside the video, so you can move, retime, resize or delete every zoom in the editor before exporting. Also works when capture has fallen back to the compatibility path, since nothing is cropped while recording.
 - **Safe recording** (default on) — writes a crash-safe MKV first, then remuxes to MP4/MOV on stop.
 - **Auto-split** for very large files (optional, FAT32-aware size threshold).
 - **Bitrate guardrail** (default on) to cap surprise file growth on complex content.
@@ -54,7 +57,7 @@
 - **Limit to app** — capture only one running application's audio instead of the full system mix.
 - **Separate audio tracks** (MKV/MOV, **on by default**) — the mixed track is always there, plus distinct **Microphone** and **System** tracks, so levels can be rebalanced later instead of being baked into one stream. The per-source tracks are the thing you cannot recreate after the fact, which is why they are recorded unless you opt out.
 - **Play or save any single track** from the Library's **Audio** tab — play it on its own, or save it out as its own file. Both are a stream copy, so both are instant and lossless, into a file extension that actually fits the codec. **Show in folder** and **Delete** act on the recording that holds the tracks, since a track is part of that file rather than a file of its own.
-- **Reduce background noise** — a zero-latency high-pass + adaptive expander that drops steady hiss, fan and rumble between speech. The separate mic track stays raw, so the cleanup is never destructive.
+- **Reduce background noise** — three settings, on the Record page and cycled from the floating toolbar. **Off** leaves the microphone alone. **Light** is a zero-latency high-pass and adaptive expander that drops steady hiss, fan and rumble between speech. **Strong** (the default) runs a learned noise-removal model on your PC that also removes keyboard clicks and room noise, with a strength slider that blends it with your original voice (lower keeps more of it). The separate mic track always stays raw, so the cleanup is never destructive. Strong delays the microphone by about 20 ms, and RecMode delays everything else by the same amount, so the voice never drifts against the picture. Light learns the room's level and deliberately refuses to learn it from your voice or from mechanical keyboard and mouse clicks: while you type continuously the noise level is left alone, then re-learned a few seconds after you stop.
 - **Clock-drift correction** — a capture device's clock never runs at exactly its nominal rate, so over hours its audio would slowly slide behind the video. RecMode continuously nudges each source back in line by a fraction of a percent, which is inaudible.
 - Codecs steered by container: AAC (MP4/MOV), Opus (MKV/WebM), FLAC (MKV).
 
@@ -110,6 +113,11 @@ Save your own custom profiles, delete them, cycle presets with **F8**, or bind a
 ### Library, schedule, and settings
 
 - **Library** — **Videos**, **Screenshots** and **Audio** tabs, thumbnails, metadata from `library.json`, Record again, and chapter titles for recordings that have them. The Audio tab lists each recording's separate tracks with per-track **Play** and **Save as…**, plus **Show in folder** and **Delete** for the recording itself.
+- **Copy text from screen** — press **Ctrl+Alt+R**, drag a box, and whatever text is inside it goes to your clipboard. Runs entirely on your machine using the text recognition built into Windows: no model to download, nothing uploaded, and the text is never saved. Set the language in **Settings** if Windows has more than one installed.
+- **Cut editor** (**Edit** on a recording) — drag to select, then **X** cuts the selection out of the middle (or press **S** to split); undo and redo, per-track waveforms, gain and mute for each audio track, and overlays (box, highlight, text, blur, pixelate) placed on the picture with start and end times. **Export** re-encodes exactly (**Exact**), or copies the streams instantly when every cut is already on a keyframe and no audio or zoom was changed (**Fast**). It writes a new file through a temporary one, so a failed or cancelled export never replaces an existing file, and your edits are kept beside the recording as a small project file that follows it if you move it. With **Keep zoom editable**, a **Zoom** panel lists each zoom (start, hold, level, centre) and export applies them last, so a blur box zooms with the picture.
+- **Screenshot editor** (**Annotate** on a screenshot) — arrow, line, box, circle, marker, pen, text, numbered steps that renumber when you delete one, blur and pixelate (for what you missed hiding), spotlight, crop and a magnifier, with undo and redo. **Copy** and **Export** produce exactly what the canvas shows. The original image is never modified; your marks are kept beside it and come back when you reopen it.
+- **Scrolling capture (beta)** — the **Scrolling capture** button next to Screenshot: pick a window and RecMode scrolls it from the top a page at a time and stitches one tall PNG, which opens in the screenshot editor. How far each step moved is measured from the pictures themselves, so rows are neither repeated nor missing, and fixed headers and footers are drawn once. It stops at the end of the page, on **Esc**, at 30,000 px, or when the page changes while it scrolls, and always keeps what it has and says why it stopped. It is off while an area is marked to hide, because a stitched page cannot place that area. Best-effort by nature: sticky elements, lazy loading and animations can defeat it.
+- **Quick trim** — cut a recording's ends without re-recording it. Drag two handles over the length the file actually has, then choose **Fast** (an instant stream copy; the cut lands on the nearest keyframe, so it can keep a little more than you asked for) or **Exact** (re-encodes only what you keep, so the cut lands exactly where you put it). Saves a new file beside the original and never touches it, so a trim is undone by deleting a file.
 - **Deleting always asks first** — a recording, a screenshot or a downloaded model alike — and the prompt says whether it goes to the Recycle Bin or can't be undone.
 - **Transcripts** — its own page: transcribe a recording locally, then search every transcript by the words spoken.
 - **Schedule** — recurring or one-off timed recordings; optional profile binding; fires while the app runs (including from tray).
@@ -154,6 +162,7 @@ Optional, before recording: mark a **redact area** (Record → Privacy) to blank
 | `F11` | Screenshot |
 | `Ctrl+Shift+M` | Mute / unmute the microphone |
 | `Ctrl+Shift+K` | Add a chapter marker (while recording) |
+| `Ctrl+Alt+R` | Copy text from screen (pick a region, text goes to the clipboard) |
 | `Esc` / `F12` | Exit draw mode (while annotating) |
 
 All global hotkeys can be remapped under **Settings → Hotkeys**.
@@ -200,7 +209,7 @@ msiexec /i RecMode-win.msi VELOPACK_INSTALLDIR="D:\Apps\RecMode"
 
 RecMode is in **beta**, numbered `0.9.x-beta`. The last number goes up by one with every build, so a higher number is always newer. `1.0` will mark the end of the beta.
 
-- **Current version: 0.9.164-beta.** Your installed version is shown on the **About** page and in **Settings**.
+- **Current version: 0.9.221-beta.** Your installed version is shown on the **About** page and in **Settings**.
 - **Releases** are published on [GitHub Releases](https://github.com/Andyucu/RecMode/releases), tagged `0.9.x-Beta`. Each one ships a portable zip, an MSI installer, and the update packages the installer uses. The download links above always fetch the newest *published* release, which can trail the version described here while a release is being prepared.
 - **Update check.** About 30 seconds after launch, RecMode asks GitHub whether a newer release exists. If one does, you get a message in the app and a Windows notification from the tray icon, so you see it even when RecMode started hidden in the tray. Nothing is downloaded or installed on its own.
   - **Installed copy:** **Settings → Check now** shows **Update & restart**, which downloads just the changes and restarts into the new version. It's unavailable while a recording is running, so an update can never cut one off.
@@ -231,9 +240,28 @@ RecMode/
 
 Everything stays inside this folder: settings, library metadata, logs, the downloaded speech model, recordings, screenshots and captions. Nothing is written to `%AppData%` or `%Videos%`.
 
+**If you updated RecMode from inside the app**, you have the Velopack layout instead, which nests the program one level down. Your data still belongs at the top level, one level above the program folder — that is what `AppPaths.StateRoot` resolves, so an update that replaces the program folder cannot take your recordings with it:
+
+```text
+RecMode/
+  .portable
+  current/            <- the program; replaced on every update
+    RecMode.exe
+    ffmpeg/
+  Data/               <- survives updates
+  Recordings/         <- survives updates
+```
+
+RecMode moves data that an older build left in the wrong place up to here on first launch, and tells you when it did.
+
 ## Status and known limitations
 
 RecMode is **beta** software (`0.9.x-beta`). Some items still depend on hardware or environment we have not fully verified on every vendor.
+
+- **A rotated monitor is left out of "All Displays" recordings.** Windows can rotate a display 90°, and compositing a rotated desktop into a flat virtual-desktop canvas needs a GPU rotation pass that isn't built. Rather than paste that monitor's image sideways across its neighbour, RecMode refuses it, logs it once, and that part of the recording stays black. **This affects only "All Displays"** — a rotated monitor recorded on its own via **Screen**, **Window** or **Region** goes through a different capture path and is unaffected. On a multi-monitor setup with a rotated display, record the rotated one separately and capture the rest as you prefer. Deliberately not built: the fix is a new GPU pass in the capture hot path, and its rotation *direction* cannot be checked on a machine without a rotated monitor, where getting it wrong is exactly the sideways-overwrite this avoids.
+- **Scrolling capture is beta.** It is verified against a page rendered in memory and a real scrolling window, but not yet against every browser; the mouse-wheel path used by windows that do not expose scrolling to Windows is the least tested part.
+- **Editable zoom has no timeline lane or zoomed preview yet.** Zooms are edited from a list, and zoom (like overlay) edits have no undo.
+- **Rotated monitors aside, the noise suppressor re-learns the room while you type.** It identifies keystrokes as transients rather than trying to tell them from speech by loudness, so the room is suppressed during typing and a click is never used as the noise level.
 
 ## License
 
